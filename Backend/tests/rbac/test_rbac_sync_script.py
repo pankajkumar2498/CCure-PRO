@@ -58,14 +58,14 @@ def test_a_dry_run_reports_and_commits_nothing(run):
         and not session.committed
         and session.rolled_back
     )
-    assert "permissions:               +67 registered" in out.out
+    assert "permissions:               +69 registered" in out.out
 
 
 def test_apply_commits(run):
     db, go = run
     code, out, session = go("--apply")
     assert code == 0 and session.committed and "applied." in out.out
-    assert db.query(RbacPermission).count() == 67
+    assert db.query(RbacPermission).count() == 69
 
 
 def test_applying_twice_changes_nothing_the_second_time(run):

@@ -1,4 +1,4 @@
-import axiosInstance, { authSession } from "./axiosInstance";
+import axiosInstance, { authSession, publicAuthClient } from "./axiosInstance";
 
 const normalizeEmail = (email) =>
   String(email || "")
@@ -84,17 +84,16 @@ export const resendVerification = async (email) => {
   return response.data;
 };
 
-// True when the deployment has ALLOW_SELF_REGISTRATION enabled. The backend
-// returns 404 for every self-service route when it does not, so the signup
-// page can hide itself rather than presenting a form that cannot succeed.
+// Only an explicit boolean establishes the deployment policy. A missing route,
+// malformed payload, timeout or 429 is unknown, never permission to sign up.
 export const isSelfRegistrationEnabled = async () => {
   try {
-    await axiosInstance.get("/auth/check-email?q=probe@example.com");
-    return true;
-  } catch (err) {
-    if (err?.response?.status === 404) return false;
-    // Any other failure (network, 429) is not evidence the feature is off.
-    return true;
+    const { data } = await publicAuthClient.get("/auth/config");
+    return typeof data?.self_registration_enabled === "boolean"
+      ? data.self_registration_enabled
+      : null;
+  } catch {
+    return null;
   }
 };
 

@@ -433,6 +433,27 @@ address must not confirm a different one, otherwise changing the address after
 requesting a link would let the old mailbox verify an address it never received
 mail at.
 
+### `platform_registration_policy`
+
+Source: `Backend/ccure_platform/models/registration_policy.py`. Platform-owned
+singleton for the self-registration setting, shared across all tenants.
+
+| Column                      | Type                   | Meaning                                                                          |
+| --------------------------- | ---------------------- | -------------------------------------------------------------------------------- |
+| `id`                        | integer, primary key   | Always 1; a check constraint enforces the singleton.                             |
+| `self_registration_enabled` | nullable boolean       | true/false saves an administrator override; NULL follows the deployment default. |
+| `revision`                  | nonnegative integer    | Incremented on every save; stale revisions return 409.                           |
+| `updated_at`                | timestamptz, nullable  | Time of the last administrator change.                                           |
+| `updated_by`                | varchar(150), nullable | Actor id retained independently of account deletion.                             |
+
+Migration `e5a7c9d1f3b2` creates the row with no override, preserving the existing
+deployment policy. Fresh installs that create metadata initialize the row on
+the first save with an insert safe for concurrent requests. A save locks the
+singleton and commits its change with a `platform_audit_events` record.
+The public auth configuration and every signup gate read the same policy on
+each request. Database failures return unavailable rather than enabling signup.
+This platform configuration is preserved by the clean-development reset.
+
 ### `email_domain_rules`
 
 Explicit platform-wide ALLOW / DENY decisions about email domains.

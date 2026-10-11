@@ -3,7 +3,7 @@ import { everything } from "../fixtures/authorization";
  * Platform navigation and product navigation are separate levels, decided by
  * the route tree — not by hiding one of two rendered menus.
  *
- *   CCure Home / an entry page / a shared admin screen   → Platform Shell
+ *   CCurePRO Home / an entry page / a shared admin screen   → Platform Shell
  *   an Audit address                                     → Audit's own layout
  *
  * Audit's state (ScanProvider) mounts only under Audit's routes, so the
@@ -91,7 +91,7 @@ const open = (path) =>
     </MemoryRouter>,
   );
 const sidebar = () => screen.getByRole("navigation", { name: "Sections" });
-const PLATFORM_LIST = { name: "CCure Platform" };
+const PLATFORM_LIST = { name: "CCurePRO Platform" };
 
 beforeEach(() => {
   api.get.mockReset();
@@ -102,10 +102,10 @@ beforeEach(() => {
   );
 });
 
-describe("CCure Home", () => {
+describe("CCurePRO Home", () => {
   it("is in the Platform Shell, with the product switcher and no Audit", async () => {
     open("/");
-    await screen.findByRole("heading", { name: "CCure Home" });
+    await screen.findByRole("heading", { name: "CCurePRO Home" });
     const list = within(sidebar()).getByRole("list", PLATFORM_LIST);
     expect(
       within(list)

@@ -16,6 +16,7 @@ import "../../styles/app-shell.css";
 // The platform's shared header pieces (Phase 12 navigation refactor). Imported
 // after app-shell.css so their stylesheets keep their place after it.
 import AccountMenu from "@shell/navigation/AccountMenu";
+import ThemeToggle from "@shell/navigation/ThemeToggle";
 import OrgSwitcher from "@shell/navigation/OrgSwitcher";
 import UserCard from "@shell/navigation/UserCard";
 import useOrganizationSwitcher from "@shell/navigation/useOrganizationSwitcher";
@@ -658,6 +659,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
           </div>
         )}
       </div>
+      <ThemeToggle />
       {showHelp && (
         <div className="sh-popover sh-popover--help" ref={helpRef}>
           <HelpPanel id="sh-help" onClose={closeHelp} />

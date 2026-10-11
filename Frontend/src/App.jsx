@@ -317,9 +317,22 @@ export default function App() {
               <Route path="/admin/users" element={<UserManagement />} />
               <Route path="/admin/users/deleted" element={<DeletedUsers />} />
             </Route>
-            {/* Superadmin only, matching require_role("superadmin") on the
-              router. These rules are platform-wide: an org_admin denying a
-              domain would be blocking another tenant's customers. */}
+            {/* Platform-wide settings use platform-scope permissions. */}
+            <Route
+              element={
+                <PrivateRoute
+                  requiredPermission="platform.registration.read"
+                  deniedElement={<AccessDenied />}
+                />
+              }
+            >
+              <Route
+                path="/admin/registration-settings"
+                element={
+                  <Navigate to="/admin/users?registration=settings" replace />
+                }
+              />
+            </Route>
             <Route
               element={
                 <PrivateRoute

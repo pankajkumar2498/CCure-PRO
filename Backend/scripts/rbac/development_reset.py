@@ -31,7 +31,7 @@ from scripts.rbac.development_artifacts import (
 MANIFEST = (
     Path(__file__).resolve().parents[2] / "data/rbac/development_reset_manifest.json"
 )
-HEADS = {"d4f8b2c6e0a1", "policy_pro_0001", "rank_0001"}
+HEADS = {"e5a7c9d1f3b2", "policy_pro_0001", "rank_0001"}
 SERVICES = ("ccure-api", "ccure-worker", "ccure-web-worker", "ccure-beat")
 NATIVE = (
     "rbac_roles",
@@ -464,8 +464,8 @@ def verify_native(db, user):
         ).scalars()
     )
     require(
-        len(expected) == 67 and actual == expected,
-        "native permission catalogue differs from the frozen 67 permissions",
+        len(expected) == 69 and actual == expected,
+        "native permission catalogue differs from the frozen 69 permissions",
     )
     roles = db.query(RbacRole).all()
     require(

@@ -34,6 +34,18 @@ function copyIn(node, copy = []) {
 }
 
 describe("Authentication platform identity", () => {
+  it("uses CCurePRO consistently in shared platform copy without renaming product contracts", () => {
+    for (const file of filesIn(SHELL_SRC)) {
+      const ast = parse(readFileSync(file, "utf8"), {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: { jsx: true },
+      });
+      for (const copy of copyIn(ast))
+        expect(copy, file).not.toMatch(/\bCCure\b/);
+    }
+  });
+
   it("keeps all Authentication copy and helpers free of legacy product branding and unsupported claims", () => {
     // Legal documents are supplied by the composition root, preserved verbatim
     // in the product's legal module; the browser tests inspect both dialogs.
@@ -65,12 +77,12 @@ describe("Authentication platform identity", () => {
         <h1>Sign in</h1>
       </AuthLayout>,
     );
-    expect(container.querySelector("header")).toHaveTextContent("CCure");
+    expect(container.querySelector("header")).toHaveTextContent("CCurePRO");
     expect(container.querySelector("header")).toHaveTextContent(
       "Enterprise Security / Vulnerability Management Platform",
     );
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(document.title).toBe("Sign in | CCure");
+    expect(document.title).toBe("Sign in | CCurePRO Platform");
     unmount();
     expect(document.title).toBe(previousTitle);
   });

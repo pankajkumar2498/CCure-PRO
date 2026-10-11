@@ -119,7 +119,9 @@ export default function ResetPassword() {
   return (
     <AuthLayout pageType="reset" title="Set new password">
       <h1 className="auth-title">Set new password</h1>
-      <p className="auth-sub">Choose a new password for your CCure account.</p>
+      <p className="auth-sub">
+        Choose a new password for your CCurePRO account.
+      </p>
 
       {error && (
         <CcureAlert variant="danger" className="auth-message">

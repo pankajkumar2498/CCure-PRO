@@ -28,6 +28,7 @@ tables:
   email_verification_tokens: {owner: platform, capability: identity}
   email_domain_rules: {owner: platform, capability: identity}
   disposable_domains: {owner: platform, capability: identity}
+  platform_registration_policy: {owner: platform, capability: identity}
   # ── platform: tenancy and RBAC ───────────────────────────────────────────
   organizations: {owner: platform, capability: tenancy}
   # Native RBAC. Platform-owned; modules never read

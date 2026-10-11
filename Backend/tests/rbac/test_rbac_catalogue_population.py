@@ -59,16 +59,16 @@ def test_the_platform_and_audit_declare_and_nobody_else_does(sources):
         ("platform", "platform"),
         ("audit", "audit"),
     ]
-    assert [len(s.permissions) for s in sources] == [30, 37]
+    assert [len(s.permissions) for s in sources] == [32, 37]
 
 
 def test_every_declaration_is_valid_with_no_problems(sources):
     assert validate_declarations(sources, known_roles=KNOWN) == []
 
 
-def test_all_67_keys_are_distinct_three_segment_keys(decls):
+def test_all_69_keys_are_distinct_three_segment_keys(decls):
     keys = [d.key for d in decls]
-    assert len(keys) == len(set(keys)) == 67
+    assert len(keys) == len(set(keys)) == 69
     for key in keys:
         assert c.PERMISSION_KEY.match(key), key
 
@@ -261,13 +261,13 @@ def test_an_undeclared_permission_cannot_be_granted_the_database_has_a_foreign_k
 # ── syncing the populated catalogue ──────────────────────────────────────────
 
 
-def test_syncing_registers_all_67_active_permissions_and_is_idempotent(
+def test_syncing_registers_all_69_active_permissions_and_is_idempotent(
     rbac_db, sources
 ):
     report = sync(rbac_db, sources, audit=False)
-    assert len(report.registered) == 67
+    assert len(report.registered) == 69
     rows = rbac_db.query(RbacPermission).all()
-    assert len(rows) == 67 and {r.status for r in rows} == {"active"}
+    assert len(rows) == 69 and {r.status for r in rows} == {"active"}
     assert not sync(rbac_db, sources, audit=False).changed
 
 
@@ -314,4 +314,4 @@ def test_the_catalogue_document_lists_every_key_with_its_owner_and_scope(decls):
     text = DOC.read_text(encoding="utf-8")
     for d in decls:
         assert f"`{d.key}`" in text, f"{d.key} is missing from {DOC.name}"
-    assert "67" in text and "native rbac is authoritative" in text.lower()
+    assert "69" in text and "native rbac is authoritative" in text.lower()

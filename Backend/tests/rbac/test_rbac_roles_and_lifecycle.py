@@ -105,7 +105,7 @@ def test_superadmin_holds_every_active_permission_as_rows_and_there_is_no_wildca
     world,
 ):
     active = {p.key for p in world.db.query(RbacPermission).filter_by(status="active")}
-    assert len(active) == 67
+    assert len(active) == 69
     rows = held(world.db, "platform.superadmin")
     assert rows == active
     assert all(c.PERMISSION_KEY.match(k) for k in rows)  # every row is a real key

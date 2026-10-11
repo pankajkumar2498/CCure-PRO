@@ -1,8 +1,8 @@
 # RBAC permission catalogue (RBAC-2)
 
 **Status: native RBAC is authoritative.** The engine reads native role assignments,
-materialized role grants and the permission catalogue. Startup and the operator's
-`python -m scripts.rbac.sync_catalogue --apply` synchronize declarations. Native
+materialized role grants and the permission catalogue. The operator's
+`python -m scripts.rbac.sync_catalogue --apply` synchronizes declarations. Native
 administrator bootstrap uses governed assignments. Frozen expectations are recorded
 in `Backend/tests/fixtures/rbac_catalogue.json`; historical migrations remain unchanged.
 
@@ -10,9 +10,9 @@ in `Backend/tests/fixtures/rbac_catalogue.json`; historical migrations remain un
 
 |                                        |                                                                            |
 | -------------------------------------- | -------------------------------------------------------------------------- |
-| Permissions in the catalogue           | **67** (30 `platform.*`, 37 `audit.*`)                                     |
-| Organisation-scope / platform-scope    | 50 / 17                                                                    |
-| Privileged (their denials are audited) | 32                                                                         |
+| Permissions in the catalogue           | **69** (32 `platform.*`, 37 `audit.*`)                                     |
+| Organisation-scope / platform-scope    | 50 / 19                                                                    |
+| Privileged (their denials are audited) | 33                                                                         |
 | Continuity permissions                 | 4                                                                          |
 | Legacy atoms                           | **66** = 65 seeded + 1 found only on the live database (`audit_logs:read`) |
 | Mapped / replaced / retired            | **50 / 6 / 10**                                                            |
@@ -66,6 +66,9 @@ in `Backend/tests/fixtures/rbac_catalogue.json`; historical migrations remain un
 | `platform.audit_log.retention`         | pla   | ⚑     |       | `audit:purge`                  | The legacy route requires the superadmin role by name and the legacy audit:purge was never required.                                                                           |
 | `platform.email_domain.read`           | pla   |       |       | — (replaces a role-name check) | The rules are platform-wide; the legacy routes require the superadmin role by name.                                                                                            |
 | `platform.email_domain.manage`         | pla   | ⚑     |       | — (replaces a role-name check) | Platform-wide rules could block another tenant's customers; the legacy routes require the superadmin role by name.                                                             |
+
+| `platform.registration.read` | pla | | | — (registration policy) | View the platform-wide signup policy. |
+| `platform.registration.manage` | pla | ⚑ | | — (registration policy) | Enable or disable signup across all tenants; requires reauthentication and records a platform audit event. |
 
 ## 4. Audit permissions (owner: ccure_audit)
 

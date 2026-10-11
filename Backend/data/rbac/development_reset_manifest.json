@@ -43,7 +43,12 @@
     "scan_phases": ["scans", "scan_id"],
     "web_assets": ["web_scans", "web_scan_id"]
   },
-  "user_tables": ["refresh_token_sessions", "password_reset_tokens", "email_verification_tokens", "notifications"],
+  "user_tables": [
+    "refresh_token_sessions",
+    "password_reset_tokens",
+    "email_verification_tokens",
+    "notifications"
+  ],
   "non_fk_reports": "scan_reports",
   "ownership_cascades": ["audit_logs", "audit_chain.audit_chain_heads"],
   "preserve_tables": {
@@ -52,6 +57,7 @@
     "public.nvd_sync_meta": null,
     "public.email_domain_rules": null,
     "public.disposable_domains": null,
+    "public.platform_registration_policy": null,
     "public.compliance_frameworks": "tenant_id IS NULL",
     "public.compliance_policies": "tenant_id IS NULL",
     "public.compliance_controls": null,
@@ -63,14 +69,45 @@
     "audit_retention.retention_anchors": null,
     "audit_retention.retention_holds": null
   },
-  "preserve_schemas": ["audit_chain", "audit_retention", "policy_pro", "rank", "ir"],
-  "known_orphan_organizations": [
-    "org_0b2486f2", "org_3e2e5451", "org_7525ab52", "org_798ea404",
-    "org_7b1089d2", "org_8558e142", "org_8d940b06", "org_8c7acce5",
-    "org_8fc7976c", "org_91d005bd", "org_a26f663c", "org_c6bdeeae", "org_cdackp1.in"
+  "preserve_schemas": [
+    "audit_chain",
+    "audit_retention",
+    "policy_pro",
+    "rank",
+    "ir"
   ],
-  "artifact_report_prefixes": ["credentialed_audit_", "host_discovery_", "asset_discovery_", "vulnerability_audit_", "scan_", "web_scan_"],
+  "known_orphan_organizations": [
+    "org_0b2486f2",
+    "org_3e2e5451",
+    "org_7525ab52",
+    "org_798ea404",
+    "org_7b1089d2",
+    "org_8558e142",
+    "org_8d940b06",
+    "org_8c7acce5",
+    "org_8fc7976c",
+    "org_91d005bd",
+    "org_a26f663c",
+    "org_c6bdeeae",
+    "org_cdackp1.in"
+  ],
+  "artifact_report_prefixes": [
+    "credentialed_audit_",
+    "host_discovery_",
+    "asset_discovery_",
+    "vulnerability_audit_",
+    "scan_",
+    "web_scan_"
+  ],
   "artifact_report_extensions": [".pdf", ".csv", ".xlsx", ".json", ".xml"],
   "artifact_web_evidence_legacy_directories": ["current-was-runtime-audit"],
-  "broker_queues": ["default", "scanner", "web_recon", "web_crawl", "web_dast", "web_audit", "compliance"]
+  "broker_queues": [
+    "default",
+    "scanner",
+    "web_recon",
+    "web_crawl",
+    "web_dast",
+    "web_audit",
+    "compliance"
+  ]
 }

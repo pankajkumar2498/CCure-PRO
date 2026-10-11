@@ -1,5 +1,5 @@
 /**
- * CCure Home — the Product Hub at `/` (Phase 12.2, design §3.3).
+ * CCurePRO Home — the Product Hub at `/` (Phase 12.2, design §3.3).
  *
  * Every row of §3.3's two tables has a test here: the three card states, and
  * the loading and failed page states. The response is the live :443 body
@@ -55,7 +55,7 @@ const renderHome = () =>
   );
 
 const cards = async () => {
-  const list = await screen.findByRole("list", { name: "CCure products" });
+  const list = await screen.findByRole("list", { name: "CCurePRO products" });
   return within(list).getAllByRole("listitem");
 };
 
@@ -64,7 +64,7 @@ beforeEach(() => {
   logout.mockReset();
 });
 
-describe("CCure Home — the four products", () => {
+describe("CCurePRO Home — the four products", () => {
   it("reads GET /platform/modules once", async () => {
     respond(real);
     renderHome();
@@ -113,14 +113,16 @@ describe("CCure Home — the four products", () => {
     renderHome();
     await cards();
     expect(screen.getByText("analyst")).toBeInTheDocument();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Sign out" }));
+    const u = userEvent.setup();
+    await u.click(
+      screen.getByRole("button", { name: "Account menu for analyst" }),
+    );
+    await u.click(screen.getByRole("menuitem", { name: "Sign Out" }));
     expect(logout).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("CCure Home — availability", () => {
+describe("CCurePRO Home — availability", () => {
   it("available → Available, and Open dashboard", async () => {
     respond(real);
     renderHome();
@@ -184,15 +186,17 @@ describe("CCure Home — availability", () => {
   });
 });
 
-describe("CCure Home — page states", () => {
+describe("CCurePRO Home — page states", () => {
   it("loading shows a loader and no card", async () => {
     let resolve;
     api.get.mockReturnValueOnce(new Promise((r) => (resolve = r)));
     renderHome();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Loading the CCure products…",
+      "Loading the CCurePRO products…",
     );
-    expect(screen.queryByRole("list", { name: "CCure products" })).toBeNull();
+    expect(
+      screen.queryByRole("list", { name: "CCurePRO products" }),
+    ).toBeNull();
     resolve({ data: real });
     await cards();
   });
@@ -209,10 +213,12 @@ describe("CCure Home — page states", () => {
       renderHome();
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(
-        "The CCure product list could not be loaded",
+        "The CCurePRO product list could not be loaded",
       );
       expect(alert).toHaveTextContent(text);
-      expect(screen.queryByRole("list", { name: "CCure products" })).toBeNull();
+      expect(
+        screen.queryByRole("list", { name: "CCurePRO products" }),
+      ).toBeNull();
       expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
       expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     },
@@ -237,7 +243,9 @@ describe("CCure Home — page states", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The response carried no product list.",
     );
-    expect(screen.queryByRole("list", { name: "CCure products" })).toBeNull();
+    expect(
+      screen.queryByRole("list", { name: "CCurePRO products" }),
+    ).toBeNull();
   });
 
   it("an empty list is said, not rendered as a blank page", async () => {

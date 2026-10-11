@@ -44,6 +44,38 @@ docker compose logs -f api
   read from `.env` by `docker-compose.yml`. Recreate the worker after changing
   them.
 
+## Registration policy
+
+The Docker deployment's registration default is `ALLOW_SELF_REGISTRATION` in
+the repository-root `.env`: `true` enables signup and `false` disables it
+(the default). Compose passes it to the API explicitly; `Backend/.env` is
+ignored by containers using `SKIP_DOTENV_LOAD=1` and is only for host processes.
+After changing the deployment default, recreate the API with
+`docker compose up -d --no-deps --force-recreate api`, preserving any `-f`
+overrides and environment variables used by that deployment. A restart alone
+does not update the container environment.
+
+For immediate changes, a Superadmin can open **Administration → User Management**,
+select **Registration settings** in the page toolbar, change **Allow self-registration**,
+and select **Save changes** in the dialog. The old `/admin/registration-settings`
+address redirects to this dialog; there is no separate registration navigation item.
+The saved platform-wide policy overrides `.env`, persists in PostgreSQL across
+restarts, and controls both the login link and every self-service signup route.
+**Use deployment default** clears the override. Existing accounts keep their
+sign-in access, and changing this policy does not bypass email verification
+or change the separate administrator-approval setting.
+
+The dialog and API require the platform-scope `platform.registration.read` and
+`platform.registration.manage` permissions. Only the system Superadmin role
+receives these grants by default; organisation roles cannot hold them. Changes
+use existing authenticator reauthentication and the platform audit ledger.
+Conflicting saves return 409 and require reloading the current policy.
+
+Deploying this feature requires the `e5a7c9d1f3b2` migration, permission
+catalogue synchronization (`python -m scripts.rbac.sync_catalogue --apply`), a
+frontend rebuild, and the regenerated gateway policy. Back up before migrations
+or catalogue synchronization, as described below and in CLAUDE.md.
+
 ## Database migrations
 
 Every API start runs `alembic upgrade heads`, so a merged migration is applied

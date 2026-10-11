@@ -18,7 +18,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
@@ -423,6 +424,79 @@ describe("Login — self-registration gate", () => {
       await screen.findByText(/accounts are created by your administrator/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /register here/i })).toBeNull();
+  });
+
+  it("keeps sign-in usable when registration configuration is unavailable", async () => {
+    isSelfRegistrationEnabled.mockResolvedValue(null);
+    renderPage();
+
+    await screen.findByText(/registration options are unavailable/i);
+    expect(screen.queryByRole("link", { name: /register here/i })).toBeNull();
+    expect(screen.queryByText(/created by your administrator/i)).toBeNull();
+    await signIn();
+    expect(navigate).toHaveBeenCalledWith("/", { replace: true });
+  });
+
+  it("retries configuration without changing the entered credentials", async () => {
+    isSelfRegistrationEnabled
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(false);
+    renderPage();
+    await screen.findByText(/registration options are unavailable/i);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/email or username/i), "analyst");
+    await user.type(
+      screen.getByLabelText(/^password\b/i),
+      "significant space ",
+    );
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await screen.findByText(/created by your administrator/i);
+    expect(screen.getByLabelText(/email or username/i)).toHaveValue("analyst");
+    expect(screen.getByLabelText(/^password\b/i)).toHaveValue(
+      "significant space ",
+    );
+    expect(login).not.toHaveBeenCalled();
+    expect(isSelfRegistrationEnabled).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a late result from the first StrictMode initialization", async () => {
+    let resolveStale;
+    isSelfRegistrationEnabled
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveStale = resolve;
+        }),
+      )
+      .mockResolvedValue(false);
+    render(
+      <StrictMode>
+        <MemoryRouter>
+          <Login />
+        </MemoryRouter>
+      </StrictMode>,
+    );
+    await screen.findByText(/created by your administrator/i);
+    await act(async () => resolveStale(true));
+
+    expect(screen.queryByRole("link", { name: /register here/i })).toBeNull();
+    expect(
+      screen.getByText(/created by your administrator/i),
+    ).toBeInTheDocument();
+  });
+
+  it("fetches a fresh decision when the page is visited again", async () => {
+    isSelfRegistrationEnabled
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+    const first = renderPage();
+    await screen.findByRole("link", { name: /register here/i });
+    first.unmount();
+    renderPage();
+
+    expect(screen.queryByRole("link", { name: /register here/i })).toBeNull();
+    await screen.findByText(/created by your administrator/i);
+    expect(isSelfRegistrationEnabled).toHaveBeenCalledTimes(2);
   });
 });
 

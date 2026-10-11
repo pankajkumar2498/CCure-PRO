@@ -49,6 +49,10 @@ UNAUTHENTICATED_WITHOUT_LIMIT = {
     "routers.health.root",
     "routers.scan_progress.pipeline_modes",
     "routers.scan_progress.workflow_example",
+    # One public policy boolean via an indexed singleton, with no account lookup, side effects or
+    # secrets. Do not share the registration probes' enumeration quota with
+    # login-page initialization; the baseline and edge ceilings still apply.
+    "auth.router.public_auth_config",
 }
 
 SENSITIVE_WITHOUT_LIMIT = {

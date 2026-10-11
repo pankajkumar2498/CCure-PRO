@@ -2,18 +2,18 @@
  * src/shell/account/SettingsDrawer.jsx
  * ─────────────────────────────────────────────────────────────────────────────
  * Slide-in settings drawer with sections:
- *   • Display       – theme, date format, rows per page
+ *   • Display       – rows per page, sidebar
  *   • Scan Defaults – default scan type, target discovery
  *   • Notifications – email and in-app alerts
  *
  * Checkpoint 3C batch 12: presentation moved onto the CCure design system.
  * The contract is unchanged: GET /user/preferences on open, PUT with the
- * whole preferences object on Save, `onPreferencesUpdated(response)` so
+ * drawer preferences on Save (theme is owned by the header), `onPreferencesUpdated(response)` so
  * PreferencesContext applies the theme through `data-theme` exactly as
  * before. The drawer is a modal dialog now — it has a backdrop and blocks
  * the page, which is what `role="complementary"` never said — with a focus
  * trap, Escape, focus restoration (by the owner) and a named close control.
- * Option groups are radio groups, so the chosen theme is announced; the
+ * Option groups are radio groups, so the chosen option is announced; the
  * toggles are labelled by their visible text, which they never were.
  */
 
@@ -26,7 +26,6 @@ import {
   CcureLoader,
   CcureRadio,
   CcureSwitch,
-  CcureIcon,
 } from "../../design-system";
 import "./settings-drawer.css";
 
@@ -185,7 +184,9 @@ export default function SettingsDrawer({
     setError("");
     setSaved(false);
     try {
-      const updated = await updatePreferences(prefs);
+      const drawerPreferences = { ...prefs };
+      delete drawerPreferences.theme;
+      const updated = await updatePreferences(drawerPreferences);
       setPrefs(updated);
       setSaved(true);
       if (onPreferencesUpdated) onPreferencesUpdated(updated);
@@ -242,24 +243,6 @@ export default function SettingsDrawer({
           <>
             {/* Display Preferences */}
             <Section title="Display" icon={<IcoSun />}>
-              <OptionGroup
-                id="shs-theme"
-                label="Theme"
-                options={[
-                  {
-                    value: "light",
-                    label: "Light",
-                    icon: <CcureIcon name="sun" />,
-                  },
-                  {
-                    value: "dark",
-                    label: "Dark",
-                    icon: <CcureIcon name="moon" />,
-                  },
-                ]}
-                value={prefs.theme}
-                onChange={set("theme")}
-              />
               <OptionGroup
                 id="shs-rows"
                 label="Rows per page"

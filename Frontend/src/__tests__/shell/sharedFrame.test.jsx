@@ -93,7 +93,7 @@ describe("SettingsDrawer productSettings", () => {
 
   it("holds only the platform's settings without a product section", async () => {
     render(<SettingsDrawer onClose={() => {}} />);
-    await screen.findByText("Theme");
+    await screen.findByText("Rows per page");
     expect(titles()).toEqual(["Display", "Notifications"]);
     expect(screen.queryByText("Default scan type")).toBeNull();
   });
@@ -105,7 +105,7 @@ describe("SettingsDrawer productSettings", () => {
         productSettings={renderAuditSettings}
       />,
     );
-    await screen.findByText("Theme");
+    await screen.findByText("Rows per page");
     expect(titles()).toEqual(["Display", "Scan Defaults", "Notifications"]);
     expect(screen.getByText("Default scan type")).toBeInTheDocument();
   });
@@ -171,7 +171,7 @@ describe("Audit's preference block (preference namespacing)", () => {
     await waitFor(() => expect(updatePreferences).toHaveBeenCalledTimes(1));
     const sent = updatePreferences.mock.calls[0][0];
     expect(sent.products.audit.default_scan_type).toBe("host-discovery");
-    expect(sent.theme).toBe("light");
+    expect(sent).not.toHaveProperty("theme");
     expect(sent.default_rows_per_page).toBe(10);
   });
 });

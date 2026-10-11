@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "@shell/auth/AuthContext";
 import { PreferencesProvider } from "@shell/preferences/PreferencesContext";
+import { applyTheme, readTheme } from "@shell/preferences/theme";
 import RootErrorBoundary from "@audit/components/common/RootErrorBoundary";
 
 // ── Stylesheet order is load-bearing ─────────────────────────────────────────
@@ -20,6 +21,8 @@ import RootErrorBoundary from "@audit/components/common/RootErrorBoundary";
 // reset to UX4G.
 import "./design-system";
 import "./styles/global.css";
+
+applyTheme(readTheme());
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

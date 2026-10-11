@@ -604,8 +604,9 @@ class AccountSecurityConfig:
     nobody notices that strangers can execute network scans.
     """
 
-    # Master switch for POST /auth/register. Off by default: admin-provisioned
-    # accounts (POST /admin/users) are the supported onboarding path.
+    # Deployment default for signup. A saved platform registration policy can
+    # override it; identity.registration_policy is the request-time authority.
+    # Off by default: admin provisioning is the supported onboarding path.
     ALLOW_SELF_REGISTRATION: bool = (
         os.getenv("ALLOW_SELF_REGISTRATION", "False").lower() == "true"
     )

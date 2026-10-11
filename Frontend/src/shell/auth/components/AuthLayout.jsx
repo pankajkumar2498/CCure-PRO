@@ -8,7 +8,7 @@ import "../styles/auth.css";
 export default function AuthLayout({ pageType = "login", title, children }) {
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = `${title} | CCure`;
+    document.title = `${title} | CCurePRO Platform`;
     return () => {
       document.title = previousTitle;
     };
@@ -19,7 +19,7 @@ export default function AuthLayout({ pageType = "login", title, children }) {
       <header className="auth-platform-header">
         <div className="auth-platform-brand">
           <ShieldLogoIcon size={34} />
-          <span className="auth-brand-name">CCure</span>
+          <span className="auth-brand-name">CCurePRO</span>
         </div>
         <p className="auth-platform-description">
           Enterprise Security / Vulnerability Management Platform
@@ -36,7 +36,7 @@ export default function AuthLayout({ pageType = "login", title, children }) {
       </div>
 
       <footer className="auth-platform-footer">
-        <span>CCure · Account access</span>
+        <span>CCurePRO Platform · Account access</span>
         <span>For access assistance, contact your administrator.</span>
       </footer>
     </main>

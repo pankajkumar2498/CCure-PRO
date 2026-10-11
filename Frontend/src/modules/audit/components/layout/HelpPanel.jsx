@@ -98,7 +98,7 @@ const FAQ_DATA = [
   },
   {
     q: "What does the vulnerability severity mean?",
-    a: "CCure uses the CVSS scale: Critical (9–10), High (7–8.9), Medium (4–6.9), Low (0–3.9). Focus on Critical and High first.",
+    a: "CCurePRO uses the CVSS scale: Critical (9–10), High (7–8.9), Medium (4–6.9), Low (0–3.9). Focus on Critical and High first.",
     tags: ["vulnerability", "severity", "cvss"],
   },
   {

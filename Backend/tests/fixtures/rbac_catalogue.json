@@ -670,6 +670,26 @@
       "continuity": false,
       "status": "active",
       "reason": "The feed is global data; the legacy routes require the superadmin role by name."
+    },
+    {
+      "key": "platform.registration.read",
+      "owner": "platform",
+      "scope_kind": "platform",
+      "sensitivity": "normal",
+      "delegable_to_org_roles": false,
+      "continuity": false,
+      "status": "active",
+      "reason": "View the platform-wide self-registration policy."
+    },
+    {
+      "key": "platform.registration.manage",
+      "owner": "platform",
+      "scope_kind": "platform",
+      "sensitivity": "privileged",
+      "delegable_to_org_roles": false,
+      "continuity": false,
+      "status": "active",
+      "reason": "Enable or disable signup across all tenants, with reauthentication and audit."
     }
   ],
   "role_grants": {
@@ -740,7 +760,9 @@
       "platform.user.purge",
       "platform.user.read",
       "platform.user.reset_credentials",
-      "platform.user.update"
+      "platform.user.update",
+      "platform.registration.read",
+      "platform.registration.manage"
     ],
     "platform.org_admin": [
       "audit.asset.import_amt",

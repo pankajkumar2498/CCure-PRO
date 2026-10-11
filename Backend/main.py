@@ -35,6 +35,9 @@ from fastapi.responses import JSONResponse
 from ccure_platform.administration.email_domains import (
     router as admin_email_domains_router,
 )
+from ccure_platform.administration.registration_settings import (
+    router as registration_settings_router,
+)
 from routers.admin_nvd import router as admin_nvd_router
 from ccure_platform.administration.organizations import router as admin_orgs_router
 from ccure_platform.administration.users import router as admin_users_router
@@ -1115,6 +1118,7 @@ app.include_router(config_audit_router)
 app.include_router(reports_router)
 app.include_router(admin_users_router)
 app.include_router(admin_email_domains_router)
+app.include_router(registration_settings_router)
 app.include_router(admin_orgs_router)
 app.include_router(admin_nvd_router)
 app.include_router(audit_router)

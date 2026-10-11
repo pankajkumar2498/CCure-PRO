@@ -86,16 +86,8 @@
   z-index: var(--ccure-z-drawer);
 }
 
-.pl-signout {
-  flex-shrink: 0;
-}
-
-/* On a phone the header has no room for a second sign-out control: the account
-   menu beside it carries Sign Out, so the standalone button yields. */
+/* Keep the header controls compact on phones. */
 @media (max-width: 40rem) {
-  .pl-signout {
-    display: none;
-  }
   .pl-shell .cc-header__right {
     gap: var(--ccure-space-xs);
   }

@@ -15,8 +15,8 @@
     "legacy_atoms": "kept only in migration history, documentation, audit data and historical migrations"
   },
   "summary": {
-    "total": 235,
-    "migrated": 231,
+    "total": 237,
+    "migrated": 233,
     "display-only": 2,
     "compatibility-history": 2,
     "legacy": 0,
@@ -506,6 +506,26 @@
       "site_id": "ccure_platform/administration/rbac_admin.py::_context::resolve_active_organisation::#1"
     },
     {
+      "file": "ccure_platform/administration/registration_settings.py",
+      "line": 36,
+      "function": "get_registration_settings",
+      "mechanism": "require_authorized",
+      "permission": "platform.registration.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "ccure_platform/administration/registration_settings.py::get_registration_settings::require_authorized::platform.registration.read#1"
+    },
+    {
+      "file": "ccure_platform/administration/registration_settings.py",
+      "line": 49,
+      "function": "update_registration_settings",
+      "mechanism": "require_authorized",
+      "permission": "platform.registration.manage",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "ccure_platform/administration/registration_settings.py::update_registration_settings::require_authorized::platform.registration.manage#1"
+    },
+    {
       "file": "ccure_platform/administration/users.py",
       "line": 72,
       "function": "_is_superadmin",
@@ -697,7 +717,7 @@
     },
     {
       "file": "ccure_platform/identity/router.py",
-      "line": 1193,
+      "line": 1210,
       "function": "_authorization_for",
       "mechanism": "resolve_active_organisation",
       "permission": null,

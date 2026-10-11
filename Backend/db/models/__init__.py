@@ -54,6 +54,7 @@ from .rbac import Organization
 # The new RBAC capability's tables (native authorization): defined in the platform's
 # models and registered here so every process that builds metadata sees them.
 from ccure_platform.models.platform_audit import PlatformAuditEvent  # noqa: E402
+from ccure_platform.models.registration_policy import RegistrationPolicy  # noqa: E402
 from ccure_platform.models.rbac_tables import (  # noqa: E402
     RbacDefaultRole,
     RbacPermission,
@@ -87,6 +88,7 @@ __all__ = [
     "RbacUserRole",
     "RbacDefaultRole",
     "PlatformAuditEvent",
+    "RegistrationPolicy",
     # Users & Auth
     "User",
     "RefreshTokenSession",

@@ -314,6 +314,15 @@ jobs:
           chmod 600 "$RUNNER_TEMP/reset-backups/before-bootstrap.dump"
           cd Backend
           python db/migrate_production_schema.py
+          # NVD owns this lazy checkpoint table outside ORM metadata. Create
+          # its real empty schema so reset preservation/locking is exercised.
+          python - <<'PY'
+          from db.base import engine
+          from scans.nvd_sync import _ensure_meta_table
+          from sqlalchemy import inspect
+          _ensure_meta_table(engine)
+          assert inspect(engine).has_table('nvd_sync_meta')
+          PY
           for bootstrap in bootstrap_chain.sql bootstrap_chain_retention.sql bootstrap_chain_retention_chained.sql; do
             PGPASSWORD=ci_reset_dba_password psql -X -v ON_ERROR_STOP=1 -v app_role=ccure_user \
               -h localhost -U ci_reset_dba -d pytest_rbac_reset -f "scripts/audit/$bootstrap"

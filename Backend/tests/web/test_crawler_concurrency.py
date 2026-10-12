@@ -123,9 +123,12 @@ def test_ffuf_max_words_truncates(monkeypatch, tmp_path):
 def _browser_ok():
     try:
         from playwright.sync_api import sync_playwright
+        from core.web.browser_runtime import launch_options
 
         with sync_playwright() as p:
-            b = p.chromium.launch(headless=True, args=["--no-sandbox"])
+            b = p.chromium.launch(
+                **launch_options(), headless=True, args=["--no-sandbox"]
+            )
             b.close()
         return True
     except Exception:

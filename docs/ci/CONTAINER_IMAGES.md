@@ -166,10 +166,36 @@ and vulnerability policy are unchanged. See
 [the release report](../rbac/RBAC_RELEASE_READINESS.md) for exact artifact scans,
 targeted tests and pending approvals.
 
-Debian Chromium and Playwright's separately downloaded browser are different
-artifacts. This package fix does not upgrade the latter. The release report
-records its version and the security-verification limitation rather than treating
-a green package gate as proof that every browser binary is free of vulnerabilities.
+The browser coverage review found Playwright 1.63.0 separately downloaded
+Chromium 153, which is not upgraded by the Debian package fix. Production now
+uses Playwright's [supported Chrome Stable channel](https://playwright.dev/python/docs/browsers#google-chrome--microsoft-edge).
+A build-only stage downloads `google-chrome-stable` from Google's authenticated
+APT repository, verifies the active primary key fingerprint published in
+[Google's key documentation](https://www.google.com/linuxrepositories/), and leaves
+GPG/wget out of the runtime. Installation requires Chrome >= `155.0.8059.39-1`.
+The existing Debian package and libraries are retained.
+
+All five production browser launch sites use the shared channel selector. An
+unset channel preserves local Playwright defaults; an unreviewed channel fails.
+The release image explicitly sets `CCURE_BROWSER_CHANNEL=chrome`. The unused
+vulnerable bundled Chromium/headless-shell download is removed from that image:
+no production launch uses it, and retaining it would add avoidable attack surface.
+The Playwright driver and application dependencies remain. Real-browser test
+probes use the same selector, preventing a missing old bundle from hiding tests
+for the new production engine.
+
+Images additionally runs `scripts/ci/check_browser_runtime.py` inside the exact
+backend image, offline and as its default user. It requires the Chrome channel,
+checks the _executed_ browser version against the fix minimum and renders a
+local page. Package scanning is retained; no advisory exemption is added.
+The existing scanner `--no-sandbox` policy is unchanged and still needs explicit
+security-owner review for production crawling.
+
+Manual Images runs retain the exact scanned and smoke-tested images as private
+Actions artifacts for seven days, with image metadata, export SHA256SUMS and the
+full Trivy report. This makes coordinated artifact promotion possible without a
+rebuild. Registry publication and production deployment still require owner
+approval. No release artifact is exported from the ordinary nightly run.
 
 ### Scanner dependency patches (12 Oct 2026)
 

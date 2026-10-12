@@ -11,6 +11,8 @@ Handles:
   - Redis-backed session state caching for multi-phase scans
 """
 
+from core.web.browser_runtime import launch_options
+
 import base64
 import hashlib
 import hmac
@@ -493,6 +495,7 @@ class WebSessionManager:
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
+                    **launch_options(),
                     headless=True,
                     args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
                 )
@@ -602,6 +605,7 @@ class WebSessionManager:
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
+                    **launch_options(),
                     headless=True,
                     args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
                 )

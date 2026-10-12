@@ -307,7 +307,10 @@ jobs:
           ALTER SCHEMA public OWNER TO ccure_user;
           SQL
           mkdir -m 700 "$RUNNER_TEMP/reset-backups"
-          PGPASSWORD=ci_reset_dba_password pg_dump -U ci_reset_dba -Fc -f "$RUNNER_TEMP/reset-backups/before-bootstrap.dump"
+          # Use the service's own PostgreSQL client. Ubuntu's default pg_dump
+          # may be older than PostgreSQL 18 and refuses to back up that server.
+          docker exec '${{ job.services.postgres.id }}' pg_dump -U ci_reset_dba -d pytest_rbac_reset -Fc \
+            > "$RUNNER_TEMP/reset-backups/before-bootstrap.dump"
           chmod 600 "$RUNNER_TEMP/reset-backups/before-bootstrap.dump"
           cd Backend
           python db/migrate_production_schema.py
@@ -315,7 +318,8 @@ jobs:
             PGPASSWORD=ci_reset_dba_password psql -X -v ON_ERROR_STOP=1 -v app_role=ccure_user \
               -h localhost -U ci_reset_dba -d pytest_rbac_reset -f "scripts/audit/$bootstrap"
           done
-          PGPASSWORD=ci_reset_dba_password pg_dump -U ci_reset_dba -Fc -f "$RUNNER_TEMP/reset-backups/before-reset-tests.dump"
+          docker exec '${{ job.services.postgres.id }}' pg_dump -U ci_reset_dba -d pytest_rbac_reset -Fc \
+            > "$RUNNER_TEMP/reset-backups/before-reset-tests.dump"
           chmod 600 "$RUNNER_TEMP/reset-backups/before-reset-tests.dump"
       - name: Execute only isolated reset and legacy-removal cases
         run: |

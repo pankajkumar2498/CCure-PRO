@@ -32,6 +32,8 @@ Guarantees this is built around:
 
 from __future__ import annotations
 
+from core.web.browser_runtime import launch_options
+
 import asyncio
 import logging
 import re
@@ -162,6 +164,7 @@ class WorkflowEngine:
         try:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(
+                    **launch_options(),
                     headless=True,
                     args=[
                         "--no-sandbox",

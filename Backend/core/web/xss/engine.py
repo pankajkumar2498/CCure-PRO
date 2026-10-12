@@ -36,6 +36,8 @@ honoured, and payloads that neither exfiltrate nor write to the target.
 
 from __future__ import annotations
 
+from core.web.browser_runtime import launch_options
+
 import asyncio
 import logging
 import secrets
@@ -190,6 +192,7 @@ class XssEngine:
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
+                    **launch_options(),
                     headless=True,
                     args=["--no-sandbox", "--disable-dev-shm-usage"],
                 )

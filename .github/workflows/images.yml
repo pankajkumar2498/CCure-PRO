@@ -15,9 +15,9 @@ name: Images
 # leave every PR waiting for it.
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   schedule:
-    - cron: '0 21 * * *'   # 02:30 IST
+    - cron: "0 21 * * *" # 02:30 IST
   workflow_dispatch:
 
 # Read-only token; no job references a secret. The layer cache below talks to
@@ -61,7 +61,7 @@ jobs:
             file: Frontend/Dockerfile
             smoke: scripts/ci/smoke_frontend.sh
             exceptions: .github/security/trivy-frontend.yaml
-            skip: ''
+            skip: ""
           # The gateway's token check, which answers for every API request.
           # Built from the repository root: its Dockerfile copies the core's
           # verification rules, and Dockerfile.dockerignore beside it is an
@@ -76,7 +76,7 @@ jobs:
             file: gateway/token_check/Dockerfile
             smoke: scripts/ci/smoke_gateway_auth.sh
             exceptions: .github/security/trivy-gateway-auth.yaml
-            skip: ''
+            skip: ""
     env:
       # The canonical identity of the artifact: the commit it was built from.
       # Never `latest` — a tag that names "whatever was built last" cannot say
@@ -161,6 +161,13 @@ jobs:
       - name: Smoke test
         run: bash "${{ matrix.smoke }}" "$IMAGE"
 
+      - name: Verify the executed browser security minimum
+        if: matrix.context == 'Backend'
+        run: |
+          docker run --rm --network none \
+            -v "$GITHUB_WORKSPACE/scripts/ci/check_browser_runtime.py:/review/check_browser_runtime.py:ro" \
+            --entrypoint python "$IMAGE" /review/check_browser_runtime.py
+
       - name: Record the verified image
         run: |
           {
@@ -175,3 +182,29 @@ jobs:
             echo
             echo "Built, scanned and smoke-tested. Not published: pushing this exact image to a registry is the next phase."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Preserve the tested bytes for a manually requested release check.
+      # Registry publication and deployment remain separate owner decisions;
+      # rebuilding after this run would produce an unverified artifact.
+      - name: Export verified release artifact
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-artifact"
+          docker image inspect "$IMAGE" > "$RUNNER_TEMP/release-artifact/image-inspect.json"
+          actual=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")
+          test "$actual" = "$GITHUB_SHA"
+          docker save "$IMAGE" | gzip -1 > "$RUNNER_TEMP/release-artifact/image.tar.gz"
+          cd "$RUNNER_TEMP/release-artifact"
+          sha256sum image.tar.gz > SHA256SUMS
+          cp "$RUNNER_TEMP/trivy.json" .
+
+      - name: Retain verified release artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/release-artifact/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

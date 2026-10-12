@@ -15,6 +15,21 @@
 # ── Base Image ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
 
+# Download Chrome Stable through Google's authenticated APT repository. GPG and
+# wget remain build-only; the fixed browser runs through Playwright's supported
+# chrome channel rather than its vulnerable, separately bundled Chromium 153.
+FROM base AS chrome-download
+RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg \
+    && wget -qO /usr/share/keyrings/google.asc https://dl.google.com/linux/linux_signing_key.pub \
+    && gpg --show-keys --with-colons /usr/share/keyrings/google.asc \
+       | awk -F: '$1 == "fpr" && $10 == "EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796" { found=1 } END { exit !found }' \
+    && echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google.asc] https://dl.google.com/linux/chrome/deb/ stable main' > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && mkdir /chrome \
+    && cd /chrome && apt-get download google-chrome-stable
+
+FROM base AS browser-runtime
+
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -26,13 +41,14 @@ ENV PATH="/home/ccure/.local/bin:${PATH}"
 # only through that empty entry.
 ENV PYTHONPATH="/home/ccure/.local/lib/python3.11/site-packages:${PYTHONPATH}"
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+ENV CCURE_BROWSER_CHANNEL=chrome
 
 # Runtime system packages only — this stage is what ships.
 # - nmap: essential for network scanning
 # - libcap2-bin: to grant raw socket permissions to non-root users
-# - chromium: Debian's build is not what Playwright drives (that is the
-#   browser under /opt/playwright), but installing it is what brings in the
-#   shared libraries Playwright's Chromium links against. Kept deliberately;
+# - chromium: Debian's package supplies the shared browser libraries. The
+#   production Playwright channel executes fixed Chrome Stable, installed below.
+#   This package and its dependencies are retained deliberately;
 #   see docs/ci/CONTAINER_IMAGES.md.
 #
 # The compiler toolchain (gcc, python3-dev, libpq-dev) and the download tools
@@ -78,8 +94,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade 
 
 WORKDIR /app
 
+COPY --from=chrome-download /chrome/google-chrome-stable_*.deb /tmp/google-chrome-stable.deb
+RUN apt-get update && apt-get install -y --no-install-recommends /tmp/google-chrome-stable.deb \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' google-chrome-stable)" ge '155.0.8059.39-1' \
+    && rm /tmp/google-chrome-stable.deb \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # ── Dependency Stage ───────────────────────────────────────────────────────
-FROM base AS builder
+FROM browser-runtime AS builder
 
 # Build-only: compilers and headers for any requirement without a wheel.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -94,9 +116,8 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --user -r requirements.txt
 
-# Install Playwright browsers (Chromium only)
-RUN --mount=type=cache,target=/root/.cache/ms-playwright \
-    /root/.local/bin/playwright install chromium 2>/dev/null || echo "Playwright browser install skipped"
+# The driver remains installed. Production uses Chrome Stable installed above;
+# do not ship the unused vulnerable Chromium/headless-shell download alongside it.
 
 # ── Patched Scanner Build Stage ───────────────────────────────────────────
 # Keep the scanner releases and CLI contracts, but rebuild their HTTP/TLS
@@ -169,7 +190,7 @@ RUN mkdir -p /opt/wordlists && \
     echo "${WORDLIST_SHA256}  /opt/wordlists/common.txt" | sha256sum -c -
 
 # ── Final Runtime Image ────────────────────────────────────────────────────
-FROM base AS runtime
+FROM browser-runtime AS runtime
 
 # Create a non-privileged user for the API process
 RUN useradd -m -s /bin/bash ccure
@@ -187,9 +208,6 @@ COPY --from=tools /usr/local/bin/nuclei /usr/local/bin/nuclei
 COPY --from=tools /usr/local/bin/subfinder /usr/local/bin/subfinder
 COPY --from=tools /usr/local/bin/ffuf /usr/local/bin/ffuf
 COPY --from=tools /opt/wordlists /opt/wordlists
-
-# Copy Playwright browsers from builder
-COPY --from=builder --chown=ccure:ccure /opt/playwright /opt/playwright
 
 # Copy nuclei templates (may be in /root or /home)
 COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
@@ -223,11 +241,11 @@ RUN set -e; \
     command -v nuclei >/dev/null 2>&1 || missing="$missing nuclei"; \
     command -v ffuf >/dev/null 2>&1 || missing="$missing ffuf"; \
     command -v sqlmap >/dev/null 2>&1 || missing="$missing sqlmap"; \
-    if ls /opt/playwright/chromium-* >/dev/null 2>&1; then \
-        echo "  OK       playwright chromium -> $(ls -d /opt/playwright/chromium-* | head -1)"; \
+    if command -v google-chrome-stable >/dev/null 2>&1; then \
+        echo "  OK       playwright chrome channel -> $(google-chrome-stable --version)"; \
     else \
-        missing="$missing playwright-chromium"; \
-        echo "  MISSING  playwright chromium browser"; \
+        missing="$missing playwright-chrome"; \
+        echo "  MISSING  playwright chrome stable browser"; \
     fi; \
     tmpl_count=$(find /opt/nuclei-templates -name '*.yaml' -o -name '*.yml' 2>/dev/null | head -501 | wc -l); \
     if [ "$tmpl_count" -gt 0 ]; then \

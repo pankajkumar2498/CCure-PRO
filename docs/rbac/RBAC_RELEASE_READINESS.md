@@ -33,8 +33,10 @@ on a separate Disposable Reset Validation job. That job owns its own PostgreSQL
 separate DBA bootstrap, and takes private backups before bootstrap and execution.
 It runs precisely the two previously excluded execution cases and fails if either
 skips. All head and refusal checks remain in Backend Validation, whose explicit
-scratch database is now `pytest_release_validation`. Hosted execution is pending;
-no reset tool is run against production or a shared database.
+scratch database is now `pytest_release_validation`. The first hosted setup failed before either execution case: Ubuntu supplied
+pg_dump 16 for PostgreSQL 18. Backup now uses the isolated service container’s
+own matching client. A successful hosted run remains required; no reset tool
+is run against production or a shared database.
 
 Publishing the complete candidate includes ten already-present prerequisite
 commits between published master `89b113aff8297a8dabce2cd865dbc377736d2400` and the
@@ -54,9 +56,26 @@ cannot be cleared by the Debian package fix or a green package scan. Production
 scanner launch paths explicitly use `--no-sandbox`; the live web-worker runs as
 root with no custom seccomp policy. Microsoft
 [recommends a separate user and seccomp profile for untrusted crawling](https://playwright.dev/python/docs/docker#crawling-and-scraping).
-No browser swap, prerelease dependency, sandbox change or risk acceptance has
-been silently introduced. Security-owner approval of a supported remediation or
-explicit residual-risk decision remains a release blocker.
+The minimal supported remediation now selects Chrome Stable for all five scanner
+launches and authenticates its package through Google's signed APT repository,
+with the official active primary-key fingerprint checked and a 155.0.8059.39
+minimum. The unused vulnerable bundled browser is removed; the Playwright driver,
+Debian Chromium libraries and scanner interfaces remain. The image gate additionally
+launches the actual configured browser offline and checks its version. Real-browser
+regression probes use the same selector. The local rebuilt image executes Chrome 155.0.8059.39 successfully, offline and
+as its default user. RBAC source and all 122 installed Python packages match
+the previously verified image; their passing evidence is reused. Three new
+selector invariants passed, and the four affected crawler/auth/XSS/workflow
+cases passed with no skips after the test runner gained an init reaper. The
+first browser run had four process-leak teardown errors from unreaped children;
+the guard was preserved and only those four cases were rerun. Hosted final
+artifact validation remains required. Previous RBAC suites were not rerun.
+No prerelease driver, arbitrary executable override, advisory suppression or
+sandbox-policy weakening is introduced. Security-owner approval of the vendor
+browser change and existing sandbox/worker policy remains required. See
+[CONTAINER_IMAGES.md](../ci/CONTAINER_IMAGES.md) for the technical justification.
+Manual hosted Images runs now retain their exact verified artifacts and checksums
+for coordinated promotion, rather than rebuilding after verification.
 
 CODEOWNERS contains placeholders, so it records no real approver. Security, CI,
 deployment, enrollment/recovery readiness and final release approvals are pending.

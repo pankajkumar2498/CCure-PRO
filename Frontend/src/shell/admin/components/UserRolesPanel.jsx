@@ -42,7 +42,13 @@ export default function UserRolesPanel({ user, currentUser }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(null);
-  const canAssign = can(currentUser, "platform.user.assign_role");
+  const canAssignOrg = can(currentUser, "platform.user.assign_role", {
+    orgId: user.organization_id || user.org_id,
+  });
+  const canAssignPlatform = can(currentUser, "platform.role.assign_platform", {
+    scope: "platform",
+  });
+  const canAssign = canAssignOrg || canAssignPlatform;
 
   const load = useCallback(async () => {
     setError("");
@@ -107,8 +113,8 @@ export default function UserRolesPanel({ user, currentUser }) {
         {assignments.length === 0 && (
           <tr>
             <td colSpan={5}>
-              No RBAC role assignments. The account still holds its current
-              role.
+              No active RBAC role assignments. This account has no role-based
+              access.
             </td>
           </tr>
         )}
@@ -132,18 +138,21 @@ export default function UserRolesPanel({ user, currentUser }) {
               </CcureBadge>
             </td>
             <td>
-              {canAssign && a.status === "active" && (
-                <CcureButton
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  aria-label={`Remove ${a.role.display_name} from ${user.username}`}
-                  onClick={() => act((o) => revokeRbacAssignment(a.id, o))}
-                >
-                  Remove
-                </CcureButton>
-              )}
+              {(a.scope_type === "platform"
+                ? canAssignPlatform
+                : canAssignOrg) &&
+                a.status === "active" && (
+                  <CcureButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    aria-label={`Remove ${a.role.display_name} from ${user.username}`}
+                    onClick={() => act((o) => revokeRbacAssignment(a.id, o))}
+                  >
+                    Remove
+                  </CcureButton>
+                )}
             </td>
           </tr>
         ))}

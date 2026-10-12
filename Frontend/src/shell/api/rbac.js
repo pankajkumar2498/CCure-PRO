@@ -43,12 +43,12 @@ export const updateRbacRole = async (roleId, body, { reauthCode } = {}) =>
 export const setRbacRolePermissions = async (
   roleId,
   permissionKeys,
-  { reauthCode } = {},
+  { reauthCode, expectedRevision } = {},
 ) =>
   (
     await axiosInstance.put(
       `/platform/rbac/roles/${roleId}/permissions`,
-      { permission_keys: permissionKeys },
+      { permission_keys: permissionKeys, expected_revision: expectedRevision },
       headers(reauthCode),
     )
   ).data;
@@ -106,6 +106,15 @@ export const reauthRequired = (error) =>
 /** Governance refusals as readable lines. */
 export const refusalMessages = (error) => {
   const detail = error?.response?.data?.detail;
+  if (
+    detail?.code === "revision_conflict" ||
+    detail?.code === "revision_required"
+  ) {
+    return [
+      detail.violations?.[0]?.message ||
+        "Reload this role before saving permissions.",
+    ];
+  }
   if (detail?.code === "governance_refused") {
     return detail.violations.map((v) => v.message);
   }

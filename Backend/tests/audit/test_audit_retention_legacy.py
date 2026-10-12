@@ -32,6 +32,7 @@ from audit_retention_support import (
 from config import AppConfig
 from core.audit_retention import run_retention
 from sqlalchemy import text
+from audit_historical_support import authoritative_legacy_fixture  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -198,14 +199,16 @@ def test_a_legitimate_purge_is_not_reported_as_a_tamper_break(
     assert report["breaks"] == [], report["breaks"]
 
 
-def test_an_unaccounted_deletion_is_reported_as_a_break(db_session, mixed, enabled):
+def test_an_unaccounted_deletion_is_reported_as_a_break(
+    db_session, authoritative_legacy, enabled
+):
     """
     The mirror of the test above: the accounting must *distinguish* sanctioned
     retention from tampering, not *excuse* both. Without this, "a purge is not
     reported as a break" would be satisfied by a verifier that never reports
     anything at all.
 
-    **Scope, and why this test can skip.** The detection compares
+    The detection compares
     `audit_chain_heads.legacy_event_count` against the surviving pre-chain rows
     and reports a break only when the head is *ahead* — rows vanished without
     the counter moving, which is what an out-of-band deletion looks like.
@@ -217,53 +220,23 @@ def test_an_unaccounted_deletion_is_reported_as_a_break(db_session, mixed, enabl
     test organisation the rows are injected after that seeding, so the counter
     reads 0 while rows exist, and the head can never be ahead of anything.
 
-    Raising it from a test is not available and must not be made available:
-    `audit_chain_seed_legacy_v1` is granted to nobody, and
-    `audit_chain_note_legacy_purge_v1` only decrements and is executable by
-    `audit_maintenance` alone. Both are correct. So this test uses an
-    organisation whose counter is genuinely authoritative if one exists, and
-    **skips as NOT VERIFIED** rather than pretending otherwise.
+    The historical fixture inserts pre-chain data for a fresh tenant, then a
+    separate scratch DBA connection invokes the real bootstrap COUNT seed.
+    `audit_chain_seed_legacy_v1` remains unavailable to the application role;
+    neither a guessed counter nor a new privilege is used to satisfy the test.
     """
     from db.audit_hardening import suspended_immutability
     from scripts.audit.verify_chain import verify_org as script_verify_org
 
-    org = mixed["org"]
+    candidate = authoritative_legacy["org"]
     run_retention(db_session, dry_run=False)
-    assert script_verify_org(db_session, org)["breaks"] == [], "clean before"
-
-    # An organisation where the counter tracks the rows, and there is a
-    # pre-chain row left to remove.
-    candidate = db_session.execute(
-        text(
-            "SELECT h.org_id FROM audit_chain.audit_chain_heads h "
-            "  JOIN (SELECT org_id, count(*) AS n FROM audit_logs "
-            "         WHERE record_hash IS NULL GROUP BY org_id) a "
-            "    ON a.org_id = h.org_id "
-            " WHERE h.legacy_event_count = a.n AND a.n > 0 LIMIT 1"
-        )
-    ).scalar()
-
-    if candidate is None:
-        pytest.skip(
-            "no organisation in this database has an authoritative "
-            "legacy_event_count with pre-chain rows remaining. The counter is "
-            "seeded from a COUNT by audit_chain_seed_legacy_v1 at chain "
-            "bootstrap and can only be decremented afterwards, so a test "
-            "organisation cannot reach that state and must not be given a "
-            "privilege that would let it. Out-of-band-deletion detection is "
-            "NOT VERIFIED here, not passing."
-        )
+    assert head_row(db_session, candidate).legacy_event_count == 2
+    assert counts(db_session, candidate)["legacy"] == 2
 
     before = script_verify_org(db_session, candidate)
     assert before["breaks"] == [], "the candidate organisation is not clean"
 
-    victim = db_session.execute(
-        text(
-            "SELECT id FROM audit_logs WHERE org_id = :o AND record_hash IS NULL "
-            " LIMIT 1"
-        ),
-        {"o": candidate},
-    ).scalar()
+    victim = authoritative_legacy["recent"][0]
 
     # Removed the way a determined operator holding the application's own
     # credentials would — `ccure_user` owns `audit_logs`, the documented

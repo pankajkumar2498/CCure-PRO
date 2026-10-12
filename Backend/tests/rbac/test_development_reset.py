@@ -20,6 +20,58 @@ from scripts.rbac.development_reset import (
 from testpaths import BACKEND_ROOT
 
 
+def test_reset_review_pins_the_complete_current_migration_heads():
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from scripts.rbac.development_reset import HEADS
+
+    cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
+    assert HEADS == set(ScriptDirectory.from_config(cfg).get_heads())
+
+
+def test_reset_migration_head_gate_only_reads_the_database(rbac_db):
+    from sqlalchemy import event
+    from scripts.rbac.development_reset import require_reviewed_migration_heads
+
+    conn = rbac_db.connection()
+    statements = []
+
+    def read_only(connection, cursor, statement, parameters, context, many):
+        statements.append(statement)
+        assert statement.lstrip().upper().startswith("SELECT ")
+
+    event.listen(conn, "before_cursor_execute", read_only)
+    try:
+        require_reviewed_migration_heads(conn)
+    finally:
+        event.remove(conn, "before_cursor_execute", read_only)
+    assert statements
+
+
+@pytest.mark.parametrize(
+    "heads",
+    [
+        {"e5a7c9d1f3b2", "policy_pro_0001", "rank_0001"},
+        {"f6a8c0e2b4d7", "policy_pro_0001"},
+        {"f6a8c0e2b4d7", "policy_pro_0001", "rank_0001", "unreviewed_head"},
+        set(),
+    ],
+)
+def test_reset_head_gate_refuses_stale_missing_extra_or_empty_heads(rbac_db, heads):
+    from scripts.rbac.development_reset import require_reviewed_migration_heads
+
+    # Only scratch Alembic metadata is changed, in rbac_db's rolled-back transaction.
+    rbac_db.execute(text("DELETE FROM alembic_version"))
+    for head in heads:
+        rbac_db.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES (:head)"),
+            {"head": head},
+        )
+    with pytest.raises(ResetRefused, match="migration heads do not match"):
+        require_reviewed_migration_heads(rbac_db.connection())
+
+
 @pytest.mark.parametrize(
     "env,app",
     [("production", "development"), ("development", "production"), ("", "development")],

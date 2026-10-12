@@ -397,7 +397,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 77,
+      "line": 82,
       "function": "_scoped_organization_query",
       "mechanism": "acts_across_organisations",
       "permission": null,
@@ -407,7 +407,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 98,
+      "line": 103,
       "function": "list_organizations",
       "mechanism": "require_authorized",
       "permission": "platform.organization.read",
@@ -417,7 +417,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 109,
+      "line": 114,
       "function": "list_organizations",
       "mechanism": "acts_across_organisations",
       "permission": null,
@@ -427,7 +427,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 139,
+      "line": 144,
       "function": "create_organization",
       "mechanism": "require_authorized",
       "permission": "platform.organization.create",
@@ -437,7 +437,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 273,
+      "line": 286,
       "function": "update_organization",
       "mechanism": "require_authorized",
       "permission": "platform.organization.update",
@@ -447,7 +447,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 339,
+      "line": 352,
       "function": "change_organization_status",
       "mechanism": "require_authorized",
       "permission": "platform.organization.update",
@@ -457,7 +457,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 400,
+      "line": 415,
       "function": "archive_organization",
       "mechanism": "require_authorized",
       "permission": "platform.organization.archive",
@@ -467,7 +467,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 518,
+      "line": 534,
       "function": "restore_organization",
       "mechanism": "require_authorized",
       "permission": "platform.organization.archive",
@@ -477,7 +477,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 580,
+      "line": 596,
       "function": "get_scan_scope",
       "mechanism": "require_authorized",
       "permission": "platform.organization.read",
@@ -487,7 +487,7 @@
     },
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 605,
+      "line": 621,
       "function": "set_scan_scope",
       "mechanism": "require_authorized",
       "permission": "platform.organization.set_scan_scope",
@@ -496,14 +496,14 @@
       "site_id": "ccure_platform/administration/organizations.py::set_scan_scope::require_authorized::platform.organization.set_scan_scope#1"
     },
     {
-      "file": "ccure_platform/administration/rbac_admin.py",
-      "line": 82,
-      "function": "_context",
+      "file": "ccure_platform/administration/rbac_security.py",
+      "line": 33,
+      "function": "mutation_organisation",
       "mechanism": "resolve_active_organisation",
       "permission": null,
       "status": "migrated",
       "reason": "organisation scope (platform-scope switch grant)",
-      "site_id": "ccure_platform/administration/rbac_admin.py::_context::resolve_active_organisation::#1"
+      "site_id": "ccure_platform/administration/rbac_security.py::mutation_organisation::resolve_active_organisation::#1"
     },
     {
       "file": "ccure_platform/administration/registration_settings.py",
@@ -527,7 +527,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 72,
+      "line": 67,
       "function": "_is_superadmin",
       "mechanism": "acts_across_organisations",
       "permission": null,
@@ -537,7 +537,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 259,
+      "line": 254,
       "function": "list_users",
       "mechanism": "require_authorized",
       "permission": "platform.user.read",
@@ -547,7 +547,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 299,
+      "line": 294,
       "function": "create_user",
       "mechanism": "require_authorized",
       "permission": "platform.user.create",
@@ -567,7 +567,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 503,
+      "line": 539,
       "function": "update_user",
       "mechanism": "require_authorized",
       "permission": "platform.user.update",
@@ -577,7 +577,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 546,
+      "line": 582,
       "function": "change_role",
       "mechanism": "require_authorized",
       "permission": "platform.user.assign_role",
@@ -587,7 +587,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 598,
+      "line": 645,
       "function": "change_status",
       "mechanism": "require_authorized",
       "permission": "platform.user.update",
@@ -597,7 +597,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 655,
+      "line": 705,
       "function": "list_pending_users",
       "mechanism": "require_authorized",
       "permission": "platform.user.read",
@@ -607,7 +607,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 749,
+      "line": 799,
       "function": "approve_user",
       "mechanism": "require_authorized",
       "permission": "platform.user.approve",
@@ -617,7 +617,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 896,
+      "line": 946,
       "function": "delete_user",
       "mechanism": "require_authorized",
       "permission": "platform.user.delete",
@@ -627,7 +627,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 960,
+      "line": 1011,
       "function": "restore_user",
       "mechanism": "require_authorized",
       "permission": "platform.user.delete",
@@ -637,7 +637,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 1010,
+      "line": 1061,
       "function": "purge_user",
       "mechanism": "require_authorized",
       "permission": "platform.user.purge",
@@ -647,7 +647,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 1046,
+      "line": 1097,
       "function": "reset_password",
       "mechanism": "require_authorized",
       "permission": "platform.user.reset_credentials",
@@ -657,7 +657,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 1090,
+      "line": 1141,
       "function": "reset_mfa",
       "mechanism": "require_authorized",
       "permission": "platform.user.reset_credentials",

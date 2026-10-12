@@ -152,6 +152,25 @@ unnecessary; it was removed a day before it expired, and
 `trivy-frontend.yaml` holds no exceptions now. Drop each upgrade once the
 digest moves to a base that already carries the fix.
 
+### Chromium security minimum (12 Oct 2026)
+
+The RBAC release review subsequently found 148 blocking package findings in Debian
+Chromium/Chromium-common 154 (74 distinct CVEs across the two packages). A later
+signed `trixie-security` index offered `155.0.8059.39-1~deb13u1`, the fixed version
+reported by Trivy and the [Debian tracker](https://security-tracker.debian.org/tracker/CVE-2026-106237).
+The backend install now checks both packages against that minimum with
+`dpkg --compare-versions`. Newer versions remain eligible; an older mirror result
+fails the build. This also invalidates the old install instruction in same-day
+CI caches. The Python base digest, package sources, required browser dependency
+and vulnerability policy are unchanged. See
+[the release report](../rbac/RBAC_RELEASE_READINESS.md) for exact artifact scans,
+targeted tests and pending approvals.
+
+Debian Chromium and Playwright's separately downloaded browser are different
+artifacts. This package fix does not upgrade the latter. The release report
+records its version and the security-verification limitation rather than treating
+a green package gate as proof that every browser binary is free of vulnerabilities.
+
 ### Scanner dependency patches (12 Oct 2026)
 
 The backend now builds the existing Nuclei v3.11.1, ffuf v2.3.0 and

@@ -50,10 +50,16 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 # per-binary COPY that carries the Go tools — so the build verified sqlmap and
 # then shipped an image without it. The verification gate in `runtime` is what
 # now prevents that, for every tool.
+# Chromium 155 fixes the reviewed Chromium/Chromium-common release blockers.
+# Keep Debian's signed security repository and accept newer versions, but fail
+# the build if a stale mirror supplies an older package. This RUN change also
+# invalidates cached installs of Chromium 154 in same-day CI layer caches.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     libcap2-bin \
     chromium \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' chromium)" ge '155.0.8059.39-1~deb13u1' \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' chromium-common)" ge '155.0.8059.39-1~deb13u1' \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

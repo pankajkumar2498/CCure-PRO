@@ -18,6 +18,7 @@ import pytest
 from jose import jwt as jose_jwt
 
 from ccure_platform.identity import tokens
+from ccure_platform.identity.router import REFRESH_COOKIE_NAME
 
 
 def _login(client):
@@ -105,9 +106,8 @@ def test_an_expired_token_is_refused(client, test_user):
 
 def test_a_refresh_token_is_not_an_access_token(client, test_user):
     _login(client)
-    refresh_cookie = client.cookies.get("refresh_token")
-    if not refresh_cookie:
-        pytest.skip("refresh cookie is not readable by the test client here")
+    refresh_cookie = client.cookies.get(REFRESH_COOKIE_NAME)
+    assert refresh_cookie, "login must set the configured refresh cookie"
     r = client.get("/auth/me", headers={"Authorization": f"Bearer {refresh_cookie}"})
     assert r.status_code == 401
 

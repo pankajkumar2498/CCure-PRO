@@ -380,7 +380,9 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
     assert str(created_user.org_id) == str(org_b.id)
 
 
-def test_org_admin_create_user_is_forced_into_own_organization(client, db_session):
+def test_org_admin_create_user_rejects_an_explicit_foreign_organization(
+    client, db_session
+):
     org_a = Organization(
         name="Forced Org A",
         slug="forced-org-a",
@@ -424,12 +426,11 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
         },
     )
 
-    assert response.status_code == 200
-    created_user = (
+    assert response.status_code == 403
+    assert (
         db_session.query(User).filter(User.username == "forced-org-user").first()
+        is None
     )
-    assert created_user is not None
-    assert str(created_user.org_id) == str(org_a.id)
 
 
 def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(

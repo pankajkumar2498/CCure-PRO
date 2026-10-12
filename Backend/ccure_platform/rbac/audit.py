@@ -66,6 +66,7 @@ EVENT_SEVERITIES: dict[str, str] = {
     "rbac.role.reassigned": HIGH,
     "rbac.role.replaced": HIGH,
     "rbac.assignment.denied": MEDIUM,
+    "rbac.role.denied": MEDIUM,
     "rbac.reauth.failed": MEDIUM,
     "rbac.bootstrap.administrator": CRITICAL,
     "rbac.development_reset.applied": CRITICAL,

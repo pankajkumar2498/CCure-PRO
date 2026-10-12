@@ -85,6 +85,37 @@ Without them `audit_retention.retention_holds` does not exist and that test fail
 `UndefinedTable` — an environment gap, not a defect. Never run these against the live
 database from a test setup.
 
+### Historical audit verification
+
+Two historical checks need a separate **scratch-only DBA credential** in
+`AUDIT_HISTORY_DBA_URL`, in addition to the restricted application's
+`TEST_DATABASE_URL`. Use the same explicit host, port and disposable database;
+the DBA URL must have no connection-override query parameters. The fixture checks
+the name guard, scratch sentinel, actual server identity, application ownership
+and absence of application writer/seed privileges before any privileged operation.
+Do not reuse production credentials or run these fixtures on a deployment database.
+
+With the three existing bootstraps installed on the isolated database, run:
+
+```bash
+python -m pytest tests/audit -q -r a
+```
+
+`audit_historical_support.py` seeds real pre-chain counts through the existing
+DBA-only COUNT function and exercises the supported schema-move bootstrap in one
+transaction. It never grants the app role a seed privilege or edits a stored hash
+to make a test pass. A negative test deliberately tampers with a synthetic event
+and verifies bootstrap refusal and schema rollback. Without the separate scratch
+DBA URL, these historical checks explicitly skip as **NOT VERIFIED**.
+
+To investigate reset-head drift without executing reset or legacy migration:
+
+```bash
+python -m pytest tests/rbac/test_development_reset.py \
+  --deselect tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues \
+  --deselect tests/rbac/test_development_reset.py::test_forward_migration_removes_only_legacy_objects
+```
+
 ## Route-policy tests and `ENV`
 
 The gateway policy describes the **production** route set. `test_gateway_route_policy.py`

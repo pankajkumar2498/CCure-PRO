@@ -14,6 +14,7 @@ import {
 } from "../../api/rbac";
 import { useAuth } from "../../auth/AuthContext";
 import { can } from "../../auth/permissions";
+import { activeOrganisationId } from "../../auth/authorization";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import {
   CcureAlert,
@@ -43,7 +44,8 @@ import "../styles/role-management.css";
  */
 
 export default function RoleManagement() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const orgId = activeOrganisationId(user);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   const [roles, setRoles] = useState([]);
   const [catalogue, setCatalogue] = useState([]);
@@ -64,10 +66,10 @@ export default function RoleManagement() {
   const canCreate = can(user, "platform.role.create");
 
   const loadRoles = useCallback(async () => {
-    const data = await listRbacRoles({ includeRetired: showRetired });
+    const data = await listRbacRoles({ orgId, includeRetired: showRetired });
     setRoles(data.roles);
     return data.roles;
-  }, [showRetired]);
+  }, [showRetired, orgId]);
 
   const loadDetail = useCallback(async (id) => {
     const d = await getRbacRole(id);
@@ -119,6 +121,7 @@ export default function RoleManagement() {
     setBusy(true);
     try {
       await fn({});
+      await refreshUser?.(true);
       await loadRoles();
       if (selectedId) await loadDetail(selectedId);
       if (done) pushToast(done, "success");
@@ -126,6 +129,12 @@ export default function RoleManagement() {
       if (reauthRequired(err)) {
         setPending({ fn, done });
       } else {
+        if (
+          err?.response?.data?.detail?.code === "revision_conflict" &&
+          selectedId
+        ) {
+          await loadDetail(selectedId);
+        }
         pushToast(refusalMessages(err).join(" "), "error");
       }
     } finally {
@@ -139,10 +148,17 @@ export default function RoleManagement() {
     setBusy(true);
     try {
       await fn({ reauthCode: code });
+      await refreshUser?.(true);
       await loadRoles();
       if (selectedId) await loadDetail(selectedId);
       if (done) pushToast(done, "success");
     } catch (err) {
+      if (
+        err?.response?.data?.detail?.code === "revision_conflict" &&
+        selectedId
+      ) {
+        await loadDetail(selectedId);
+      }
       pushToast(refusalMessages(err).join(" "), "error");
     } finally {
       setBusy(false);
@@ -154,18 +170,38 @@ export default function RoleManagement() {
   const canRename = detail
     ? isSystem
       ? can(user, "platform.role.rename_system")
-      : can(user, "platform.role.update")
+      : can(
+          user,
+          detail.assignable_scope === "platform"
+            ? "platform.role.create_platform"
+            : "platform.role.update",
+        )
     : false;
   const canEditPermissions =
     !!detail &&
     !isSystem &&
     detail.state === "active" &&
-    can(user, "platform.role.update");
+    can(
+      user,
+      detail.assignable_scope === "platform"
+        ? "platform.role.create_platform"
+        : "platform.role.update",
+    );
   const canRetire = detail
     ? isSystem
       ? can(user, "platform.role.retire_system")
-      : can(user, "platform.role.retire")
+      : can(
+          user,
+          orgRole ? "platform.role.retire" : "platform.role.create_platform",
+        )
     : false;
+
+  const canReassign =
+    detail &&
+    can(
+      user,
+      orgRole ? "platform.user.assign_role" : "platform.role.assign_platform",
+    );
 
   const dirty = useMemo(() => {
     if (!detail) return false;
@@ -320,7 +356,10 @@ export default function RoleManagement() {
                     onClick={() =>
                       run(
                         (opts) =>
-                          setRbacRolePermissions(detail.id, [...draft], opts),
+                          setRbacRolePermissions(detail.id, [...draft], {
+                            ...opts,
+                            expectedRevision: detail.revision,
+                          }),
                         "Permissions updated.",
                       )
                     }
@@ -397,7 +436,7 @@ export default function RoleManagement() {
                     Reactivate
                   </CcureButton>
                 )}
-                {canRetire &&
+                {canReassign &&
                   detail.state !== "retired" &&
                   detail.assignment_count > 0 && (
                     <div className="rm-replace">
@@ -473,6 +512,7 @@ export default function RoleManagement() {
                       {
                         display_name: newName.trim(),
                         permission_keys: [...newKeys],
+                        org_id: orgId,
                       },
                       opts,
                     ),

@@ -2,9 +2,9 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 # The branch filter on `push` is deliberate and must stay. Without it, a push
 # to a branch with an open PR fires `push` *and* `pull_request` for the same
@@ -37,6 +37,9 @@ env:
 jobs:
   backend-validation:
     name: Backend Validation
+    # Reset execution must pass in its own disposable service before this
+    # required check can pass. It never shares this job's release-test database.
+    needs: reset-validation
     runs-on: ubuntu-latest
     # Without a timeout a hung pytest, or a postgres service that never
     # reports healthy, runs to GitHub's 6-hour ceiling before anyone is told.
@@ -49,9 +52,10 @@ jobs:
       PGPORT: 5432
       PGUSER: ccure_user
       PGPASSWORD: ccure_admin_2026
-      PGDATABASE: ccure_test
-      DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
-      VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
+      PGDATABASE: pytest_release_validation
+      DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/pytest_release_validation
+      TEST_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/pytest_release_validation
+      VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/pytest_release_validation
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
       MFA_ENCRYPTION_KEY: test_mfa_key_32_chars_minimum_value
@@ -65,13 +69,13 @@ jobs:
         # tests/repo/test_ci_postgres_version.py fails if they diverge.
         image: postgres:18-alpine
         env:
-          POSTGRES_DB: ccure_test
+          POSTGRES_DB: pytest_release_validation
           POSTGRES_USER: ccure_user
           POSTGRES_PASSWORD: ccure_admin_2026
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ccure_user -d ccure_test"
+          --health-cmd "pg_isready -U ccure_user -d pytest_release_validation"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -93,8 +97,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
 
       - name: Install Python Dependencies
         run: |
@@ -125,12 +129,12 @@ jobs:
       - name: Verify Database Connection & Create Admin and Root Roles
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
-          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d ccure_test -c "SELECT version();"
+          PGPASSWORD=ccure_admin_2026 psql -h localhost -U ccure_user -d pytest_release_validation -c "SELECT version();"
           # No `|| true`. The block is already idempotent (IF NOT EXISTS), and
           # ccure_user owns this throwaway instance, so a failure here means
           # the roles genuinely were not created — which surfaces later as a
           # confusing permission error inside a test rather than here.
-          PGPASSWORD=ccure_admin_2026 psql -v ON_ERROR_STOP=1 -h localhost -U ccure_user -d ccure_test -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;"
+          PGPASSWORD=ccure_admin_2026 psql -v ON_ERROR_STOP=1 -h localhost -U ccure_user -d pytest_release_validation -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;"
 
       - name: Bootstrap Database Schema & Seeding Validation
         run: |
@@ -211,7 +215,11 @@ jobs:
           # then passes is recorded as plain green, so the instability is
           # never seen again. With it, every retried test is named in the
           # summary and the job still passes.
-          pytest --cov=. --cov-report=xml -v --reruns 1 -rR
+          # Only these execution cases move to reset-validation. Head checks,
+          # production refusals and all remaining reset guards stay here.
+          pytest --cov=. --cov-report=xml -v --reruns 1 -rR \
+            --deselect tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues \
+            --deselect tests/rbac/test_development_reset.py::test_forward_migration_removes_only_legacy_objects
 
       # The gateway (Phase 10). gateway-auth decides every API request before
       # the core sees it, and its verification rules are the core's own file
@@ -239,6 +247,91 @@ jobs:
           python scripts/compile_docs.py
           pytest tests/repo/test_docs_integrity.py -v
 
+  reset-validation:
+    name: Disposable Reset Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No deployment environment, secret, self-hosted runner or shared database.
+    # These are disposable CI credentials, never production credentials.
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: ccure_user
+      PGPASSWORD: ci_reset_test_password
+      PGDATABASE: pytest_rbac_reset
+      DATABASE_URL: postgresql://ccure_user:ci_reset_test_password@localhost:5432/pytest_rbac_reset
+      TEST_DATABASE_URL: postgresql://ccure_user:ci_reset_test_password@localhost:5432/pytest_rbac_reset
+      VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ci_reset_test_password@localhost:5432/pytest_rbac_reset
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/0
+      MFA_ENCRYPTION_KEY: test_mfa_key_32_chars_minimum_value
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: pytest_rbac_reset
+          POSTGRES_USER: ci_reset_dba
+          POSTGRES_PASSWORD: ci_reset_dba_password
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U ci_reset_dba -d pytest_rbac_reset"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install reset-test dependencies
+        run: |
+          python -m pip install -r Backend/requirements.txt
+          python -m pip install "pytest==7.4.4"
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare disposable schema and restricted application role
+        run: |
+          PGPASSWORD=ci_reset_dba_password psql -X -v ON_ERROR_STOP=1 -h localhost -U ci_reset_dba -d pytest_rbac_reset <<'SQL'
+          CREATE ROLE ccure_user LOGIN PASSWORD 'ci_reset_test_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          ALTER DATABASE pytest_rbac_reset OWNER TO ccure_user;
+          ALTER SCHEMA public OWNER TO ccure_user;
+          SQL
+          mkdir -m 700 "$RUNNER_TEMP/reset-backups"
+          PGPASSWORD=ci_reset_dba_password pg_dump -U ci_reset_dba -Fc -f "$RUNNER_TEMP/reset-backups/before-bootstrap.dump"
+          chmod 600 "$RUNNER_TEMP/reset-backups/before-bootstrap.dump"
+          cd Backend
+          python db/migrate_production_schema.py
+          for bootstrap in bootstrap_chain.sql bootstrap_chain_retention.sql bootstrap_chain_retention_chained.sql; do
+            PGPASSWORD=ci_reset_dba_password psql -X -v ON_ERROR_STOP=1 -v app_role=ccure_user \
+              -h localhost -U ci_reset_dba -d pytest_rbac_reset -f "scripts/audit/$bootstrap"
+          done
+          PGPASSWORD=ci_reset_dba_password pg_dump -U ci_reset_dba -Fc -f "$RUNNER_TEMP/reset-backups/before-reset-tests.dump"
+          chmod 600 "$RUNNER_TEMP/reset-backups/before-reset-tests.dump"
+      - name: Execute only isolated reset and legacy-removal cases
+        run: |
+          cd Backend
+          python -m pytest -q -r a --junitxml="$RUNNER_TEMP/reset-results.xml" \
+            tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues \
+            tests/rbac/test_development_reset.py::test_forward_migration_removes_only_legacy_objects
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          root = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'reset-results.xml')).getroot()
+          cases = list(root.iter('testcase'))
+          assert len(cases) == 2, 'Both reset execution cases must run'
+          assert not any(case.find(tag) is not None for case in cases for tag in ('skipped', 'failure', 'error')), 'Skipped reset tests are NOT VERIFIED'
+          PY
+
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest
@@ -256,8 +349,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: Frontend/package-lock.json
 
       - name: Install Frontend Dependencies

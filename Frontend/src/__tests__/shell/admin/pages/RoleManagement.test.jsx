@@ -120,9 +120,12 @@ const ALL = [
   "platform.role.create",
   "platform.role.update",
   "platform.role.retire",
+  "platform.user.assign_role",
   "audit.scan.read",
   "audit.scan.run",
 ];
+
+const refreshUser = vi.fn().mockResolvedValue(null);
 
 function renderPage(keys = ALL, extra = {}) {
   const user = {
@@ -135,6 +138,7 @@ function renderPage(keys = ALL, extra = {}) {
     <AuthContext.Provider
       value={{
         user,
+        refreshUser,
         loading: false,
         authState: "authenticated",
         isAuthenticated: true,
@@ -238,7 +242,7 @@ describe("catalogue-driven permissions", () => {
       expect(rbac.setRbacRolePermissions).toHaveBeenCalledWith(
         "r1",
         ["audit.scan.read", "audit.scan.run"],
-        {},
+        { expectedRevision: 1 },
       ),
     );
   });
@@ -326,7 +330,11 @@ describe("permission-driven controls", () => {
     await u.click(within(dialog).getByRole("button", { name: "Create role" }));
     await waitFor(() =>
       expect(rbac.createRbacRole).toHaveBeenCalledWith(
-        { display_name: "Auditor", permission_keys: ["audit.scan.read"] },
+        {
+          display_name: "Auditor",
+          permission_keys: ["audit.scan.read"],
+          org_id: "o",
+        },
         {},
       ),
     );
@@ -448,4 +456,85 @@ describe("backend refusals and step-up", () => {
       ),
     );
   });
+});
+
+it("refreshes effective authorization after changing a custom role in place", async () => {
+  const u = userEvent.setup();
+  renderPage();
+  await u.click(
+    await screen.findByRole("checkbox", { name: "audit.scan.read" }),
+  );
+  await u.click(screen.getByRole("button", { name: "Save permissions" }));
+  await waitFor(() => expect(refreshUser).toHaveBeenCalledWith(true));
+  expect(rbac.setRbacRolePermissions).toHaveBeenCalledWith("r1", [], {
+    expectedRevision: 1,
+  });
+});
+
+it("creates custom roles in the backend-validated selected organisation", async () => {
+  const u = userEvent.setup();
+  renderPage(ALL, { active: "other", reach: true });
+  await u.click(await screen.findByRole("button", { name: "New custom role" }));
+  const dialog = await screen.findByRole("dialog");
+  await u.type(within(dialog).getByLabelText("Display name"), "Selected Role");
+  await u.click(within(dialog).getByRole("button", { name: "Create role" }));
+  await waitFor(() =>
+    expect(rbac.createRbacRole).toHaveBeenCalledWith(
+      { display_name: "Selected Role", permission_keys: [], org_id: "other" },
+      {},
+    ),
+  );
+});
+
+it("reloads a stale role and explains the revision conflict", async () => {
+  const u = userEvent.setup();
+  rbac.setRbacRolePermissions.mockRejectedValue({
+    response: {
+      status: 409,
+      data: {
+        detail: {
+          code: "revision_conflict",
+          violations: [
+            {
+              code: "stale_revision",
+              message: "This role changed. Reload before saving.",
+            },
+          ],
+        },
+      },
+    },
+  });
+  renderPage();
+  await u.click(
+    await screen.findByRole("checkbox", { name: "audit.scan.run" }),
+  );
+  await u.click(screen.getByRole("button", { name: "Save permissions" }));
+  expect(
+    await screen.findByText("This role changed. Reload before saving."),
+  ).toBeInTheDocument();
+  expect(rbac.getRbacRole).toHaveBeenCalledTimes(2);
+  expect(
+    screen.getByRole("checkbox", { name: "audit.scan.run" }),
+  ).not.toBeChecked();
+  expect(refreshUser).not.toHaveBeenCalled();
+});
+
+it("does not offer reassignment to a role editor without assignment authority", async () => {
+  current = detail({ assignment_count: 2, state: "retiring" });
+  renderPage(["platform.role.read", "platform.role.retire", "audit.scan.read"]);
+  await screen.findByText(/active assignment/);
+  expect(screen.queryByLabelText("Move holders to")).not.toBeInTheDocument();
+});
+
+it("honours the backend delegation ceiling even when a permission is held locally", async () => {
+  rbac.listPermissionCatalogue.mockResolvedValue({
+    permissions: CATALOGUE.map((p) => ({
+      ...p,
+      grantable_to_org_role: p.key !== "audit.scan.run",
+    })),
+  });
+  renderPage();
+  expect(
+    await screen.findByRole("checkbox", { name: "audit.scan.run" }),
+  ).toBeDisabled();
 });

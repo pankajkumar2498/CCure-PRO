@@ -282,6 +282,16 @@ def check_role_permissions(
 
 # ── continuity ────────────────────────────────────────────────────────────────
 
+
+def lock_continuity(db: Session) -> None:
+    """Serialize permission, assignment and account changes until transaction end.
+
+    A per-role lock cannot protect administrators assigned to different roles.
+    READ COMMITTED queries after this lock observe the preceding writer's result.
+    """
+    db.execute(text("SELECT pg_advisory_xact_lock(1128486226, 1)"))
+
+
 _HOLDERS_SQL = """
 SELECT DISTINCT ur.user_id
   FROM rbac_user_roles ur
@@ -289,10 +299,12 @@ SELECT DISTINCT ur.user_id
   JOIN rbac_role_permissions rp ON rp.role_id = r.id AND rp.permission_key = :key
   JOIN rbac_permissions p ON p.key = rp.permission_key AND p.status <> 'retired'
   JOIN users u ON u.id = ur.user_id
+  JOIN organizations o ON o.id = u.org_id AND o.is_active AND o.archived_at IS NULL
  WHERE ur.revoked_at IS NULL
    AND (ur.expires_at IS NULL OR ur.expires_at > now())
    AND r.state IN ('active', 'retiring')
    AND u.is_active AND NOT u.is_deleted AND u.is_verified AND u.approved_at IS NOT NULL
+   AND (ur.scope_type = 'platform' OR ur.scope_org_id = u.org_id)
    AND ur.user_id <> ALL(:ex_users)
    AND ur.role_id::text <> ALL(:ex_roles)
    AND ur.id::text <> ALL(:ex_assignments)
@@ -653,6 +665,8 @@ def transition_role(
     from ccure_platform.rbac.audit import RoleSnapshot, role_event
     from ccure_platform.rbac.model import append_revision
 
+    lock_continuity(db)
+    db.refresh(role)
     bad = validate_transition(role.state, target)
     if bad is not None:
         raise GovernanceError([bad])

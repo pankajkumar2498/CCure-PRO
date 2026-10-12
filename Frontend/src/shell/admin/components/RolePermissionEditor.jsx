@@ -31,7 +31,10 @@ export function whyUnavailable(permission, { orgRole, user }) {
     return "A platform-wide permission cannot be held by an organisation role.";
   if (orgRole && !permission.delegable)
     return "This permission cannot be delegated to an organisation role.";
-  if (!can(user, permission.key))
+  const grantable = orgRole
+    ? permission.grantable_to_org_role
+    : permission.grantable_to_platform_role;
+  if (grantable === false || !can(user, permission.key))
     return "Beyond your own delegation: you cannot grant what you do not hold.";
   return "";
 }

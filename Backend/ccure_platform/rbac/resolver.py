@@ -88,6 +88,10 @@ def resolve_grants(
         .join(RbacPermission, RbacPermission.key == RbacRolePermission.permission_key)
         .where(
             RbacUserRole.user_id == principal.principal_id,
+            or_(
+                RbacUserRole.scope_type == "platform",
+                RbacUserRole.scope_org_id == principal.home_org_id,
+            ),
             RbacUserRole.revoked_at.is_(None),
             or_(RbacUserRole.expires_at.is_(None), RbacUserRole.expires_at > now),
             RbacRole.state.in_(("active", "retiring")),

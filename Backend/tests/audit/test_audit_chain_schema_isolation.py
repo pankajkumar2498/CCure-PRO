@@ -36,6 +36,7 @@ from audit_chain_support import (
     write_event,
 )
 from sqlalchemy import text
+from audit_historical_support import historical_dba, relocate_and_bootstrap
 
 pytestmark = pytest.mark.usefixtures("db_session")
 
@@ -268,26 +269,101 @@ def test_a_public_shadow_head_table_cannot_affect_the_real_chain(db_session, tes
 # ── Chain state survived the move ───────────────────────────────────────────
 
 
-def test_existing_hashes_still_reproduce_after_the_move(db_session):
+def test_existing_hashes_still_reproduce_after_the_move(db_session, test_user):
     """
     The move is `ALTER TABLE ... SET SCHEMA` and `CREATE OR REPLACE`, never a
     drop-and-recreate, and no hash is ever recomputed or backfilled. Every
     chained row must therefore still reproduce byte-for-byte through the
     relocated function.
     """
+    org = test_user.org_id
+    write_event(db_session, test_user, "user.login")
+    write_event(
+        db_session,
+        test_user,
+        "user.profile_updated",
+        changes={"unicode": "café", "empty": "", "null": None},
+    )
     rows = db_session.execute(
         text(
             "SELECT id, org_id, prev_hash, record_hash FROM public.audit_logs "
-            " WHERE record_hash IS NOT NULL"
-        )
+            " WHERE org_id=:org AND record_hash IS NOT NULL ORDER BY id"
+        ),
+        {"org": org},
     ).fetchall()
-    if not rows:
-        pytest.skip("no chained events in this database to re-verify")
+    assert len(rows) == 2
+    before_head = head_row(db_session, org)
+    trigger_oid = db_session.execute(
+        text(
+            "SELECT tgfoid FROM pg_trigger WHERE tgname='audit_logs_chain' AND tgrelid='public.audit_logs'::regclass"
+        )
+    ).scalar_one()
+    with historical_dba(db_session) as conn:
+        relocate_and_bootstrap(conn)
+
+    after = db_session.execute(
+        text(
+            "SELECT id, org_id, prev_hash, record_hash FROM public.audit_logs WHERE org_id=:org AND record_hash IS NOT NULL ORDER BY id"
+        ),
+        {"org": org},
+    ).fetchall()
+    assert after == rows, "schema relocation must not rewrite historical hashes"
+    assert head_row(db_session, org) == before_head
+    assert (
+        db_session.execute(
+            text(
+                "SELECT tgfoid FROM pg_trigger WHERE tgname='audit_logs_chain' AND tgrelid='public.audit_logs'::regclass"
+            )
+        ).scalar_one()
+        == trigger_oid
+    )
 
     for r in rows:
         assert (
             recompute(db_session, r.id, r.org_id) == r.record_hash
         ), f"event {r.id} no longer reproduces after the schema move"
+    # The trigger remains usable after relocation, without rebuilding history.
+    write_event(db_session, test_user)
+    assert head_row(db_session, org).event_count == before_head.event_count + 1
+
+
+def test_historical_bootstrap_refuses_tampering_and_rolls_back_relocation(
+    db_session, test_user
+):
+    from db.audit_hardening import suspended_immutability
+    from sqlalchemy.exc import DBAPIError
+
+    org = test_user.org_id
+    write_event(db_session, test_user)
+    event = newest_event(db_session, org)
+    original_hash = event.record_hash
+    with suspended_immutability(db_session):
+        db_session.execute(
+            text(
+                "UPDATE audit_logs SET changes='{}'::jsonb WHERE id=:id AND org_id=:org"
+            ),
+            {"id": event.id, "org": org},
+        )
+    db_session.commit()
+    assert recompute(db_session, event.id, org) != original_hash
+
+    with pytest.raises(DBAPIError, match="Refusing to bootstrap"):
+        with historical_dba(db_session) as conn:
+            relocate_and_bootstrap(conn)
+    assert (
+        db_session.execute(
+            text("SELECT to_regclass('public.audit_chain_heads')")
+        ).scalar()
+        is None
+    )
+    assert (
+        db_session.execute(
+            text("SELECT to_regclass('audit_chain.audit_chain_heads')")
+        ).scalar()
+        is not None
+    )
+    assert newest_event(db_session, org).record_hash == original_hash
+    expect_refused(db_session, f"DROP TABLE {HEADS}")
 
 
 def test_legacy_rows_remain_unhashed_and_uncounted(db_session):

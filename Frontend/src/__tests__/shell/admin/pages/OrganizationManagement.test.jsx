@@ -77,9 +77,6 @@ vi.mock("@shell/admin/components/OrganizationForm", () => ({
           onSubmit({
             name: "Submitted Co",
             slug: "submitted-co",
-            plan: "business",
-            max_assets: 900,
-            max_users: 40,
           })
         }
       >
@@ -135,9 +132,6 @@ const ORGS = [
     id: 7,
     name: "Acme Corp",
     slug: "acme",
-    plan: "enterprise",
-    max_assets: 5000,
-    max_users: 100,
     is_active: true,
     created_at: "2026-01-15T10:00:00Z",
   },
@@ -145,9 +139,6 @@ const ORGS = [
     id: 8,
     name: "Other Ltd",
     slug: "other",
-    plan: "community",
-    max_assets: 500,
-    max_users: 10,
     is_active: false,
     created_at: "2026-02-20T10:00:00Z",
   },
@@ -198,13 +189,10 @@ describe("OrganizationManagement — functional", () => {
     expect(screen.getByText("Other Ltd")).toBeInTheDocument();
   });
 
-  it("renders the slug, plan and quotas", async () => {
+  it("renders the organisation slug", async () => {
     await renderPage();
     const row = screen.getByText("Acme Corp").closest("tr");
     expect(within(row).getByText("acme")).toBeInTheDocument();
-    expect(within(row).getByText("enterprise")).toBeInTheDocument();
-    expect(within(row).getByText("5000")).toBeInTheDocument();
-    expect(within(row).getByText("100")).toBeInTheDocument();
   });
 
   it("distinguishes an active organisation from an inactive one", async () => {
@@ -267,9 +255,6 @@ describe("OrganizationManagement — functional", () => {
       expect(createOrganization).toHaveBeenCalledWith({
         name: "Submitted Co",
         slug: "submitted-co",
-        plan: "business",
-        max_assets: 900,
-        max_users: 40,
       }),
     );
   });
@@ -286,9 +271,6 @@ describe("OrganizationManagement — functional", () => {
       expect(updateOrganization).toHaveBeenCalledWith(7, {
         name: "Submitted Co",
         slug: "submitted-co",
-        plan: "business",
-        max_assets: 900,
-        max_users: 40,
       }),
     );
   });

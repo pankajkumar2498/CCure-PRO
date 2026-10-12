@@ -27,8 +27,6 @@ def test_superadmin_reset_password_success(client: TestClient, db_session: Sessi
     org = Organization(
         name="SA Reset Org",
         slug="sa-reset-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)
@@ -86,12 +84,8 @@ def test_org_admin_reset_password_tenant_isolation(
     client: TestClient, db_session: Session
 ):
     """Test that an org admin can reset password in their own org, but NOT in another org."""
-    org_a = Organization(
-        name="Org A", slug="org-a", max_assets=100, max_users=10, is_active=True
-    )
-    org_b = Organization(
-        name="Org B", slug="org-b", max_assets=100, max_users=10, is_active=True
-    )
+    org_a = Organization(name="Org A", slug="org-a", is_active=True)
+    org_b = Organization(name="Org B", slug="org-b", is_active=True)
     db_session.add_all([org_a, org_b])
 
     org_admin_role = system_role(db_session, "platform.org_admin")
@@ -166,8 +160,6 @@ def test_reset_password_revokes_sessions(client: TestClient, db_session: Session
     org = Organization(
         name="Revocation Org",
         slug="revoc-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)
@@ -258,8 +250,6 @@ def test_reset_password_weak_password_validation(
     org = Organization(
         name="Weak Pass Org",
         slug="weak-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)

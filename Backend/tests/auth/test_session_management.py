@@ -33,8 +33,6 @@ def session_user(db_session: Session) -> User:
     org = Organization(
         name="Session Org",
         slug="session-org",
-        max_assets=10,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)

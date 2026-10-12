@@ -754,10 +754,12 @@ describe("Phase3Results — contract", () => {
     it("a rejected request reports the API's detail, else its message", async () => {
       postReply = (url) =>
         url === "/scan/asset-discovery"
-          ? Promise.reject({ response: { data: { detail: "Quota exceeded" } } })
+          ? Promise.reject({
+              response: { data: { detail: "Dispatch failed" } },
+            })
           : { data: {} };
       await loaded(base());
-      expect(stored("cc_pipelineError").message).toBe("Quota exceeded");
+      expect(stored("cc_pipelineError").message).toBe("Dispatch failed");
       cleanup();
       sessionStorage.clear();
 

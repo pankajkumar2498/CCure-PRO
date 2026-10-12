@@ -386,14 +386,6 @@ function MetricCards({ summary, loading }) {
         label: `${scn.running || 0} running · ${scn.queued || 0} queued`,
         tone: "neutral",
       },
-      /* This read `quota_limit_24h || 50`, so an installation with no limit
-         recorded — which is what the live one sends — was told its plan
-         allows 50 scans a day. Nobody set that number. Where a limit does
-         exist the API's own `quota_used_pct` says how much of it is gone. */
-      sub:
-        typeof scn.quota_limit_24h === "number"
-          ? `Scan quota: ${scn.quota_used_pct ?? 0}% of ${scn.quota_limit_24h}/day used`
-          : "No daily scan quota recorded",
       nav: "/history",
     },
     {

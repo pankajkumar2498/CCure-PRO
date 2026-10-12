@@ -279,13 +279,11 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - `ccure_platform.api` may export only `PLATFORM_API_SURFACE`.
   - The package may import no Audit code or model
     (`platform-is-shared-foundation`).
-  - The organisation plan (`max_assets`, `max_scans_per_day`, `max_concurrent_scans`,
-    `scan_scope_cidrs`) is **platform-owned and stays on `organizations`**: step 8.4 chose
-    Option A (a platform plan boundary over the existing columns,
-    `docs/architecture/PHASE8_4_ORGANISATION_PLAN.md` §3). Audit consumes it through
-    `core.quota`, `core.scan_scope` and `core.remediation.sla` only, and module code names
-    no plan column. The earlier plan to move them off `organizations` (Option B) was **not
-    adopted**; do not start it.
+  - Organisation scan scope and remediation SLA are **platform-owned**.
+    `ccure_platform/organisation_settings/` owns their storage and exposes
+    them through the platform API. Audit consumes them through
+    `core.scan_scope` and `core.remediation.sla`; module code names no storage
+    field. See `docs/architecture/ORGANISATION_SETTINGS.md`.
 - **Owner (D6):** the Project Owner. `.github/CODEOWNERS` (Phase 11) records it,
   with placeholder handles until real ones are supplied — see "Core modules".
 - **Tokens are signed and verified only in `ccure_platform.identity.tokens`**
@@ -367,18 +365,15 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - `api.user()` and `api.organisation()` return frozen views;
   - `api.has_permission(db, account, key)` is the engine's answer. Never hand-copy a
     superadmin or role check.
-  - **The organisation plan is platform-owned** (project owner, 29 Sep 2026):
-    plan, scan limits (quota), scan scope and the remediation SLA live in
-    `ccure_platform/plan/`, one module per feature. Audit consumes each through
-    **one seam**: `core.quota`, `core.scan_scope` and `core.remediation.sla`.
-    `tests/repo/test_plan_feature_containment.py` fails on a second caller,
-    because stakeholders may ask for any of these to be removed, and
-    containment is what keeps that small. The removal recipes are in
-    `docs/architecture/PHASE8_4_ORGANISATION_PLAN.md` §9.
-  - **Platform owns the entitlement; Audit owns the check.** The platform
-    holds limits, ranges and configured deadlines. Audit counts its own scans,
-    admits targets and computes due dates. `OrganisationView` carries no plan
-    field. Module code names no plan column; a ratchet keeps it at zero.
+  - **Organisation settings are platform-owned:** authorised scan scope and
+    remediation SLA live in `ccure_platform/organisation_settings/`, one
+    module per setting. Audit consumes each through **one seam**:
+    `core.scan_scope` and `core.remediation.sla`.
+    `tests/repo/test_organisation_settings_containment.py` enforces this.
+  - **Platform owns configuration; Audit applies it.** The platform holds
+    authorised ranges and configured deadlines. Audit admits targets and
+    computes due dates. `OrganisationView` carries identity only; a ratchet
+    keeps direct setting storage references in module code at zero.
   - **An endpoint's docstring is its OpenAPI description.** Editing one
     changes the published API document; put notes in comments.
 - **Identity's code lives in `ccure_platform` since step 8.2.**

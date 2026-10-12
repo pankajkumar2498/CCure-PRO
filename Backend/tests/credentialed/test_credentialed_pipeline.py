@@ -255,8 +255,6 @@ def org_and_asset(db_session: Session):
         id=org_id,
         name=f"Cred Org {uuid.uuid4().hex[:8]}",
         slug=f"cred-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )

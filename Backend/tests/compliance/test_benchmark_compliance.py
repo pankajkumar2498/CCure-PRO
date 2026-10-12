@@ -94,8 +94,6 @@ def benchmark_env(db_session):
             id=org_id,
             name=f"Sync {org_id}",
             slug=org_id.replace("_", "-"),
-            max_assets=10,
-            max_users=10,
             is_active=True,
             settings={},
         )

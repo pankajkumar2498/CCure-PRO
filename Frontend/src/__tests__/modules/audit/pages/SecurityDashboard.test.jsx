@@ -96,7 +96,7 @@ const SUMMARY = {
     risk_level: "medium",
     unmanaged: 5,
   },
-  scans: { running: 1, queued: 0, last_24h: 4, quota_limit_24h: 50 },
+  scans: { running: 1, queued: 0, last_24h: 4 },
   kev: { open_count: 3 },
 };
 

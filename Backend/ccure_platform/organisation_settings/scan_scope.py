@@ -1,17 +1,17 @@
 """
-Authorised scan scope — a plan feature.
+Authorised scan scope — an organisation setting.
 
 The CIDR ranges an organisation is permitted to scan, and whether any are
 configured at all. Stored in ``organizations.scan_scope_cidrs``, which only a
 superadmin may write: an organisation widening its own scan authorisation is
 exactly the escalation the control exists to stop.
 
-Only the *entitlement* is here. Deciding whether a scan's targets fall inside
+Only the authorised range configuration is here. Deciding whether targets fall inside
 it — expanding them, refusing with a message, and what an unconfigured scope
 means under ``REQUIRE_SCAN_SCOPE`` — is Audit's, in ``core.scan_scope``, the
 one Audit module allowed to call this feature.
 
-Removable: see ``ccure_platform/plan/__init__.py``.
+Stored independently of scan execution.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def normalise_scope(entries: Iterable[str]) -> list[str]:
     entry and narrows the scope; this is the write path, and a typo should be
     rejected loudly rather than silently narrowing what an admin thought they
     granted. Moved from ``core.scan_scope`` in Phase 8.4: validating what may be
-    stored is the entitlement's owner's job.
+    stored is the platform's job.
     """
     out: list[str] = []
     for entry in entries:

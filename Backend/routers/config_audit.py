@@ -16,7 +16,7 @@ What is deliberately not here
 inside the credentialed scan, on the session the collectors already opened —
 ``core.tasks.audit_credentialed_host``. A separate dispatch endpoint would be a
 second way to start a scan against a caller-named target, needing its own
-scope check, its own quota check, its own rate limit and its own audit entry,
+scope check, its own rate limit and its own audit entry,
 and it would produce a scan row that Scan History and the reports would have to
 learn about. Phase 1 made the same call for scheduling: reuse the dispatch
 path, do not build another.

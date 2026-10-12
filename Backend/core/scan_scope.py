@@ -133,10 +133,10 @@ def org_scan_scope(db, org_id):
     """
     The organisation's authorised scope, asked of the platform.
 
-    **The Audit seam of the scan-scope plan feature (Phase 8.4).** The ranges
-    belong to the organisation's plan (``ccure_platform.plan.scan_scope``);
+    **The Audit seam of the scan-scope setting.** The ranges
+    are stored by ``ccure_platform.organisation_settings.scan_scope``;
     this is the only Audit code that asks for them
-    (``tests/repo/test_plan_feature_containment.py``). Every caller that checks
+    (``tests/repo/test_organisation_settings_containment.py``). Every caller that checks
     targets gets its ``ScanScopeView`` from here and hands it to
     ``enforce_org_scan_scope`` / ``scope_for_org``. None means the organisation
     does not exist.

@@ -17,7 +17,6 @@ from ccure_platform.api import (
     require_authorized,
     resolve_active_organisation,
 )
-from core.quota import check_scan_quota, get_quota_status
 from core.tasks import (
     run_asset_discovery_task,
     run_host_discovery_task,
@@ -34,6 +33,7 @@ from scan_helpers import (
     limiter,
     log,
     resolve_pipeline_mode,
+    validate_custom_ports,
     validate_scan_targets,
 )
 from scans.db_helpers import (
@@ -77,7 +77,7 @@ def _continuation_scan(
     Load the scan a Phase 2 or Phase 3 request continues, as this caller may see it.
 
     These routes continue a scan that Host Discovery admitted — scope checked,
-    quota charged, row created. They used to load it with a bare
+    row created. They used to load it with a bare
     ``Scan.id == scan_id``, so a caller in one organisation could name another
     organisation's scan, overwrite its options and task id, and have results
     written into it (finding F1). The lookup now goes through the same
@@ -105,8 +105,7 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
     The host list arrives from the client. Before this check a caller could
     hand-build records for any address and have it port-scanned and
     vulnerability-scanned under a scan admitted for something else — outside
-    the organisation's authorised scope, and outside the size the quota
-    charged for. Two conditions, both required:
+    the organisation's authorised scope. Two conditions, both required:
 
     * every address lies inside the targets this scan was admitted for
       (``scans.target_hosts``) — a continuation cannot widen its own scan;
@@ -114,10 +113,6 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
       may have narrowed since admission. ``validate_scan_targets`` answers that
       with the same 422 / 403 Host Discovery gives.
 
-    Quota is deliberately not re-checked: it was charged when Host Discovery
-    admitted the scan, and its concurrency and daily counters include this very
-    scan, so re-running them would refuse an organisation at its limit the
-    right to finish a scan it has already paid for.
     """
     from core.utils import InputValidator
 
@@ -147,36 +142,6 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
                 + ". Start a new Host Discovery scan to assess other hosts."
             ),
         )
-
-
-# ── Quota status endpoint ─────────────────────────────────────────────────────
-
-
-@router.get("/scan/quota")
-def get_scan_quota(
-    org_id: str | None = Query(None),
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
-):
-    """
-    Return the organisation's current scan quota status.
-
-    Response::
-
-        {
-          "plan": "community",
-          "scans_used_24h": 3,
-          "scans_limit_24h": 5,
-          "concurrent_running": 1,
-          "concurrent_limit": 1,
-          "max_ips_per_scan": 254,
-          "max_subnet_prefix": 24,
-          "quota_exceeded": false,
-          "concurrent_exceeded": false
-        }
-    """
-    resolved_org = _resolve_org(user, org_id)
-    return get_quota_status(db, org_id=resolved_org)
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -431,8 +396,7 @@ async def scan_host_discovery(
     """
     Host Discovery: Phase 1 (Trigger and Return Immediately).
 
-    Quota enforcement runs BEFORE the scan row is created, so rejected
-    requests never produce orphaned DB rows.
+    Target and port validation run before the scan row is created.
     """
     # Normalise intensities
     raw_disc_intensity = (req.discovery_intensity or "normal").strip().lower()
@@ -450,14 +414,11 @@ async def scan_host_discovery(
 
     resolved_org = _resolve_org(user, org_id)
 
-    # ── Target gate — reject unusable input before it costs quota, and
+    # ── Target gate — reject unusable input before creating a scan, and
     #    unauthorised targets before anything touches the network ─────────────
     targets = validate_scan_targets(req.targets, scope=_org_scope(db, resolved_org))
 
-    # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
-    check_scan_quota(
-        db, org_id=resolved_org, targets=targets, custom_ports=req.custom_ports
-    )
+    validate_custom_ports(req.custom_ports)
 
     scan = create_scan(
         db=db,
@@ -475,7 +436,7 @@ async def scan_host_discovery(
     #
     # A policy that cannot be used raises rather than falling back. The scan
     # row is deleted first: a queued scan that never dispatched is a ghost in
-    # Scan History, and the quota it consumed has not been spent.
+    # Scan History.
     effective, policy_overrides = _resolve_scan_policy(
         db,
         scan=scan,
@@ -638,9 +599,7 @@ async def scan_asset_discovery(
 
     _assert_hosts_admitted(db, scan, req.hosts)
 
-    # ── Quota gate for custom ports (Phase 2 manually triggered) ──────────────
-    if req.custom_ports:
-        check_scan_quota(db, org_id=scan.org_id, custom_ports=req.custom_ports)
+    validate_custom_ports(req.custom_ports)
 
     task = run_asset_discovery_task.delay(
         user_id=str(user.id),

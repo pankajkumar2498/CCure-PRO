@@ -673,8 +673,6 @@ def test_a_purge_touches_only_its_own_organisation(
         id=f"org_ret_{gen_uuid()[:8]}",
         name="Retention Other",
         slug=f"retention-other-{gen_uuid()[:8]}",
-        max_assets=1,
-        max_users=1,
         is_active=True,
     )
     db_session.add(other)

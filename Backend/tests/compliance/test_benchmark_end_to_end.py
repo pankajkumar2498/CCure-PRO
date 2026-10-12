@@ -93,8 +93,6 @@ def installed_benchmark(db_session):
             id=org_id,
             name=f"E2E {org_id}",
             slug=org_id.replace("_", "-"),
-            max_assets=10,
-            max_users=10,
             is_active=True,
             settings={},
         )

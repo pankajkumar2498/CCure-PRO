@@ -31,9 +31,6 @@ class OrganizationCreateSchema(BaseModel):
 
     name: str = Field(..., min_length=3, max_length=255)
     slug: str = Field(..., min_length=2, max_length=100)
-    plan: str | None = "community"
-    max_assets: int | None = Field(default=500, ge=1)
-    max_users: int | None = Field(default=10, ge=1)
 
     admin_username: str | None = None
     admin_email: EmailStr | None = None
@@ -56,9 +53,6 @@ class OrganizationUpdateSchema(BaseModel):
 
     name: str | None = Field(default=None, min_length=3, max_length=255)
     slug: str | None = Field(default=None, min_length=2, max_length=100)
-    plan: str | None = None
-    max_assets: int | None = Field(default=None, ge=1)
-    max_users: int | None = Field(default=None, ge=1)
 
     @field_validator("name", "slug")
     @classmethod
@@ -90,9 +84,6 @@ def _serialize_org(org: Organization) -> dict:
         "id": str(org.id),
         "name": org.name,
         "slug": org.slug,
-        "plan": org.plan,
-        "max_assets": org.max_assets,
-        "max_users": org.max_users,
         "is_active": org.is_active,
         "created_at": org.created_at,
         "archived_at": org.archived_at,
@@ -130,9 +121,6 @@ def list_organizations(
                 "id": str(o.id),
                 "name": o.name,
                 "slug": o.slug,
-                "plan": o.plan,
-                "max_assets": o.max_assets,
-                "max_users": o.max_users,
                 "is_active": o.is_active,
                 "created_at": o.created_at,
                 "archived_at": o.archived_at,
@@ -189,9 +177,6 @@ def create_organization(
             id=gen_org_id(org_data.slug),  # e.g. org_acme_corp
             name=org_data.name,
             slug=org_data.slug,
-            plan=org_data.plan,
-            max_assets=org_data.max_assets,
-            max_users=org_data.max_users,
             is_active=True,
             settings={},
         )
@@ -507,7 +492,6 @@ def archive_organization(
         {
             "name": org.name,
             "slug": org.slug,
-            "plan": org.plan,
             "is_active": {"old": previous_active, "new": False},
             "archived_at": {"old": None, "new": now.isoformat()},
             "reason": org.archive_reason,
@@ -636,7 +620,7 @@ def set_scan_scope(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    from ccure_platform.plan.scan_scope import normalise_scope
+    from ccure_platform.organisation_settings.scan_scope import normalise_scope
 
     if payload.cidrs is None:
         new_scope = None

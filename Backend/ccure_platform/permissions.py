@@ -159,7 +159,7 @@ PERMISSIONS = (
     ),
     PermissionDecl(
         key="platform.organization.update",
-        description="Edit an organisation's name, plan and limits, and activate or deactivate it.",
+        description="Edit an organisation's metadata, and activate or deactivate it.",
         scope_kind="platform",
         delegable_to_org_roles=False,
         sensitivity="privileged",

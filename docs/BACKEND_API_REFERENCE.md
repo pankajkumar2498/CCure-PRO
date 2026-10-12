@@ -578,40 +578,15 @@ Built from `scan_helpers.PIPELINE_PHASES`:
 
 ## 4. Phase-selective scans — `/scan/*`
 
-Source: `Backend/routers/phase_scans.py` — 5 operations. All mutating endpoints
+Source: `Backend/routers/phase_scans.py` — 4 operations. All mutating endpoints
 are limited to 5/minute.
 
 | Method | Path                        | Permission      | Purpose                           |
 | ------ | --------------------------- | --------------- | --------------------------------- |
-| GET    | `/scan/quota`               | `scans:read`    | Organization quota status         |
 | POST   | `/scan/host-discovery`      | `scans:execute` | Phase 1; auto-chains 2 and 3      |
 | POST   | `/scan/asset-discovery`     | `scans:execute` | Phase 2 (manual trigger)          |
 | POST   | `/scan/vulnerability-audit` | `scans:execute` | Phase 3 (manual trigger)          |
 | POST   | `/scan/phases`              | `scans:execute` | Any phase combination in one call |
-
-### `GET /scan/quota`
-
-```json
-{
-  "plan": "community",
-  "scans_used_24h": 3,
-  "scans_limit_24h": 5,
-  "concurrent_running": 1,
-  "concurrent_limit": 1,
-  "max_ips_per_scan": 254,
-  "max_subnet_prefix": 24,
-  "quota_exceeded": false,
-  "concurrent_exceeded": false
-}
-```
-
-Limits come from `core/quota.py::_PLAN_LIMITS`:
-
-| Plan         | Scans / rolling 24 h | Concurrent | Max prefix | Max IPs    | Max custom ports |
-| ------------ | -------------------- | ---------- | ---------- | ---------- | ---------------- |
-| `community`  | 5                    | 1          | /24        | 254        | 100              |
-| `pro`        | 50                   | 5          | /16        | 65 534     | 1 000            |
-| `enterprise` | unlimited            | 20         | /8         | 16 777 214 | 65 535           |
 
 ### `POST /scan/host-discovery`
 

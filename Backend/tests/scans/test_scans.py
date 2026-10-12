@@ -70,8 +70,6 @@ def test_create_scan_writes_audit_log(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -129,8 +127,6 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -203,8 +199,6 @@ def test_scan_completion_logs_audit_event(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -274,8 +268,6 @@ def test_scan_failure_logs_audit_event(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -335,8 +327,6 @@ def test_sync_advanced_scan_includes_org_id_in_findings(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -405,8 +395,6 @@ def test_sync_advanced_scan_updates_asset_vuln_counts(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -482,8 +470,6 @@ def test_lower_priority_discovery_does_not_overwrite_credentialed_hostname(
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -546,8 +532,6 @@ def test_discovery_dns_repairs_short_credentialed_fqdn_without_replacing_hostnam
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -621,8 +605,6 @@ def test_duplicate_phase1_host_entries_do_not_create_two_assets(db_session: Sess
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -672,8 +654,6 @@ def test_reuses_existing_asset_row_without_ip_for_same_phase1_host(db_session: S
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -734,8 +714,6 @@ def test_advanced_dns_hostname_populates_fqdn_without_replacing_credentialed_hos
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -804,8 +782,6 @@ def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentia
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -874,8 +850,6 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -1024,8 +998,6 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -1106,8 +1078,6 @@ def test_asset_discovery_does_not_overwrite_advanced_os(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -1166,8 +1136,6 @@ def test_advanced_scan_does_not_fix_credentialed_package_finding(db_session: Ses
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -1243,8 +1211,6 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -1583,8 +1549,6 @@ def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):
         id=org_id,
         name=f"Test Org {uuid.uuid4().hex[:8]}",
         slug=f"test-org-{uuid.uuid4().hex[:8]}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )

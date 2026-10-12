@@ -115,8 +115,6 @@ def world(db_session):
         id=f"org_exp_{suffix}",
         name="Export API Co",
         slug=f"exp-api-{suffix}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )
@@ -124,8 +122,6 @@ def world(db_session):
         id=f"org_oth_{suffix}",
         name="Other API Co",
         slug=f"oth-api-{suffix}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )

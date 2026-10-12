@@ -16,17 +16,21 @@
   ]
  },
  "counts": {
-  "public": 17,
-  "bearer": 251,
+  "public": 18,
+  "bearer": 261,
   "ticket_or_bearer": 3,
   "ws_ticket": 2,
   "service": 0
  },
  "classes": {
   "public": {
-   "count": 17,
+   "count": 18,
    "behaviour": "reachable with no credential; empty bodies answer 422 VALIDATION_ERROR, refresh/logout without a cookie answer 401",
    "observed": {
+    "GET /auth/config": {
+     "edge": null,
+     "direct": null
+    },
     "GET /auth/check-username": {
      "edge": {
       "case": "edge:public GET /auth/check-username",
@@ -336,7 +340,7 @@
    }
   },
   "bearer": {
-   "count": 251,
+   "count": 261,
    "missing": {
     "edge": {
      "case": "edge:bearer-route missing",
@@ -1816,6 +1820,17 @@
   },
   {
    "method": "GET",
+   "path": "/auth/config",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "auth.router.public_auth_config",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
    "path": "/auth/check-username",
    "auth": "public",
    "response_kind": "json",
@@ -2046,7 +2061,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.list_scans",
@@ -2059,7 +2074,7 @@
    "auth": "bearer",
    "response_kind": "sse",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.stream_scan_history",
@@ -2083,7 +2098,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.get_scan",
@@ -2096,7 +2111,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2111,7 +2126,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2126,7 +2141,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.archive_scan",
@@ -2139,7 +2154,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.stop_scan",
@@ -2152,7 +2167,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.restore_scan",
@@ -2165,7 +2180,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.delete_scan",
@@ -2178,7 +2193,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_history.purge_scan",
@@ -2202,7 +2217,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.scan_progress.get_scan_progress",
@@ -2237,7 +2252,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2252,7 +2267,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2267,7 +2282,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2282,7 +2297,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2292,25 +2307,12 @@
    "gateway_policy_proposed": "bearer"
   },
   {
-   "method": "GET",
-   "path": "/scan/quota",
-   "auth": "bearer",
-   "response_kind": "json",
-   "guards": [
-    "require_permission"
-   ],
-   "limits": [],
-   "endpoint": "routers.phase_scans.get_scan_quota",
-   "refusal_behaviour": "classes.bearer",
-   "gateway_policy_proposed": "bearer"
-  },
-  {
    "method": "POST",
    "path": "/scan/host-discovery",
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2325,7 +2327,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2340,7 +2342,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2355,7 +2357,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2370,7 +2372,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -2385,7 +2387,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2400,7 +2402,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2415,7 +2417,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2430,7 +2432,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2445,7 +2447,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2460,7 +2462,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2475,7 +2477,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2490,7 +2492,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2505,7 +2507,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2520,7 +2522,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2535,7 +2537,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2550,7 +2552,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2565,7 +2567,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2580,7 +2582,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2595,7 +2597,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2610,7 +2612,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2625,7 +2627,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2640,7 +2642,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2655,7 +2657,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2670,7 +2672,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2685,7 +2687,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2700,7 +2702,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2715,7 +2717,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2730,7 +2732,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2745,7 +2747,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2760,7 +2762,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2775,7 +2777,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2790,7 +2792,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2805,7 +2807,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2820,7 +2822,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2835,7 +2837,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -2850,7 +2852,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2865,7 +2867,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2880,7 +2882,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -2895,7 +2897,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2910,7 +2912,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2925,7 +2927,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -2940,7 +2942,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2955,7 +2957,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -2970,7 +2972,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -2985,7 +2987,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -3000,7 +3002,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -3015,7 +3017,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "60 per 1 minute"
@@ -3030,7 +3032,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "30 per 1 minute"
@@ -3082,7 +3084,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.list_users",
@@ -3095,7 +3097,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.list_users",
@@ -3108,7 +3110,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.create_user",
@@ -3121,7 +3123,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.create_user",
@@ -3134,7 +3136,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.move_user_to_organization",
@@ -3147,7 +3149,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.move_user_to_organization",
@@ -3160,7 +3162,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.update_user",
@@ -3173,7 +3175,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.update_user",
@@ -3186,7 +3188,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.change_role",
@@ -3199,7 +3201,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.change_role",
@@ -3212,7 +3214,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.change_status",
@@ -3225,7 +3227,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.change_status",
@@ -3238,7 +3240,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.list_pending_users",
@@ -3251,7 +3253,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.list_pending_users",
@@ -3264,7 +3266,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.approve_user",
@@ -3277,7 +3279,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.approve_user",
@@ -3290,7 +3292,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.delete_user",
@@ -3303,7 +3305,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.delete_user",
@@ -3316,7 +3318,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.restore_user",
@@ -3329,7 +3331,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.restore_user",
@@ -3342,7 +3344,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.purge_user",
@@ -3355,7 +3357,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.purge_user",
@@ -3368,7 +3370,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.reset_password",
@@ -3381,7 +3383,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.reset_password",
@@ -3394,7 +3396,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.reset_mfa",
@@ -3407,7 +3409,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_users.reset_mfa",
@@ -3420,7 +3422,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.list_rules",
@@ -3433,7 +3435,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.list_rules",
@@ -3446,7 +3448,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.rule_stats",
@@ -3459,7 +3461,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.rule_stats",
@@ -3472,7 +3474,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.lookup",
@@ -3485,7 +3487,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.lookup",
@@ -3498,7 +3500,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.create_rule",
@@ -3511,7 +3513,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.create_rule",
@@ -3524,7 +3526,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.update_rule",
@@ -3537,7 +3539,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.update_rule",
@@ -3550,7 +3552,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.delete_rule",
@@ -3563,7 +3565,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_email_domains.delete_rule",
@@ -3572,53 +3574,27 @@
   },
   {
    "method": "GET",
-   "path": "/admin/roles/",
+   "path": "/admin/registration-settings",
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
-   "endpoint": "routers.admin_rbac.list_roles",
+   "endpoint": "ccure_platform.administration.registration_settings.get_registration_settings",
    "refusal_behaviour": "classes.bearer",
    "gateway_policy_proposed": "bearer"
   },
   {
-   "method": "GET",
-   "path": "/admin/roles",
+   "method": "PATCH",
+   "path": "/admin/registration-settings",
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
-   "endpoint": "routers.admin_rbac.list_roles",
-   "refusal_behaviour": "classes.bearer",
-   "gateway_policy_proposed": "bearer"
-  },
-  {
-   "method": "GET",
-   "path": "/admin/roles/{role_id}/permissions/",
-   "auth": "bearer",
-   "response_kind": "json",
-   "guards": [
-    "require_permission"
-   ],
-   "limits": [],
-   "endpoint": "routers.admin_rbac.list_role_permissions",
-   "refusal_behaviour": "classes.bearer",
-   "gateway_policy_proposed": "bearer"
-  },
-  {
-   "method": "GET",
-   "path": "/admin/roles/{role_id}/permissions",
-   "auth": "bearer",
-   "response_kind": "json",
-   "guards": [
-    "require_permission"
-   ],
-   "limits": [],
-   "endpoint": "routers.admin_rbac.list_role_permissions",
+   "endpoint": "ccure_platform.administration.registration_settings.update_registration_settings",
    "refusal_behaviour": "classes.bearer",
    "gateway_policy_proposed": "bearer"
   },
@@ -3628,7 +3604,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.list_organizations",
@@ -3641,7 +3617,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.list_organizations",
@@ -3654,7 +3630,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.create_organization",
@@ -3667,7 +3643,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.create_organization",
@@ -3680,7 +3656,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.update_organization",
@@ -3693,7 +3669,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.update_organization",
@@ -3706,7 +3682,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.change_organization_status",
@@ -3719,7 +3695,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.change_organization_status",
@@ -3731,7 +3707,9 @@
    "path": "/admin/organizations/{org_id}/",
    "auth": "bearer",
    "response_kind": "json",
-   "guards": [],
+   "guards": [
+    "require_authorized"
+   ],
    "limits": [],
    "endpoint": "routers.admin_orgs.archive_organization",
    "refusal_behaviour": "classes.bearer",
@@ -3742,7 +3720,9 @@
    "path": "/admin/organizations/{org_id}",
    "auth": "bearer",
    "response_kind": "json",
-   "guards": [],
+   "guards": [
+    "require_authorized"
+   ],
    "limits": [],
    "endpoint": "routers.admin_orgs.archive_organization",
    "refusal_behaviour": "classes.bearer",
@@ -3753,7 +3733,9 @@
    "path": "/admin/organizations/{org_id}/restore/",
    "auth": "bearer",
    "response_kind": "json",
-   "guards": [],
+   "guards": [
+    "require_authorized"
+   ],
    "limits": [],
    "endpoint": "routers.admin_orgs.restore_organization",
    "refusal_behaviour": "classes.bearer",
@@ -3764,7 +3746,9 @@
    "path": "/admin/organizations/{org_id}/restore",
    "auth": "bearer",
    "response_kind": "json",
-   "guards": [],
+   "guards": [
+    "require_authorized"
+   ],
    "limits": [],
    "endpoint": "routers.admin_orgs.restore_organization",
    "refusal_behaviour": "classes.bearer",
@@ -3776,7 +3760,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.get_scan_scope",
@@ -3789,7 +3773,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_orgs.get_scan_scope",
@@ -3801,7 +3785,9 @@
    "path": "/admin/organizations/{org_id}/scan-scope/",
    "auth": "bearer",
    "response_kind": "json",
-   "guards": [],
+   "guards": [
+    "require_authorized"
+   ],
    "limits": [],
    "endpoint": "routers.admin_orgs.set_scan_scope",
    "refusal_behaviour": "classes.bearer",
@@ -3812,7 +3798,9 @@
    "path": "/admin/organizations/{org_id}/scan-scope",
    "auth": "bearer",
    "response_kind": "json",
-   "guards": [],
+   "guards": [
+    "require_authorized"
+   ],
    "limits": [],
    "endpoint": "routers.admin_orgs.set_scan_scope",
    "refusal_behaviour": "classes.bearer",
@@ -3824,7 +3812,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_nvd.trigger_nvd_sync",
@@ -3837,7 +3825,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.admin_nvd.get_sync_status",
@@ -3850,7 +3838,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.audit.list_audit_logs",
@@ -3863,7 +3851,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.audit.list_audit_logs",
@@ -3876,7 +3864,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -3891,7 +3879,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_role"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -3906,7 +3894,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.audit.get_audit_log",
@@ -4084,7 +4072,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_dashboard_summary",
@@ -4097,7 +4085,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_risk_breakdown",
@@ -4110,7 +4098,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_vuln_trends",
@@ -4123,7 +4111,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_top_assets",
@@ -4136,7 +4124,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_top_cves",
@@ -4149,7 +4137,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_services_exposure",
@@ -4162,7 +4150,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_tls_health",
@@ -4175,7 +4163,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_http_headers",
@@ -4188,7 +4176,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_compliance",
@@ -4201,7 +4189,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_asset_breakdown",
@@ -4214,7 +4202,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_scan_activity",
@@ -4227,7 +4215,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_insights",
@@ -4240,7 +4228,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_web_scan_summary",
@@ -4253,7 +4241,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_web_owasp_scorecard",
@@ -4266,7 +4254,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_web_scan_trends",
@@ -4279,7 +4267,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_web_findings_drilldown",
@@ -4292,7 +4280,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.dashboard.get_web_endpoints_drilldown",
@@ -4305,7 +4293,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.list_assets",
@@ -4318,7 +4306,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.list_assets",
@@ -4331,7 +4319,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.debug_reconcile",
@@ -4344,7 +4332,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.list_global_certificates",
@@ -4357,7 +4345,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.list_global_services",
@@ -4370,7 +4358,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.list_service_assets",
@@ -4383,7 +4371,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.get_coverage_stats",
@@ -4396,7 +4384,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.get_reconciliation_drilldown",
@@ -4409,7 +4397,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.get_asset",
@@ -4422,7 +4410,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.get_asset_services",
@@ -4435,7 +4423,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.get_asset_findings",
@@ -4448,7 +4436,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.get_asset_changelog",
@@ -4461,7 +4449,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.update_asset",
@@ -4474,7 +4462,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.add_tag",
@@ -4487,7 +4475,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.remove_tag",
@@ -4500,7 +4488,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.assets.add_note",
@@ -4513,7 +4501,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "3 per 1 minute"
@@ -4528,7 +4516,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.findings.list_findings",
@@ -4541,7 +4529,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.findings.list_findings",
@@ -4554,7 +4542,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.findings.list_findings_grouped",
@@ -4567,7 +4555,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.findings.get_finding",
@@ -4580,7 +4568,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.findings.update_finding_status",
@@ -4593,7 +4581,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.findings.update_finding_notes",
@@ -4606,7 +4594,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -4621,7 +4609,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.list_web_scans",
@@ -4634,7 +4622,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_web_scan",
@@ -4647,7 +4635,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_web_scan_findings",
@@ -4660,7 +4648,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_web_scan_assets",
@@ -4673,7 +4661,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_web_scan_parameters",
@@ -4686,7 +4674,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_web_scan_forms",
@@ -4699,7 +4687,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_web_scan_api_operations",
@@ -4712,7 +4700,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.cancel_web_scan",
@@ -4725,7 +4713,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.triage_finding",
@@ -4738,7 +4726,7 @@
    "auth": "bearer",
    "response_kind": "file",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.web_scans.get_finding_screenshot",
@@ -4751,7 +4739,7 @@
    "auth": "bearer",
    "response_kind": "file",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -4777,7 +4765,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.topology.get_topology_map",
@@ -4790,7 +4778,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.topology.get_topology_map_by_scan",
@@ -4803,7 +4791,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.get_marketplace_frameworks",
@@ -4816,7 +4804,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.install_marketplace_framework",
@@ -4829,7 +4817,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.uninstall_marketplace_framework",
@@ -4842,7 +4830,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_policies",
@@ -4855,7 +4843,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.get_policy_rules",
@@ -4868,7 +4856,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.update_compliance_rule",
@@ -4881,7 +4869,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.create_policy_baseline",
@@ -4894,7 +4882,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "5 per 1 minute"
@@ -4909,7 +4897,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_findings",
@@ -4922,7 +4910,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.attest_manual_control",
@@ -4935,7 +4923,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_framework_controls",
@@ -4948,7 +4936,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "20 per 1 minute"
@@ -4963,7 +4951,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_control_evidence",
@@ -4976,7 +4964,7 @@
    "auth": "bearer",
    "response_kind": "file",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.download_control_evidence",
@@ -4989,7 +4977,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.delete_control_evidence",
@@ -5002,7 +4990,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_scan_runs",
@@ -5015,7 +5003,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.get_scan_run",
@@ -5028,7 +5016,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.create_scan_schedule",
@@ -5041,7 +5029,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_scan_schedules",
@@ -5054,7 +5042,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.update_scan_schedule",
@@ -5067,7 +5055,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.delete_scan_schedule",
@@ -5080,7 +5068,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.create_credential",
@@ -5093,7 +5081,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_credentials",
@@ -5106,7 +5094,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.delete_credential",
@@ -5119,7 +5107,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5134,7 +5122,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.list_remediation_requests",
@@ -5147,7 +5135,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.approve_remediation_request",
@@ -5160,7 +5148,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.cancel_remediation_request",
@@ -5173,7 +5161,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.rollback_remediation_request",
@@ -5186,7 +5174,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.request_exception_waiver",
@@ -5199,7 +5187,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.approve_exception_waiver",
@@ -5212,7 +5200,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.get_dashboard_summary",
@@ -5225,7 +5213,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5240,7 +5228,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5255,7 +5243,7 @@
    "auth": "bearer",
    "response_kind": "json",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [],
    "endpoint": "routers.compliance.get_compliance_gap_analysis",
@@ -5268,7 +5256,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5283,7 +5271,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5298,7 +5286,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5313,7 +5301,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5328,7 +5316,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5343,7 +5331,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5358,7 +5346,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5373,7 +5361,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5388,7 +5376,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5403,7 +5391,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5418,7 +5406,7 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
@@ -5433,12 +5421,155 @@
    "auth": "bearer",
    "response_kind": "stream",
    "guards": [
-    "require_permission"
+    "require_authorized"
    ],
    "limits": [
     "10 per 1 minute"
    ],
    "endpoint": "routers.compliance.download_nis2_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/platform/modules",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.hub.router.list_platform_modules",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/platform/rbac/permissions",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.list_permissions",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/platform/rbac/roles",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.list_roles",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/platform/rbac/roles/{role_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.get_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/platform/rbac/assignable-roles",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.assignable_roles",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/platform/rbac/users/{user_id}/assignments",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.get_user_assignments",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/platform/rbac/roles",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.create_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/platform/rbac/roles/{role_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.update_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/platform/rbac/roles/{role_id}/permissions",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.set_permissions",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/platform/rbac/roles/{role_id}/transition",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.transition_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/platform/rbac/roles/{role_id}/replace",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.replace_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/platform/rbac/users/{user_id}/assignments",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.assign_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/platform/rbac/assignments/{assignment_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "ccure_platform.administration.rbac_admin.revoke_assignment",
    "refusal_behaviour": "classes.bearer",
    "gateway_policy_proposed": "bearer"
   }

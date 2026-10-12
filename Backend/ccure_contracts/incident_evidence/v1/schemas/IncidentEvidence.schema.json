@@ -502,7 +502,7 @@
         },
         "request_rescan": {
           "default": false,
-          "description": "Ask Audit to schedule a targeted re-scan of the affected asset (SRS 7.3.5.8). A request, not an order: Audit's scope and quota apply.",
+          "description": "Ask Audit to schedule a targeted re-scan of the affected asset (SRS 7.3.5.8). A request, not an order: Audit's scan scope and permissions apply.",
           "title": "Request Rescan",
           "type": "boolean",
           "x-ccure-availability": "available",

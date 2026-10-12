@@ -421,8 +421,6 @@ def test_prepared_listener_product_survives_to_the_service_row(db_session):
             id=org_id,
             name="P",
             slug=f"p-{uuid.uuid4().hex[:8]}",
-            max_assets=10,
-            max_users=10,
             is_active=True,
             settings={},
         )

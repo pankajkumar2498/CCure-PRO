@@ -102,8 +102,8 @@ PLATFORM_API = "ccure_platform.api"
 API_MODEL_ALIASES = {"CurrentUser": "User"}
 
 #: Everything ``ccure_platform.api`` may ever export. It holds shared identity,
-#: tenancy and RBAC primitives only — never Audit's quotas, scan scope or any
-#: other module's business logic. A name added here needs a reason in review.
+#: tenancy, RBAC and organisation settings. A name added here needs a reason
+#: in review; module business logic stays outside the platform.
 PLATFORM_API_SURFACE = frozenset(
     {
         # planned in the Phase 8 proposal
@@ -127,10 +127,7 @@ PLATFORM_API_SURFACE = frozenset(
         "UserView",
         # step 8.5: the type routes annotate the authenticated principal with
         "CurrentUser",
-        # step 8.4: the organisation plan, one removable feature per group
-        "ScanLimits",
-        "ScanLimitsView",
-        "scan_limits",
+        # Independent organisation settings, one feature per group.
         "ScanScopeView",
         "scan_scope",
         "RemediationSlaSettingView",
@@ -165,15 +162,9 @@ PLATFORM_API_SURFACE = frozenset(
     }
 )
 
-#: The organisation's plan fields, stored on ``organizations``. Platform-owned
-#: (project owner, 29 Sep 2026): ``ccure_platform.plan`` reads and writes them,
-#: and a module reaches them only through ``ccure_platform.api``. The 8.1 ratchet
-#: assumed the opposite ownership and was inverted in step 8.4.
-PLAN_FIELDS = (
-    "max_assets",
-    "max_users",
-    "max_scans_per_day",
-    "max_concurrent_scans",
+#: Organisation settings are platform-owned. Modules reach them through
+#: ``ccure_platform.api`` rather than reading their storage directly.
+ORGANISATION_SETTING_FIELDS = (
     "scan_scope_cidrs",
     "remediation_sla",
 )
@@ -371,15 +362,14 @@ def scan_source(module: str, source: str, package: str | None = None) -> list[Si
     return sites
 
 
-def plan_field_references(module: str, source: str) -> list[Site]:
+def organisation_setting_references(module: str, source: str) -> list[Site]:
     """
-    Every mention of an Audit setting in one module, as a name, an attribute, a
-    keyword, a parameter or a string. Column definitions in a model class body
-    are not a mention: ``organizations`` keeps those columns, untouched and
-    unused, for a release after step 8.4.
+    Every mention of an organisation setting in one module, as a name,
+    attribute, keyword, parameter or string. Model column definitions are
+    excluded from the consumer count.
     """
     tree = ast.parse(source)
-    settings = set(PLAN_FIELDS)
+    settings = set(ORGANISATION_SETTING_FIELDS)
     definitions: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -410,13 +400,15 @@ def plan_field_references(module: str, source: str) -> list[Site]:
     return sites
 
 
-def measure_module_plan_fields(root: Path = BACKEND_ROOT) -> list[Site]:
-    """Plan fields named by module code — code outside the platform."""
+def measure_module_organisation_settings(root: Path = BACKEND_ROOT) -> list[Site]:
+    """Organisation settings named by code outside the platform."""
     sites: list[Site] = []
     for module, path in sorted(discover_modules(root).items()):
         if is_platform_side(module):
             continue
-        sites.extend(plan_field_references(module, path.read_text(encoding="utf-8")))
+        sites.extend(
+            organisation_setting_references(module, path.read_text(encoding="utf-8"))
+        )
     return sites
 
 
@@ -493,11 +485,9 @@ KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
 #: proposal's count (query() and select() only) did not look for these.
 KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {}
 
-#: module -> {plan field: mentions} in module code. Measured 29 Sep 2026 when
-#: step 8.4 made the plan platform-owned: the four seams read the columns
-#: themselves. Step 8.4 moved every read behind ``ccure_platform.api``, and it
-#: reached zero there: module code names no plan field, and must not start.
-KNOWN_MODULE_PLAN_FIELD_REFERENCES: dict[str, dict[str, int]] = {}
+#: module -> {organisation setting: mentions}. Module consumers reach these
+#: settings through ``ccure_platform.api``; direct storage references stay zero.
+KNOWN_MODULE_ORGANISATION_SETTING_REFERENCES: dict[str, dict[str, int]] = {}
 
 
 def _print_baseline(sites: list[Site]) -> None:

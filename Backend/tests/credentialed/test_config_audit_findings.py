@@ -597,8 +597,6 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
                 id=org_id,
                 name="P",
                 slug=f"p-{uuid.uuid4().hex[:8]}",
-                max_assets=10,
-                max_users=10,
                 is_active=True,
                 settings={},
             )

@@ -15,8 +15,7 @@ What ``resolve_scan_policy`` guarantees
 1. The policy exists for **this** tenant, is active and enabled, and is for
    this kind of scan. Anything else raises HTTP 400 with the reason, and the
    scan row created a moment earlier is removed first — a queued scan that
-   never dispatched is a ghost in Scan History and the quota it consumed has
-   not actually been spent.
+   never dispatched is a ghost in Scan History.
 2. The resolved configuration is written into the scan's own ``options`` as
    an immutable snapshot **before** the task is dispatched, so the worker
    cannot read a scan whose configuration has not been settled.
@@ -78,9 +77,13 @@ def resolve_scan_policy(
             request_options=request_options,
             has_credential=has_credential,
         )
-    except ResolvedPolicyError as exc:
+        if resolution.policy.custom_ports:
+            from core.utils import InputValidator
+
+            InputValidator.parse_custom_ports(resolution.policy.custom_ports)
+    except (ResolvedPolicyError, ValueError) as exc:
         # Remove the scan row before answering. It was created to reserve the
-        # scan number and consume quota; a scan that never dispatched should
+        # scan number; a scan that never dispatched should
         # not appear in Scan History as permanently queued.
         try:
             db.delete(scan)
@@ -94,7 +97,7 @@ def resolve_scan_policy(
             )
         raise HTTPException(
             status_code=400,
-            detail={"message": str(exc), "errors": exc.errors},
+            detail={"message": str(exc), "errors": getattr(exc, "errors", [str(exc)])},
         ) from exc
 
     effective = resolution.policy

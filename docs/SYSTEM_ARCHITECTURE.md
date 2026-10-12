@@ -488,9 +488,9 @@ message about itself.
 
 ```mermaid
 flowchart TD
-    A["POST /scan/host-discovery<br/>pipeline_mode, discovery_intensity,<br/>port_scan_intensity, os_detection"] --> Q{"check_scan_quota"}
-    Q -->|"over limit"| E1["429 / 400"]
-    Q -->|"ok"| C["create_scan → scans row"]
+    A["POST /scan/host-discovery<br/>pipeline_mode, discovery_intensity,<br/>port_scan_intensity, os_detection"] --> Q{"validate targets,<br/>scan scope and custom ports"}
+    Q -->|"invalid"| E1["400 / 403"]
+    Q -->|"valid"| C["create_scan → scans row"]
     C --> T1["run_host_discovery_task"]
     T1 --> P1["ScanOrchestrator.run_host_discovery_only<br/>DiscoveryEngine (Scapy only)"]
     P1 --> D{"terminal phase<br/>for pipeline_mode?"}

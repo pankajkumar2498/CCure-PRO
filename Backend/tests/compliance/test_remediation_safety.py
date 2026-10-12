@@ -50,8 +50,6 @@ def test_maker_checker_self_approval_block(client: TestClient, db_session: Sessi
         id=gen_org_id(org_slug),
         name=f"Compliance Safety Org {suffix}",
         slug=org_slug,
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)

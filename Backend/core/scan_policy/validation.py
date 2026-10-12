@@ -25,7 +25,7 @@ it rather than by a scan at 02:00.
 *this* organisation's installed content and *this* scan's kind and credential
 at the moment of dispatch. It re-runs at every dispatch and is never inherited
 from creation time — the same rule ``core/scheduling/dispatcher.py`` applies
-to scope and quota, and for the same reason. A framework uninstalled in June
+to scan scope, and for the same reason. A framework uninstalled in June
 must stop being scanned in July.
 
 Warnings are not refusals
@@ -367,7 +367,7 @@ def validate_for_dispatch(
     Re-run at every dispatch and never inherited from creation time. A policy
     written in March and firing in November is a stored intent, not a standing
     authorisation — the rule the schedule dispatcher already applies to scan
-    scope and quota.
+    scope.
     """
     result = validate_policy(_config_of(policy), scan_kind=policy.scan_kind)
 

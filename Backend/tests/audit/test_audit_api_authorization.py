@@ -60,8 +60,6 @@ def other_tenant(db_session):
         id=f"org_other_{uid}",
         name=f"Other Org {uid}",
         slug=f"other-org-{uid}",
-        max_assets=10,
-        max_users=5,
         is_active=True,
     )
     db_session.add(org)

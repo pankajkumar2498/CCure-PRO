@@ -18,9 +18,6 @@ const org = {
   id: "o-1",
   name: "CCure Development",
   slug: "development",
-  plan: "enterprise",
-  max_assets: 10000,
-  max_users: 100,
   is_active: true,
   created_at: "2026-09-01T10:00:00Z",
 };

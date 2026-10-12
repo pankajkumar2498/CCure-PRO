@@ -7,7 +7,6 @@ import { canSeeNavItem } from "@shell/auth/navVisibility";
 import {
   CcureAppShell,
   CcureInput,
-  CcureProgress,
   CcureIconButton,
   CcureIcon,
 } from "../../../../design-system";
@@ -314,15 +313,7 @@ export default function AppLayout({ children, saveStatus = "" }) {
   // Live Counts
   const [runningScans, setRunningScans] = useState(0);
   const [criticalCount, setCriticalCount] = useState(0);
-  const [quotaUsed, setQuotaUsed] = useState(0);
-  // null means "no limit". Defaulting these to invented numbers made an
-  // enterprise plan with unlimited scans read as "30/50", and pinned the
-  // concurrency display at 5 when the real ceiling was 20.
-  const [quotaLimit, setQuotaLimit] = useState(null);
-  const [concurrentUsed, setConcurrentUsed] = useState(0);
-  const [concurrentLimit, setConcurrentLimit] = useState(null);
-
-  // Poll dashboard summary for sidebar badges & quota
+  // Poll dashboard summary for sidebar badges.
   useEffect(() => {
     const fetchCounts = async () => {
       try {
@@ -331,24 +322,6 @@ export default function AppLayout({ children, saveStatus = "" }) {
           const d = res.data;
           setRunningScans(d?.scans?.running ?? 0);
           setCriticalCount(d?.severity?.critical ?? 0);
-          setQuotaUsed(d?.scans?.last_24h ?? 0);
-          setQuotaLimit(d?.scans?.quota_limit_24h ?? null);
-          setConcurrentUsed(d?.scans?.running ?? 0);
-        }
-        // The summary carries usage but not the plan's ceilings, so the real
-        // limits come from the quota endpoint rather than a hardcoded guess.
-        try {
-          const q = await api.get("/scan/quota");
-          if (q.status === 200 && q.data) {
-            setQuotaLimit(q.data.scans_limit_24h ?? null);
-            setConcurrentLimit(q.data.concurrent_limit ?? null);
-            if (typeof q.data.scans_used_24h === "number")
-              setQuotaUsed(q.data.scans_used_24h);
-            if (typeof q.data.concurrent_running === "number")
-              setConcurrentUsed(q.data.concurrent_running);
-          }
-        } catch {
-          /* quota is advisory — never block the sidebar on it */
         }
       } catch {
         /* silent */
@@ -455,45 +428,8 @@ export default function AppLayout({ children, saveStatus = "" }) {
       }),
   })).filter((section) => section.items.length > 0);
 
-  // A null limit is an uncapped plan, not a zero-length bar: show the count
-  // and leave the meter empty rather than implying a ceiling that isn't there.
-  const fmtLimit = (limit) => (limit > 0 ? limit : "∞");
-  const quotaPct =
-    quotaLimit > 0 ? Math.min((quotaUsed / quotaLimit) * 100, 100) : 0;
-
   const sidebarFooter = (
     <>
-      <div className="sh-quota">
-        <div className="sh-quota-row">
-          <span id="sh-quota-label">Scan Quota (24h)</span>
-          <span>
-            {quotaUsed}/{fmtLimit(quotaLimit)}
-          </span>
-        </div>
-        <CcureProgress
-          value={quotaLimit > 0 ? quotaUsed : null}
-          max={quotaLimit > 0 ? quotaLimit : 100}
-          animated={false}
-          showValue={false}
-          variant={quotaPct >= 80 ? "danger" : "primary"}
-          className="sh-quota-bar"
-          label="Scan quota used in the last 24 hours"
-        />
-        <div className="sh-quota-row">
-          <span>Concurrent</span>
-          <span>
-            {concurrentUsed}/{fmtLimit(concurrentLimit)}
-          </span>
-        </div>
-        <CcureProgress
-          value={concurrentLimit > 0 ? concurrentUsed : null}
-          max={concurrentLimit > 0 ? concurrentLimit : 100}
-          animated={false}
-          showValue={false}
-          className="sh-quota-bar"
-          label="Concurrent scans running"
-        />
-      </div>
       <UserCard user={user}>
         <CcureIconButton
           variant="ghost"

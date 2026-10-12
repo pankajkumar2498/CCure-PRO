@@ -198,8 +198,6 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     org = Organization(
         name="MFA Reset Org",
         slug="mfa-reset-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)

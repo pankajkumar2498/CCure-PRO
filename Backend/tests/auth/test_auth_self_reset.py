@@ -33,9 +33,7 @@ def test_forgot_password_registered_email_success(
     client: TestClient, db_session: Session
 ):
     """Test that requesting reset for a registered email generates a token and runs Celery task."""
-    org = Organization(
-        name="Test Org", slug="test-org", max_assets=100, max_users=10, is_active=True
-    )
+    org = Organization(name="Test Org", slug="test-org", is_active=True)
     db_session.add(org)
     db_session.flush()
 
@@ -90,9 +88,7 @@ def test_reset_password_success_and_revokes_sessions(
     client: TestClient, db_session: Session
 ):
     """Test successful password reset updates hash, invalidates sessions, and purges token."""
-    org = Organization(
-        name="Test Org", slug="test-org", max_assets=100, max_users=10, is_active=True
-    )
+    org = Organization(name="Test Org", slug="test-org", is_active=True)
     db_session.add(org)
     db_session.flush()
 
@@ -165,9 +161,7 @@ def test_reset_password_token_invalidation_on_first_use(
     client: TestClient, db_session: Session
 ):
     """Test that a token cannot be reused (token invalidation on first use)."""
-    org = Organization(
-        name="Test Org", slug="test-org", max_assets=100, max_users=10, is_active=True
-    )
+    org = Organization(name="Test Org", slug="test-org", is_active=True)
     db_session.add(org)
     db_session.flush()
 

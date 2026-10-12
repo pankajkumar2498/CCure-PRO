@@ -88,9 +88,6 @@ export default function OrganizationManagement() {
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
-    plan: "community",
-    max_assets: 500,
-    max_users: 10,
   });
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   // cross-organisation reach, as the backend reports it — not a role name
@@ -143,9 +140,6 @@ export default function OrganizationManagement() {
       setFormData({
         name: "",
         slug: "",
-        plan: "community",
-        max_assets: 500,
-        max_users: 10,
       });
       loadData(true);
     } catch (err) {
@@ -169,9 +163,6 @@ export default function OrganizationManagement() {
       await updateOrganization(selectedOrg.id, {
         name: data.name,
         slug: data.slug,
-        plan: data.plan,
-        max_assets: data.max_assets,
-        max_users: data.max_users,
       });
       pushToast("Organization updated successfully.", "success");
       setIsEditModalOpen(false);
@@ -259,9 +250,6 @@ export default function OrganizationManagement() {
     setFormData({
       name: org.name,
       slug: org.slug,
-      plan: org.plan,
-      max_assets: org.max_assets,
-      max_users: org.max_users,
       is_active: org.is_active,
     });
     setIsEditModalOpen(true);
@@ -269,7 +257,7 @@ export default function OrganizationManagement() {
 
   /* Declared columns, so CcureTable owns the caption, `scope="col"` on every
      header and `scope="row"` on the organisation name — the identity a reader
-     needs announced alongside every quota and status in the row. */
+     needs announced alongside the status in the row. */
   const columns = [
     {
       key: "name",
@@ -278,25 +266,6 @@ export default function OrganizationManagement() {
       cell: (org) => <span className="om-name">{org.name}</span>,
     },
     { key: "slug", header: "Slug", mono: true, cell: (org) => org.slug },
-    {
-      key: "plan",
-      header: "Plan",
-      cell: (org) => <CcureBadge variant="info">{org.plan}</CcureBadge>,
-    },
-    {
-      key: "max_assets",
-      header: "Max Assets",
-      mono: true,
-      align: "end",
-      cell: (org) => org.max_assets,
-    },
-    {
-      key: "max_users",
-      header: "Max Users",
-      mono: true,
-      align: "end",
-      cell: (org) => org.max_users,
-    },
     {
       key: "status",
       header: "Status",
@@ -392,9 +361,7 @@ export default function OrganizationManagement() {
       <CcurePage>
         <CcurePageHeader
           title="Organizations"
-          subtitle={
-            <>Manage multi-tenant organizations and their subscription plans</>
-          }
+          subtitle={<>Manage multi-tenant organizations and access</>}
           actions={
             <div className="om-toolbar">
               <CcureButton

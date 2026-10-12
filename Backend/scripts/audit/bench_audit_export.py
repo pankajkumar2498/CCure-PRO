@@ -90,8 +90,6 @@ def _ensure_org(db) -> None:
             id=BENCH_ORG,
             name="Export Benchmark",
             slug="export-benchmark",
-            max_assets=1,
-            max_users=1,
             is_active=True,
         )
     )

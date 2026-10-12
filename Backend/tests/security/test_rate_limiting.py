@@ -188,9 +188,7 @@ def test_rate_limit_key_is_the_resolved_client_ip():
 
 @pytest.fixture
 def reset_user(db_session: Session) -> User:
-    org = Organization(
-        name="Reset Org", slug="reset-org", max_assets=10, max_users=10, is_active=True
-    )
+    org = Organization(name="Reset Org", slug="reset-org", is_active=True)
     db_session.add(org)
     db_session.flush()
 

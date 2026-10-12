@@ -132,6 +132,18 @@ def _is_scannable_address(value: str) -> bool:
 _SCOPE_NOT_CHECKED = object()
 
 
+def validate_custom_ports(custom_ports: str | None) -> None:
+    """Reject malformed custom ports before a scan is dispatched."""
+    if custom_ports:
+        from core.utils import InputValidator
+        from fastapi import HTTPException
+
+        try:
+            InputValidator.parse_custom_ports(custom_ports)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def validate_scan_targets(
     targets: list[str] | None, scope=_SCOPE_NOT_CHECKED
 ) -> list[str]:
@@ -139,7 +151,7 @@ def validate_scan_targets(
     Reject a scan request that can never produce results, before it costs anything.
 
     An unparseable target used to be accepted with HTTP 200: the API created a
-    scan row, consumed the organisation's quota, and only failed asynchronously
+    scan row and only failed asynchronously
     seconds later with a reason the API never returned. A typo should come back
     as an error the operator can fix, not as a scan that quietly dies.
 

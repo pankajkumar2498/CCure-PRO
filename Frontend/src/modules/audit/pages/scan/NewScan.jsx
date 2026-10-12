@@ -27,7 +27,6 @@ import api from "@shell/api/axiosInstance";
 import { stopScan } from "@audit/api/scans";
 import { can } from "@shell/auth/permissions";
 import { useAuth } from "@shell/auth/AuthContext";
-import ScanQuotaBar from "@audit/components/scan/ScanQuotaBar";
 import { detectTargetType, parseExcludeIpsJS } from "@audit/utils/ipValidation";
 import {
   CcureLoader,
@@ -865,7 +864,6 @@ export default function NewScan() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState("");
   const [rateLimit, setRateLimit] = useState("");
-  const [quotaBlocked, setQuotaBlocked] = useState(false);
   const fileInputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [parsedTargets, setParsedTargets] = useState([]);
@@ -1959,22 +1957,13 @@ export default function NewScan() {
       !hasAutoRunRef.current &&
       canExecuteScans &&
       target &&
-      !loading &&
-      !quotaBlocked
+      !loading
     ) {
       hasAutoRunRef.current = true;
       navigate(".", { replace: true, state: {} });
       setTimeout(() => bootstrapRef.current.handleScan(), 100);
     }
-  }, [
-    location.state,
-    urlScanId,
-    canExecuteScans,
-    target,
-    loading,
-    quotaBlocked,
-    navigate,
-  ]);
+  }, [location.state, urlScanId, canExecuteScans, target, loading, navigate]);
 
   if (view === "mission")
     return (
@@ -2014,11 +2003,6 @@ export default function NewScan() {
             >
               <Glyph>←</Glyph> Back
             </CcureButton>
-          }
-        />
-        <ScanQuotaBar
-          onQuotaChange={({ quota_exceeded, concurrent_exceeded }) =>
-            setQuotaBlocked(quota_exceeded || concurrent_exceeded)
           }
         />
         <CcureCard as={"div"} className="ns-card">
@@ -2266,9 +2250,7 @@ export default function NewScan() {
               size="lg"
               block
               onClick={handleScan}
-              disabled={
-                loading || !target.trim() || !canExecuteScans || quotaBlocked
-              }
+              disabled={loading || !target.trim() || !canExecuteScans}
             >
               {btnLabel} <Glyph>→</Glyph>
             </CcureButton>

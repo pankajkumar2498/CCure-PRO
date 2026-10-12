@@ -17,7 +17,7 @@
  * audit scan hands over to the next phase's page by itself. Stop Scan is
  * `POST /scans/{id}/stop`.
  *
- * Only the axios instance, the shell, the quota bar, the signed-in user and
+ * Only the axios instance, the shell, the signed-in user and
  * `WebSocket` are replaced; the scan context and the router are real.
  */
 
@@ -65,14 +65,6 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
       {children}
     </div>
   ),
-}));
-
-let quotaChange;
-vi.mock("@audit/components/scan/ScanQuotaBar", () => ({
-  default: ({ onQuotaChange }) => {
-    quotaChange = onQuotaChange;
-    return <div data-testid="quota-bar" />;
-  },
 }));
 
 let user;
@@ -344,7 +336,6 @@ beforeEach(() => {
   sockets = [];
   calls = [];
   locations = [];
-  quotaChange = undefined;
   user = EXECUTOR;
   vi.stubGlobal("WebSocket", FakeWebSocket);
   postReply = (url) => {
@@ -449,7 +440,7 @@ describe("NewScan — contract", () => {
       expect(squash(startButton())).toMatch(/^Start Discovery · deep/);
     });
 
-    it("starts only with a target, and not while the quota is exhausted", async () => {
+    it("starts only with a nonblank target", async () => {
       await mount();
       expect(startButton()).toBeDisabled();
       typeTarget("   ");
@@ -457,18 +448,6 @@ describe("NewScan — contract", () => {
       typeTarget("10.60.1.10");
       expect(startButton()).toBeEnabled();
       expect(stored("cc_target")).toBe("10.60.1.10");
-      act(() =>
-        quotaChange({ quota_exceeded: true, concurrent_exceeded: false }),
-      );
-      expect(startButton()).toBeDisabled();
-      act(() =>
-        quotaChange({ quota_exceeded: false, concurrent_exceeded: true }),
-      );
-      expect(startButton()).toBeDisabled();
-      act(() =>
-        quotaChange({ quota_exceeded: false, concurrent_exceeded: false }),
-      );
-      expect(startButton()).toBeEnabled();
     });
 
     it("Back returns to the dashboard", async () => {
@@ -1340,8 +1319,8 @@ describe("NewScan — contract", () => {
       ],
       [
         "success: false with an error",
-        () => ({ data: { success: false, error: "Quota exceeded" } }),
-        "Quota exceeded",
+        () => ({ data: { success: false, error: "Dispatch failed" } }),
+        "Dispatch failed",
       ],
       [
         "success: false alone",

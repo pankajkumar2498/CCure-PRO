@@ -33,8 +33,6 @@ def test_report_download_requires_reports_read_permission(client, db_session):
     org = Organization(
         name="Reports Org",
         slug="reports-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     role = fixture_role(db_session, "limited_reports")
@@ -85,15 +83,11 @@ def test_superadmin_can_download_report_across_orgs(client, db_session):
     org_a = Organization(
         name="SA Reports A",
         slug="sa-reports-a",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     org_b = Organization(
         name="SA Reports B",
         slug="sa-reports-b",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     superadmin_role = system_role(db_session, "platform.superadmin")
@@ -158,8 +152,6 @@ def test_report_delete_requires_reports_delete_permission(client, db_session):
     org = Organization(
         name="Reports Delete Org",
         slug="reports-delete-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     role = fixture_role(db_session, "report-reader-only")

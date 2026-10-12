@@ -7,8 +7,8 @@
  * block at the end, which is the migration spec.
  *
  * ── OrganizationForm ────────────────────────────────────────────────────────
- *   * the create payload: name, slug, plan, max_assets and max_users as
- *     NUMBERS, and the optional admin_* provisioning block — including a
+ *   * the create payload: name, slug and the optional admin_* provisioning
+ *     block — including a
  *     password that reaches the payload and nothing else;
  *   * edit mode: prefilled, `is_active` only when `showStatus`;
  *   * submit disabled until valid; availability checks debounced.
@@ -58,7 +58,7 @@ beforeEach(() => {
 });
 
 describe("OrganizationForm — create", () => {
-  it("submit is disabled until name (3+) and slug (2+) are set; numbers are coerced", async () => {
+  it("submit is disabled until name (3+) and slug (2+) are set", async () => {
     const onSubmit = vi.fn();
     render(
       <OrganizationForm
@@ -77,21 +77,10 @@ describe("OrganizationForm — create", () => {
     expect(submit).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/^url/i), "acme");
     expect(submit).toBeEnabled();
-    await userEvent.selectOptions(
-      screen.getByLabelText(/subscription plan/i),
-      "business",
-    );
-    await userEvent.clear(screen.getByLabelText(/max assets/i));
-    await userEvent.type(screen.getByLabelText(/max assets/i), "900");
-    await userEvent.clear(screen.getByLabelText(/max users/i));
-    await userEvent.type(screen.getByLabelText(/max users/i), "40");
     await userEvent.click(submit);
     expect(onSubmit).toHaveBeenCalledWith({
       name: "Acme Security",
       slug: "acme",
-      plan: "business",
-      max_assets: 900,
-      max_users: 40,
     });
   });
 
@@ -115,9 +104,6 @@ describe("OrganizationForm — create", () => {
           id: 7,
           name: "Acme Corp",
           slug: "acme",
-          plan: "enterprise",
-          max_assets: 5000,
-          max_users: 100,
           is_active: true,
         }}
         onSubmit={onSubmit}
@@ -131,9 +117,11 @@ describe("OrganizationForm — create", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /save changes/i }),
     );
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 7, is_active: false, max_assets: 5000 }),
-    );
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Acme Corp",
+      slug: "acme",
+      is_active: false,
+    });
   });
 
   it("admin provisioning: the block is optional, validated as a unit, and the password reaches the payload only", async () => {
@@ -224,9 +212,6 @@ describe("OrganizationForm — create", () => {
           id: 7,
           name: "Acme Corp",
           slug: "acme",
-          plan: "enterprise",
-          max_assets: 5000,
-          max_users: 100,
         }}
         onSubmit={onSubmit}
         onCancel={onCancel}

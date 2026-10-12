@@ -41,8 +41,6 @@ def _make_user(db_session: Session, role_name: str, username: str) -> User:
         org = Organization(
             name="Rules Org",
             slug="rules-org",
-            max_assets=10,
-            max_users=10,
             is_active=True,
         )
         db_session.add(org)

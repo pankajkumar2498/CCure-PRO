@@ -35,7 +35,7 @@ BASELINE: dict[str, tuple[int, str]] = {
     "audit_log/taxonomy.py": (
         1,
         "persisted data: the platform's own 'organization.scan_scope_changed' "
-        "event (the organisation plan's scan scope); Audit's events moved to "
+        "event (the organisation's scan scope); Audit's events moved to "
         "ccure_audit/audit_events.py (follow-up 6)",
     ),
     "notifications/service.py": (
@@ -49,25 +49,18 @@ BASELINE: dict[str, tuple[int, str]] = {
         "API contract: related_scan_id (notification-ownership follow-up)",
     ),
     "administration/organizations.py": (
-        25,
-        "owner decision (29 Sep 2026): the organisation plan is platform-owned — "
-        "max_assets and the scan-scope endpoints; API contract",
-    ),
-    "identity/router.py": (
-        1,
-        "owner decision: the plan default max_assets given to a self-registered org",
+        17,
+        "organisation scan-scope endpoints and their API contract",
     ),
     "models/rbac.py": (
-        4,
-        "persisted columns: organizations.max_assets / max_scans_per_day / "
-        "max_concurrent_scans / scan_scope_cidrs (organisation-plan step 8.4)",
+        1,
+        "persisted column: organizations.scan_scope_cidrs",
     ),
-    "plan/scan_limits.py": (40, "owner decision: organisation plan (scan limits)"),
-    "plan/scan_scope.py": (9, "owner decision: organisation plan (scan scope)"),
-    "plan/remediation_sla.py": (6, "owner decision: organisation plan (SLA)"),
+    "organisation_settings/scan_scope.py": (9, "organisation scan scope"),
+    "organisation_settings/remediation_sla.py": (6, "organisation remediation SLA"),
     "api.py": (
-        8,
-        "the platform API's plan exports (ScanLimits, scan_scope, …): owner decision",
+        5,
+        "the platform API's organisation settings exports",
     ),
     "rbac/contract.py": (
         2,
@@ -79,7 +72,7 @@ BASELINE: dict[str, tuple[int, str]] = {
     "permissions.py": (
         1,
         "persisted value (RBAC-2): the key platform.organization.set_scan_scope — the "
-        "organisation plan's scan scope is platform-owned (owner decision, 29 Sep 2026) "
+        "organisation scan scope is platform-owned "
         "and the permission guards that platform feature",
     ),
     "identity/email_security_tasks.py": (

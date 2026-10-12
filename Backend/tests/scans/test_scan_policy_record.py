@@ -306,8 +306,6 @@ def test_another_tenants_scan_policy_is_not_readable(
         id=f"org_{uuid.uuid4().hex[:8]}",
         name="Other",
         slug=f"other-{uuid.uuid4().hex[:6]}",
-        max_assets=5,
-        max_users=5,
         is_active=True,
     )
     db_session.add(other)

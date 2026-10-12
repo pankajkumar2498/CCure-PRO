@@ -52,10 +52,6 @@ _CORE_GROUPS = {
         "constants",
         "user_agent",
         "upload_guard",
-        # "quota" left this group in Phase 8.4: it is Audit's seam of the
-        # platform's scan-limits plan feature and calls ccure_platform.api, so
-        # grouping it with celery_app drew a component loop through
-        # infrastructure that no module-level path closes.
         "models",
     },
     "core.audit": {

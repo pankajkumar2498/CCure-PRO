@@ -13,14 +13,12 @@ dispatch when a person presses the button. This module's whole job is deciding
 The gates are re-run, not inherited
 ───────────────────────────────────
 A schedule created in March and firing in November is a stored intent, not a
-standing authorisation. Scan scope, quota and credential existence are all
+standing authorisation. Scan scope and credential existence are
 re-checked at dispatch:
 
 * **Scope.** ``enforce_org_scan_scope`` runs against the organisation row as it
   is *now*. An operator who narrows the authorised range must have that take
   effect on the next run, not on the next time somebody edits the schedule.
-* **Quota.** The same ``check_scan_quota`` the manual routes call. A schedule
-  is not a way around the plan limit.
 * **Credentials.** Resolved by reference. ``compliance_credentials.id`` is
   ``ON DELETE SET NULL`` from the schedule, so a deleted credential leaves
   ``credential_id`` NULL — which must fail the run loudly rather than silently
@@ -228,7 +226,7 @@ def _schedule_policy_options(db: Session, schedule: ScanSchedule, *, scan_kind: 
     Re-resolved and re-validated at **every** dispatch, never inherited from
     the moment the schedule was written. A policy archived, disabled or
     narrowed in June must take effect on the next run, exactly as scan scope
-    and quota already do — a schedule is a stored intent, not a standing
+    does — a schedule is a stored intent, not a standing
     authorisation.
 
     A policy that cannot be used raises :class:`ScheduleDispatchError`, so the
@@ -249,7 +247,11 @@ def _schedule_policy_options(db: Session, schedule: ScanSchedule, *, scan_kind: 
             request_options=options,
             has_credential=bool(schedule.credential_id),
         )
-    except ResolvedPolicyError as exc:
+        if resolution.policy.custom_ports:
+            from core.utils import InputValidator
+
+            InputValidator.parse_custom_ports(resolution.policy.custom_ports)
+    except (ResolvedPolicyError, ValueError) as exc:
         raise ScheduleDispatchError(
             f"scan policy cannot be used for this run: {exc}"
         ) from exc
@@ -487,22 +489,7 @@ def dispatch_schedule(
         else:
             targets = _resolve_targets(db, schedule)
 
-            from core.quota import check_scan_quota
-
-            try:
-                check_scan_quota(db, org_id=schedule.org_id, targets=targets)
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 — HTTPException detail is the message
-                detail = getattr(exc, "detail", None) or str(exc)
-                # Over quota is not a broken schedule: it is a working schedule
-                # meeting a limit, and it must not count toward the failure
-                # threshold that disables it.
-                outcome = DispatchOutcome(
-                    status=RUN_STATUS_SKIPPED, detail=f"scan quota: {detail}"
-                )
-            else:
-                outcome = dispatcher(db, schedule, targets)
+            outcome = dispatcher(db, schedule, targets)
 
     except ScheduleDispatchError as exc:
         outcome = DispatchOutcome(status=RUN_STATUS_FAILED, detail=str(exc))

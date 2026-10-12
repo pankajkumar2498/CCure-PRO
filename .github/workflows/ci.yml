@@ -153,9 +153,11 @@ jobs:
           # reason that is the migration's design, not a regression.
           #   d4f8b2c6e0a1  removes the legacy RBAC tables (4 Oct 2026); the
           #                 data is gone and only a recovery snapshot has it.
+          #   f6a8c0e2b4d7  removes retired subscription columns (12 Oct 2026);
+          #                 their values require the pre-migration backup.
           # Reversibility is only exercised above such a revision; the
           # forward upgrade below still runs through all of them.
-          IRREVERSIBLE_REVISIONS="d4f8b2c6e0a1"
+          IRREVERSIBLE_REVISIONS="d4f8b2c6e0a1 f6a8c0e2b4d7"
           for rev in $(alembic heads | awk '{print $1}'); do
             case " ${IRREVERSIBLE_REVISIONS} " in
               *" ${rev} "*)

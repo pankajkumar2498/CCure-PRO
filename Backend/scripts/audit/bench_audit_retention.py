@@ -327,8 +327,6 @@ def main() -> int:
                     id=org_id,
                     name="Retention benchmark",
                     slug=f"{org_id}-slug",
-                    max_assets=1,
-                    max_users=1,
                     is_active=True,
                 )
             )

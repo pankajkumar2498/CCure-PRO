@@ -32,8 +32,6 @@ class Organization(Base):
       This ID is readable and used as FK in all child tables.
       ON UPDATE CASCADE means: if you ever rename the slug, all child rows update.
 
-    plan         — 'community' | 'pro' | 'enterprise'  (controls feature flags)
-    max_assets   — Hard cap enforced at scan save time
     settings     — JSONB bag for per-org feature flags (e.g. {"sso_enabled": true})
     """
 
@@ -43,15 +41,6 @@ class Organization(Base):
     id = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False, unique=True)
     slug = Column(String(100), nullable=False, unique=True)  # URL-safe short name
-    plan = Column(String(50), nullable=False, default="community")
-    max_assets = Column(Integer, nullable=False, default=500)
-    max_users = Column(Integer, nullable=False, default=10)
-
-    # ── Scan Quota Overrides (NULL = use plan default from core/quota.py) ──────
-    # Superadmins can set per-org overrides that take precedence over plan limits.
-    max_scans_per_day = Column(Integer, nullable=True)  # rolling 24-h window
-    max_concurrent_scans = Column(Integer, nullable=True)  # simultaneous running scans
-
     is_active = Column(Boolean, nullable=False, default=True)
     settings = Column(JSONB, nullable=False, default=dict)
 
@@ -121,4 +110,4 @@ class Organization(Base):
     # unchanged.
 
     def __repr__(self):
-        return f"<Organization {self.id!r} plan={self.plan!r}>"
+        return f"<Organization {self.id!r}>"

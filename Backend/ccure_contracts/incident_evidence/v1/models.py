@@ -94,7 +94,7 @@ class CcureRemediationClaimV1(ContractModel):
     request_rescan: bool = owned(
         "ir",
         "Ask Audit to schedule a targeted re-scan of the affected asset "
-        "(SRS 7.3.5.8). A request, not an order: Audit's scope and quota apply.",
+        "(SRS 7.3.5.8). A request, not an order: Audit's scan scope and permissions apply.",
         default=False,
     )
 

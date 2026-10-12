@@ -87,7 +87,6 @@ import {
   NS_TICKET,
   NS_SECRET,
   NS_WRITES,
-  NS_QUOTA_EXHAUSTED,
   NS_TARGET_FILE,
   NS_RUNNING_FRAMES,
   NS_COMPLETE_FRAMES,
@@ -2950,15 +2949,6 @@ const NS_STATES = [
     persona: SCANS_READONLY,
     session: nsSession(),
     ready: nsSetupReady("/Basic Network Scan/"),
-  },
-  {
-    ...NS_BASE,
-    id: "ns-quota",
-    route: "/scan/new",
-    themes: LIGHT,
-    stubs: { ...NS_STUBS, "/scan/quota": NS_QUOTA_EXHAUSTED },
-    session: nsSession(),
-    ready: `${nsSetupReady("/Basic Network Scan/")} && ${nsButton("/Start Scan/")}.disabled`,
   },
   {
     ...NS_BASE,

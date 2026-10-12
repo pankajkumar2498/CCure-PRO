@@ -16,7 +16,7 @@ import ipaddress
 
 import pytest
 from ccure_platform.api import ScanScopeView
-from ccure_platform.plan.scan_scope import normalise_scope
+from ccure_platform.organisation_settings.scan_scope import normalise_scope
 from core.scan_scope import (
     ScanScopeError,
     enforce_org_scan_scope,
@@ -198,8 +198,7 @@ def test_scan_endpoint_admits_in_scope_target(
         headers=auth_headers,
         json={"targets": ["10.180.6.14"], "scan_type": "ping"},
     )
-    # Anything but the scope denial — the scan may still be rejected by quota
-    # or accepted, both of which mean the scope gate let it through.
+    # The valid target must pass the organisation scope gate.
     assert res.status_code != 403
 
 

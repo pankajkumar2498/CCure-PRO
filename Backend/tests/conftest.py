@@ -1146,8 +1146,6 @@ def test_org(db_session: Session) -> Organization:
         id=f"org_{uid}",
         name=f"Test Org {uid}",
         slug=f"test-org-{uid}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)

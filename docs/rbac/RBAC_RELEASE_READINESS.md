@@ -80,8 +80,19 @@ for coordinated promotion, rather than rebuilding after verification.
 CODEOWNERS contains placeholders, so it records no real approver. Security, CI,
 deployment, enrollment/recovery readiness and final release approvals are pending.
 MFA configuration remains unchanged. Independent IR security verification remains
-separately owned. The coordinated artifact-switch rehearsal is in progress;
-read-compatibility results below are not counted as an executed switch drill.
+separately owned. The isolated coordinated artifact-switch rehearsal now passed candidate →
+previous artifacts → candidate recovery. API, worker, web-worker, scheduler,
+frontend, gateway verifier and ingress were switched together. Startup
+reconciliation, existing signed sessions and effective grants remained valid;
+all nine protected catalogue/history/chain fingerprints and migration heads
+were unchanged, and both tenant chains recomputed cleanly. All six native and
+compatibility management mutation paths stayed contained. No database restore
+was used during switching. The initial failures were rehearsal setup errors
+(internal-network ingress, worker registration and executable mode on the
+materialized baseline snapshot); final evidence retains them and the passing
+sequence. No security guard was disabled. Production ingress containment,
+previous frontend source provenance and the release window still need owner
+approval. Results: `/tmp/ccure-rbac-outstanding/rollback-rehearsal-results.json`.
 
 ## Image-blocker remediation and exact-artifact validation
 
@@ -336,7 +347,7 @@ audit logging, enrollment/recovery and evidence ownership. This workstream remai
 unverified here; obtain its owner's release evidence before a coordinated IR release
 or enabling an IR integration.
 
-## Deployment blockers and unexecuted checks
+## Historical blockers before the outstanding-requirements follow-up
 
 1. **Debian image blocker closed; bundled-browser security review pending.** The
    fixed packages and all three local image gates pass as recorded above. The
@@ -417,9 +428,9 @@ This is a preparation plan, not authorization to deploy or change gateway contro
 7. **Do not restore the database as routine rollback.** Baseline application readers
    were tested against the post-patch synthetic database and preserved every RBAC/
    audit fingerprint. That is a read-compatibility test, not a live artifact-switch,
-   startup-reconciliation or operational recovery drill. The deployment owner still
-   must approve and rehearse the coordinated switch/containment procedure in an
-   approved non-production environment. Backup restoration is a separate disaster
+   startup-reconciliation or operational recovery drill. The follow-up above subsequently executed the isolated coordinated
+   switch/recovery drill successfully. The deployment owner must still approve
+   the production topology, containment procedure and previous artifact provenance. Backup restoration is a separate disaster
    recovery decision requiring a reviewed plan; it discards intervening history and
    is not needed by this additive application patch.
 

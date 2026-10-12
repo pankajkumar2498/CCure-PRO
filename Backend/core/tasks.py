@@ -3630,6 +3630,9 @@ def audit_credentialed_host(
                     "desc": finding["description"],
                     "package": finding["package_name"],
                     "installed_ver": finding["installed_ver"],
+                    "installed_version_precision": finding.get(
+                        "installed_version_precision", ""
+                    ),
                     "fixed_ver": finding["fixed_ver"],
                     "source": finding["source"],
                     "matched_by": finding["matched_by"],
@@ -3695,6 +3698,9 @@ def audit_credentialed_host(
                     "desc": finding["description"],
                     "package": finding["package_name"],
                     "installed_ver": finding["installed_ver"],
+                    "installed_version_precision": finding.get(
+                        "installed_version_precision", ""
+                    ),
                     "fixed_ver": finding["fixed_ver"],
                     "source": finding["source"],
                     "matched_by": finding["matched_by"],
@@ -3780,6 +3786,9 @@ def audit_credentialed_host(
                     "desc": finding["description"],
                     "package": finding["package_name"],
                     "installed_ver": finding["installed_ver"],
+                    "installed_version_precision": finding.get(
+                        "installed_version_precision", ""
+                    ),
                     "fixed_ver": finding["fixed_ver"],
                     "source": finding["source"],
                     "matched_by": finding["matched_by"],

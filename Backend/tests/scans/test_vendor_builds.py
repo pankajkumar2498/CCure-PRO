@@ -249,3 +249,98 @@ def test_the_countermeasure_belongs_to_the_port_it_was_seen_on():
         )
     )
     assert "CVE-2023-48795" in kept
+
+
+# ── Linux and BSD distribution builds ───────────────────────────────────────
+#
+# The same backport problem, one platform over: nmap reports Ubuntu's OpenSSH
+# as "8.9p1 Ubuntu 3ubuntu0.10", and the upstream ranges cannot say whether
+# Ubuntu has already patched a CVE fixed upstream after 8.9.
+
+
+def _distro_port(version, product="OpenSSH", extra="", port=22, service="ssh"):
+    return {
+        "port": port,
+        "protocol": "tcp",
+        "service": service,
+        "product": product,
+        "version": version,
+        "extra": extra,
+        "version_precision": "exact",
+    }
+
+
+def test_a_distribution_banner_is_a_floor_too():
+    assert version_precision("8.9p1 Ubuntu 3ubuntu0.10") == "floor"
+    assert version_precision("9.2p1 Debian 2+deb12u3") == "floor"
+    kept, withheld = _by_id(
+        verify_host_findings(
+            _host(
+                [_distro_port("8.9p1 Ubuntu 3ubuntu0.10")],
+                [
+                    _cve(
+                        "CVE-2024-6387",
+                        "8.9p1 Ubuntu 3ubuntu0.10",
+                        version_start_including="8.6",
+                        version_end_excluding="9.8",
+                    ),
+                    _cve(
+                        "CVE-2016-6210",
+                        "8.9p1 Ubuntu 3ubuntu0.10",
+                        version_end_excluding="7.3",
+                    ),
+                ],
+            )
+        )
+    )
+    assert kept["CVE-2024-6387"]["confidence"] == Confidence.POTENTIAL.value
+    assert "CVE-2016-6210" in withheld
+
+
+def test_a_distribution_named_only_in_the_extra_info_counts():
+    """Apache reports "2.4.52" with "(Ubuntu)" in nmap's extra-info field."""
+    host = _host(
+        [
+            {
+                **_distro_port(
+                    "2.4.52",
+                    product="Apache httpd",
+                    extra="(Ubuntu)",
+                    port=80,
+                    service="http",
+                ),
+                # As nmap reports it; the product name alone does not name the CPE.
+                "cpe": ["cpe:/a:apache:http_server:2.4.52"],
+            }
+        ],
+        [
+            {
+                "cve_id": "CVE-2023-25690",
+                "description": "mod_proxy request splitting.",
+                "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                "affected": [
+                    {
+                        "vendor": "apache",
+                        "product": "http_server",
+                        "cpe_uri": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+                        "version_start_including": "2.4.0",
+                        "version_end_excluding": "2.4.56",
+                    }
+                ],
+                "port": 80,
+                "protocol": "tcp",
+                "detected_version": "2.4.52",
+            }
+        ],
+    )
+    kept, _ = _by_id(verify_host_findings(host))
+    assert kept["CVE-2023-25690"]["confidence"] == Confidence.POTENTIAL.value
+    (finding,) = build_scan_report({"data": [host]}).vulnerabilities
+    assert "package manager" in finding.remediation.summary
+
+
+def test_a_package_managers_own_version_is_not_mistaken_for_a_banner():
+    """The credentialed path judges these against the distribution's advisories."""
+    for version in ("1:9.6p1-3ubuntu13.5", "1:9.2p1-2+deb12u3", "8.7p1-38.el9"):
+        assert vendor_build_for(version) is None, version
+        assert version_precision(version) == "exact", version

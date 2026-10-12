@@ -169,14 +169,15 @@ DETECTION_SEMANTICS: Dict[DetectionMethod, Tuple[Confidence, str]] = {
     ),
     DetectionMethod.VERSION_IMPRECISE: (
         Confidence.POTENTIAL,
-        "The affected product is running on this port and the version reported "
-        "by the scanner falls inside the vulnerable range, but that version was "
-        'reported as an open-ended bound (for example "9.6.0 or later") rather '
-        "than an exact release. The host may be running a fixed version above "
-        "that bound. The same holds for a vendor's own build of the product "
-        "(for example Microsoft's OpenSSH for Windows), which carries "
-        "backported fixes without changing the version it reports. Confirm the "
-        "exact version or the vendor's patch level before remediating.",
+        "The affected product is present and its version may fall inside the "
+        "vulnerable range, but the version this scan could read is not precise "
+        'enough to decide: an open-ended bound (for example "9.6.0 or '
+        "later\"), a vendor's or distribution's own build that carries "
+        "backported fixes without changing the version it reports (for example "
+        "Microsoft's OpenSSH for Windows, or a Debian or Ubuntu package), or a "
+        'release named without its update level (for example "V19" against a '
+        "fix in V19 Update 2). Confirm the exact version or patch level before "
+        "remediating.",
     ),
     DetectionMethod.SERVICE_PRODUCT: (
         Confidence.POTENTIAL,
@@ -913,8 +914,8 @@ class VendorBuild:
 
     #: Any one matching a version, product or banner string identifies the build.
     patterns: Tuple["re.Pattern[str]", ...]
-    #: The product as the remediation names it.
-    label: str
+    #: The product as the remediation names it; None keeps the CPE's name.
+    label: Optional[str]
     #: Where the fix for this build comes from, appended to the remediation.
     guidance: str
     #: CVEs the build's own vendor has published as not affecting it, each with
@@ -954,6 +955,32 @@ VENDOR_BUILDS: Tuple[VendorBuild, ...] = (
                 "(https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-6387)"
             ),
         },
+    ),
+    VendorBuild(
+        # A distribution names itself in the service string nmap reports —
+        # "8.9p1 Ubuntu 3ubuntu0.10", "9.2p1 Debian 2+deb12u3", Apache's
+        # "(Rocky Linux)" — and patches the package with backported fixes while
+        # it keeps reporting the upstream release. Matched as whole words only:
+        # a package manager's own version ("1:9.6p1-3ubuntu13.5",
+        # "2+deb12u3") never reaches this test as a service string, and the
+        # credentialed path judges those against the distribution's advisories.
+        # RHEL's OpenSSH banner names no distribution, so it is not covered.
+        patterns=(
+            re.compile(
+                r"\b(?:ubuntu|debian|raspbian|red hat|rhel|centos|rocky linux|"
+                r"almalinux|fedora|suse|opensuse|freebsd)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        label=None,
+        guidance=(
+            "The service reports a distribution's build of the product, which the "
+            "distribution patches with backported fixes without changing the "
+            "upstream version it reports. Update the package through the "
+            "system's package manager and check the distribution's security "
+            "tracker for this CVE; a credentialed scan reads the package version "
+            "and settles it."
+        ),
     ),
 )
 
@@ -1041,7 +1068,11 @@ def vendor_not_affected(
 ) -> str:
     """The vendor's statement that its build is not affected by this CVE, or ""."""
     vendor = vendor_build_for(
-        *((service.product, service.version, service.banner) if service else ()),
+        *(
+            (service.product, service.version, service.banner, service.extra)
+            if service
+            else ()
+        ),
         _first(finding_dict, "detected_version", "installed_version"),
     )
     if vendor is None:
@@ -1889,6 +1920,29 @@ def classify_detection(
             # would be affected is present.
             return DetectionMethod.PACKAGE_PRESENT, "", fixed_hint, ""
 
+        # The matcher found the version in range only by reading a release line
+        # ("V19") as its first update; whether the installed update is below the
+        # fix is unknown. It said so rather than confirming.
+        if _as_str(finding_dict.get("installed_version_precision")) == "coarse":
+            return (
+                DetectionMethod.VERSION_IMPRECISE,
+                detected_version,
+                fixed_hint
+                or next(
+                    (
+                        _as_str(
+                            c.get("versionEndExcluding")
+                            or c.get("version_end_excluding")
+                        )
+                        for c in cpes
+                        if c.get("versionEndExcluding")
+                        or c.get("version_end_excluding")
+                    ),
+                    "",
+                ),
+                "",
+            )
+
         disproved = False
         for cpe in cpes:
             verdict = version_in_cpe_range(detected_version, cpe)
@@ -1984,7 +2038,7 @@ def classify_detection(
             # e.g. once an authenticated reading has replaced "for_Windows_9.5"
             # with the file version 9.5.6.3 — which is no more an upstream
             # release than the banner was.
-            if vendor_build_for(candidate.product, candidate.banner):
+            if vendor_build_for(candidate.product, candidate.banner, candidate.extra):
                 precision = "floor"
             verdict = version_in_cpe_range(version, cpe, precision)
             if verdict is None and version and precision != "exact":
@@ -2169,10 +2223,14 @@ def resolve_remediation(
     # vendor build the vendor ships it: "Upgrade OpenBSD OpenSSH to 10.4" is not
     # an action anyone can take on Windows' own OpenSSH.
     vendor = vendor_build_for(
-        *((service.product, service.version, service.banner) if service else ()),
+        *(
+            (service.product, service.version, service.banner, service.extra)
+            if service
+            else ()
+        ),
         detected_version,
     )
-    if vendor:
+    if vendor and vendor.label:
         product_label = vendor.label
 
     if fixed_version or last_affected:

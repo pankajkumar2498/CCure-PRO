@@ -891,6 +891,7 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
                 "max_rank": 0,
                 "max_severity": "Unscored",
                 "kev": False,
+                "kev_confirmed": False,
                 "max_epss": 0.0,
             },
         )
@@ -901,6 +902,8 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
             entry["max_severity"] = finding.severity
         if finding.in_kev:
             entry["kev"] = True
+            if not _unconfirmed(finding):
+                entry["kev_confirmed"] = True
         if finding.epss_score and finding.epss_score > entry["max_epss"]:
             entry["max_epss"] = finding.epss_score
 
@@ -936,6 +939,7 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
     plan = list(groups.values())
     plan.sort(
         key=lambda e: (
+            e["kev_confirmed"],
             e["kev"],
             e["max_rank"],
             len(e["findings"]),
@@ -979,6 +983,22 @@ def _cvss_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
     return _p("<br/>".join(parts), styles["body"], escape=False)
 
 
+def _unconfirmed(finding: StandardizedFinding) -> bool:
+    """
+    Whether the scan could not confirm this finding applies to the host.
+
+    A known-exploited CVE is shown even when unconfirmed — omitting one that is
+    being exploited costs more than one line to verify — but it must say so.
+    The executive table listed an nginx CVE whose version was never detected
+    (10.180.6.30, 12 Oct 2026) exactly like a confirmed one.
+    """
+    return finding.confidence != Confidence.CONFIRMED
+
+
+#: Appended wherever an unconfirmed known-exploited finding is listed.
+UNCONFIRMED_KEV_NOTE = "not confirmed on this host — verify the version first"
+
+
 def _threat_intel_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
     bits: List[str] = []
     if finding.in_kev:
@@ -989,6 +1009,7 @@ def _threat_intel_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
         )
         bits.append(
             f"<font color='#B91C1C'><b>CISA KEV — actively exploited</b></font>{due}"
+            + (f"; <i>{UNCONFIRMED_KEV_NOTE}</i>" if _unconfirmed(finding) else "")
         )
     if finding.epss_score is not None:
         # The percentile is a rank, not a probability. Rendering it as
@@ -2533,11 +2554,17 @@ class ScanReportGenerator:
                 f"High or Critical."
             )
             if kev:
+                unconfirmed_kev = sum(1 for f in kev if _unconfirmed(f))
                 posture += (
                     f" <font color='#B91C1C'><b>{len(kev)} finding(s) appear in the "
                     f"CISA Known Exploited Vulnerabilities catalog and should be "
                     f"treated as the immediate priority.</b></font>"
                 )
+                if unconfirmed_kev:
+                    posture += (
+                        f" {unconfirmed_kev} of them could not be confirmed on "
+                        f"this host and need their version verified first."
+                    )
 
         story.append(_boxed(_p(posture, styles["body"], escape=False), BG_ALT, BORDER))
         story.append(Spacer(1, 4 * mm))
@@ -2608,11 +2635,22 @@ class ScanReportGenerator:
                 ids = ", ".join(
                     sorted({f.primary_cve for f in kev_findings if f.primary_cve})[:6]
                 )
+                unconfirmed_ids = sorted(
+                    {f.primary_cve for f in kev_findings if _unconfirmed(f)}
+                    - {None, ""}
+                )
                 lines.append(
                     f"<b>{len(kev_findings)}</b> finding(s) appear in the CISA "
                     f"Known Exploited Vulnerabilities catalog and are being "
                     f"exploited in the wild: {escape_for_reportlab(ids)}. "
                     f"Treat these as the first call on remediation capacity."
+                    + (
+                        f" Not confirmed on this host: "
+                        f"{escape_for_reportlab(', '.join(unconfirmed_ids))} — "
+                        f"verify the version before acting."
+                        if unconfirmed_ids
+                        else ""
+                    )
                 )
             if likely:
                 top = likely[0]
@@ -2723,11 +2761,14 @@ class ScanReportGenerator:
                 ]
             ]
             for finding in kev[:20]:
+                name = escape_for_reportlab(finding.plugin_name)
+                if _unconfirmed(finding):
+                    name += f"<br/><i>{finding.confidence.value}: {UNCONFIRMED_KEV_NOTE}</i>"
                 rows.append(
                     [
                         _p(finding.primary_cve, styles["body"]),
                         _p(finding.host, styles["body"]),
-                        _p(finding.plugin_name, styles["body"]),
+                        _p(name, styles["body"], escape=False),
                         _severity_badge(finding.severity, styles),
                         _p(finding.kev_due_date or "Not specified", styles["body"]),
                     ]
@@ -2762,8 +2803,10 @@ class ScanReportGenerator:
             ]
             for index, entry in enumerate(plan[:12], start=1):
                 action = entry["action"]
-                if entry["kev"]:
+                if entry["kev_confirmed"]:
                     action = "[Actively exploited] " + action
+                elif entry["kev"]:
+                    action = "[Exploited elsewhere — unconfirmed here] " + action
                 rows.append(
                     [
                         _p(str(index), styles["body"]),

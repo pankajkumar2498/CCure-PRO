@@ -98,6 +98,10 @@ class CredentialedCVE:
     #: never "applies nowhere". The normalizer rules a finding out when the
     #: host runs a platform outside this list (core.checks.platform_scope).
     affected_platforms: list = None
+    #: "coarse" when the installed version names less than the matched bound
+    #: needs — "V19" against a fix in 19.0.2 — so the match is a possibility,
+    #: not a confirmation (``version_too_coarse``). Empty otherwise.
+    installed_version_precision: str = ""
 
     def __post_init__(self):
         if self.exploit_sources is None:
@@ -726,6 +730,11 @@ class VulnMatcher:
                                 affected_software=[self._row_cpe_config(row)],
                                 cvss_version=str(record.get("cvss_version") or ""),
                                 cvss_vector=str(record.get("cvss_vector") or ""),
+                                installed_version_precision=(
+                                    "coarse"
+                                    if self._coarse_against(installed_ver, row)
+                                    else ""
+                                ),
                             )
                         )
                         break  # Only match first compatible package
@@ -1041,6 +1050,9 @@ class VulnMatcher:
                     affected_software=[self._row_cpe_config(row)],
                     cvss_version=str(record.get("cvss_version") or ""),
                     cvss_vector=str(record.get("cvss_vector") or ""),
+                    installed_version_precision=(
+                        "coarse" if self._coarse_against(installed_version, row) else ""
+                    ),
                 )
             )
         return findings
@@ -1258,6 +1270,22 @@ class VulnMatcher:
                 return False
         return True
 
+    @staticmethod
+    def _coarse_against(installed: str, row: dict[str, Any]) -> bool:
+        """Whether any bound of this CPE row is finer than the installed version."""
+        if not installed:
+            return False
+        return any(
+            version_too_coarse(installed, str(row.get(key)))
+            for key in (
+                "version_start_including",
+                "version_start_excluding",
+                "version_end_including",
+                "version_end_excluding",
+            )
+            if row.get(key)
+        )
+
     def _row_fixed_version(self, row: dict[str, Any]) -> str:
         # Only an exclusive upper bound names a fixed release. An inclusive one
         # names the *last vulnerable* release: "Nmap through 7.99" was reported
@@ -1295,6 +1323,7 @@ class VulnMatcher:
                 "cvss_vector": f.cvss_vector,
                 "affected_software": f.affected_software,
                 "affected_platforms": f.affected_platforms,
+                "installed_version_precision": f.installed_version_precision,
             }
             for f in findings
         ]
@@ -1420,6 +1449,26 @@ def is_distro_package_version(version: str) -> bool:
     if not text:
         return False
     return bool(_DISTRO_VERSION_MARKERS.search(text))
+
+
+def version_too_coarse(installed: str, bound: str) -> bool:
+    """
+    Whether an installed version names too little to be compared with a bound.
+
+    A registry entry that reads "V19" names a release line, not the update
+    installed on it: against "fixed in 19.0.2" it could be 19.0.0 or 19.0.3,
+    and reading it as 19.0.0 reported TIA Portal as Confirmed vulnerable to
+    CVE-2023-46280 on 10.180.6.30 (12 Oct 2026) without knowing its update
+    level. True when the installed version has fewer components than the bound,
+    agrees with it on every one it has, and the bound's remaining components
+    are not all zero ("V3.0" against 3.0.0 is decidable; against 3.0.6 it is
+    not).
+    """
+    have = _parse_version(installed)
+    edge = _parse_version(bound)
+    if not have or not edge or len(have) >= len(edge):
+        return False
+    return edge[: len(have)] == have and any(edge[len(have) :])
 
 
 def _parse_version(ver: str) -> tuple[int, ...]:

@@ -1393,6 +1393,68 @@ describe("Phase3Results — contract", () => {
       expect(text).not.toMatch(/10\.50\.0\.12\s*Not detected\s*Low Risk/);
     });
 
+    it("renders a credentialed finding whose affected_software is a list of CPE records", async () => {
+      // The shape a vulnerability audit with a credential stores: scan #9
+      // against 10.180.6.30 crashed the whole report with React error #31,
+      // because this list of objects was rendered as a child.
+      const chrome = {
+        cve_id: "CVE-2025-10585",
+        severity: "Critical",
+        cvss_score: 9.8,
+        description: "Type confusion in V8",
+        package: "Google Chrome",
+        installed_ver: "138.0.7204.184",
+        affected_software: [
+          {
+            vendor: "google",
+            cpe_uri: "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+            product: "chrome",
+            version_end_excluding: "140.0.7339.185",
+            version_end_including: null,
+            version_start_excluding: null,
+            version_start_including: null,
+          },
+        ],
+      };
+      const postgres = {
+        cve_id: "CVE-2026-6473",
+        severity: "High",
+        cvss_score: 8.8,
+        description: "Integer overflow",
+        affected: [
+          {
+            vendor: "postgresql",
+            product: "postgresql",
+            cpe_uri: "cpe:2.3:a:postgresql:postgresql:*:*:*:*:*:*:*:*",
+            version_end_excluding: "14.23",
+          },
+          {
+            vendor: "postgresql",
+            product: "postgresql",
+            cpe_uri: "cpe:2.3:a:postgresql:postgresql:*:*:*:*:*:*:*:*",
+            version_start_including: "18.0",
+            version_end_excluding: "18.4",
+          },
+        ],
+      };
+      const empty = {
+        cve_id: "CVE-2025-30033",
+        severity: "High",
+        affected_software: [],
+      };
+      const hosts = [{ ...P3_HOSTS[0], cves: [chrome, postgres, empty] }];
+      await loaded({ ...REPORT, cc_phase3AuditResults: hosts });
+      const text = visibleText(await openReport());
+      expect(text).toMatch(
+        /CVE-2025-10585\s*Critical.*Affected: Google Chrome 138\.0\.7204\.184/,
+      );
+      expect(text).toMatch(
+        /Affected: postgresql postgresql < 14\.23; >= 18\.0, < 18\.4/,
+      );
+      // An empty list says nothing, so no empty "Affected:" line is printed.
+      expect(text).not.toMatch(/CVE-2025-30033\s*High\s*Affected:/);
+    });
+
     it("never renders a weak credential's password", async () => {
       await loaded(REPORT);
       await openReport();

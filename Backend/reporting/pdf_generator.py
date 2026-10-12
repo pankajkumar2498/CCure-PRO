@@ -2563,7 +2563,9 @@ class ScanReportGenerator:
                 if unconfirmed_kev:
                     posture += (
                         f" {unconfirmed_kev} of them could not be confirmed on "
-                        f"this host and need their version verified first."
+                        f"this host; verify "
+                        f"{'its version' if unconfirmed_kev == 1 else 'their versions'} "
+                        f"first."
                     )
 
         story.append(_boxed(_p(posture, styles["body"], escape=False), BG_ALT, BORDER))

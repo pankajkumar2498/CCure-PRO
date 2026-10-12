@@ -1896,10 +1896,20 @@ def classify_detection(
     # (`to_phase3_dict` drops `open_ports` because phase 2 already reported
     # them). Every such finding came out Confirmed at QoD 97 on the strength of
     # a package name guessed from a banner.
-    is_credentialed_package = explicit in (
-        "credentialed",
-        "credentialed_package",
-        "package",
+    # The origin is also kept apart from the verdict: the first verification
+    # pass writes its verdict back into ``detection_method``, so a finding it
+    # judged "version_imprecise" or "package_present" no longer read as
+    # credentialed on the second pass and fell into the network path — where a
+    # CSAF finding with no CPE range scored QoD 30 and vanished into the
+    # appendix (10.180.6.30, scan #11, 12 Oct 2026).
+    is_credentialed_package = (
+        explicit
+        in (
+            "credentialed",
+            "credentialed_package",
+            "package",
+        )
+        or _as_str(finding_dict.get("finding_origin")) == "credentialed"
     )
     if is_credentialed_package:
         # A package matched by name and version is still not affected when the
@@ -3154,6 +3164,12 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
             observations=observations,
         )
 
+        is_credentialed_origin = _as_str(
+            _first(candidate, "detection_method", "evidence_source")
+        ).lower() in ("credentialed", "credentialed_package", "package") or (
+            _as_str(candidate.get("finding_origin")) == "credentialed"
+        )
+
         if finding.is_reportable:
             # Carry the verdict back onto the record the rest of the pipeline
             # stores. Everything below was computed here and then thrown away:
@@ -3197,6 +3213,10 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
                         "evidence_captured": finding.evidence_available,
                     }
                 )
+                # Where the finding came from, which the verdict just written
+                # over detection_method no longer says.
+                if is_credentialed_origin:
+                    raw["finding_origin"] = "credentialed"
                 # An OS-level finding is about the host, not about whatever
                 # port the candidate happened to be generated from. Leaving the
                 # port attached is how a Google Chrome CVE came to be filed

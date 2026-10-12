@@ -344,3 +344,66 @@ def test_a_package_managers_own_version_is_not_mistaken_for_a_banner():
     for version in ("1:9.6p1-3ubuntu13.5", "1:9.2p1-2+deb12u3", "8.7p1-38.el9"):
         assert vendor_build_for(version) is None, version
         assert version_precision(version) == "exact", version
+
+
+# ── The authenticated correction must not undo any of this ──────────────────
+#
+# Scan #11 (12 Oct 2026): once "for_Windows_9.5" read as a floor, the
+# credentialed pass treated it like nmap's "9.6.0 or later" and replaced it
+# with the host's reading, sshd.exe 9.5.6.3 — Microsoft's file version, which
+# no upstream range describes — and the marker went with it. Twenty OpenSSH
+# CVEs came back as Confirmed.
+
+
+def test_the_correction_leaves_a_vendor_build_alone():
+    from core.tasks import _upgrade_network_fingerprints
+
+    ports = [_ssh_port()]
+    listeners = [{"port": "22", "product": "OpenSSH for Windows", "version": "9.5.6.3"}]
+    assert _upgrade_network_fingerprints(ports, listeners) == {}
+    assert ports[0]["version"] == "for_Windows_9.5"
+
+    ubuntu = [_distro_port("8.9p1 Ubuntu 3ubuntu0.10")]
+    assert (
+        _upgrade_network_fingerprints(
+            ubuntu,
+            [{"port": "22", "product": "OpenSSH", "version": "1:8.9p1-3ubuntu0.10"}],
+        )
+        == {}
+    )
+
+
+def test_the_correction_still_settles_an_open_ended_fingerprint():
+    from core.tasks import _upgrade_network_fingerprints
+
+    ports = [
+        {
+            "port": 5432,
+            "protocol": "tcp",
+            "product": "PostgreSQL DB",
+            "version": "9.6.0 or later",
+        }
+    ]
+    listeners = [{"port": "5432", "product": "PostgreSQL", "version": "18.3"}]
+    assert _upgrade_network_fingerprints(ports, listeners) == {(5432, "tcp"): "18.3"}
+
+
+def test_scan_11s_sequence_ends_potential():
+    from core.tasks import (
+        _restate_findings_for_corrected_ports,
+        _upgrade_network_fingerprints,
+    )
+
+    host = _host(
+        [_ssh_port()],
+        [_cve("CVE-2026-60002", "for_Windows_9.5", version_end_excluding="10.4")],
+        kex=STRICT_KEX,
+    )
+    host.update(verify_host_findings(host).as_host_fields())
+    listeners = [{"port": "22", "product": "OpenSSH for Windows", "version": "9.5.6.3"}]
+    corrected = _upgrade_network_fingerprints(host["open_ports"], listeners)
+    _restate_findings_for_corrected_ports(host["cves"], corrected)
+    host.update(verify_host_findings(host).as_host_fields())
+
+    (record,) = host["cves"]
+    assert record["confidence"] == Confidence.POTENTIAL.value

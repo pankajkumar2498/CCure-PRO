@@ -1847,7 +1847,11 @@ def _upgrade_network_fingerprints(
     corrected. Deliberately conservative: only an exact host-side version, and
     only where the two observations agree on what the product is.
     """
-    from scans.finding_normalizer import _name_tokens, version_precision
+    from scans.finding_normalizer import (
+        _name_tokens,
+        vendor_build_for,
+        version_precision,
+    )
 
     by_key: dict[tuple[int, str], dict] = {}
     for listener in listeners or []:
@@ -1887,6 +1891,19 @@ def _upgrade_network_fingerprints(
             continue
 
         net_version = str(record.get("version") or "").strip()
+        # A vendor's build reports a floor, and the host's own reading of it is
+        # the vendor's file or package version — Microsoft's sshd.exe 9.5.6.3,
+        # Ubuntu's 1:8.9p1-3ubuntu0.10 — which no upstream range describes.
+        # Substituting it dropped the marker that says so, and twenty upstream
+        # OpenSSH CVEs came back as Confirmed (10.180.6.30, scan #11).
+        if vendor_build_for(
+            net_version,
+            record.get("product"),
+            record.get("banner"),
+            record.get("extra"),
+            listener.get("product"),
+        ):
+            continue
         if net_version and version_precision(net_version) == "exact":
             continue  # the scan already has a precise value; leave it alone
 

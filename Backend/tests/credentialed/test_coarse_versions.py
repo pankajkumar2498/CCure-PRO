@@ -122,3 +122,25 @@ def test_a_coarse_credentialed_match_is_potential_not_confirmed():
 
     (record,) = verify_host_findings(_credentialed("")).verified
     assert record["confidence"] == Confidence.CONFIRMED.value
+
+
+def test_the_verdict_survives_the_second_verification_pass():
+    """
+    The pipeline verifies a credentialed finding twice. The first pass writes
+    its verdict into detection_method; on scan #11 "version_imprecise" then
+    stopped the record reading as credentialed, and the second pass sent a
+    CSAF finding with no CPE range down the network path, where it scored QoD
+    30 and was withheld instead of reported as Potential.
+    """
+    for precision, expected in (
+        ("coarse", Confidence.POTENTIAL.value),
+        ("", Confidence.CONFIRMED.value),
+    ):
+        host = _credentialed(precision)
+        for _ in range(2):
+            verification = verify_host_findings(host)
+            assert not verification.suppressed, precision
+            host["cves"] = verification.verified
+            (record,) = host["cves"]
+            assert record["confidence"] == expected
+            assert record["finding_origin"] == "credentialed"

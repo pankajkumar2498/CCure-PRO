@@ -167,13 +167,23 @@ and vulnerability policy are unchanged. See
 targeted tests and pending approvals.
 
 The browser coverage review found Playwright 1.63.0 separately downloaded
-Chromium 153, which is not upgraded by the Debian package fix. Production now
+Chromium 153, which is not upgraded by the Debian package fix. The release candidate
 uses Playwright's [supported Chrome Stable channel](https://playwright.dev/python/docs/browsers#google-chrome--microsoft-edge).
 A build-only stage downloads `google-chrome-stable` from Google's authenticated
 APT repository, verifies the active primary key fingerprint published in
 [Google's key documentation](https://www.google.com/linuxrepositories/), and leaves
-GPG/wget out of the runtime. Installation requires Chrome >= `155.0.8059.39-1`.
+GPG out of the runtime. Installation requires Chrome >= `155.0.8059.39-1`.
 The existing Debian package and libraries are retained.
+
+Chrome's runtime package itself requires `wget` and a libcurl implementation;
+these remain installed. The exact published candidate scan adds 40 findings
+relative to the earlier Debian-only artifact, including six High findings with
+no fixed version reported: `CVE-2026-12064`, `CVE-2026-8286`, `CVE-2026-8458`
+and `CVE-2026-8927` in `libcurl3t64-gnutls`, and `CVE-2026-58471` and
+`CVE-2026-58472` in `wget`. The existing security gate passes; no exception was
+added and no required dependency was removed. Security-owner review of this
+additional runtime risk remains required. Do not describe the image as free
+of High/Critical findings.
 
 All five production browser launch sites use the shared channel selector. An
 unset channel preserves local Playwright defaults; an unreviewed channel fails.

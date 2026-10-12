@@ -85,7 +85,12 @@ def w(rbac_db):
 
 
 def events(db, action):
-    return db.query(AuditLog).filter(AuditLog.action == action).all()
+    return (
+        db.query(AuditLog)
+        .filter(AuditLog.action == action)
+        .order_by(AuditLog.created_at, AuditLog.id)
+        .all()
+    )
 
 
 def platform_events(db, action):

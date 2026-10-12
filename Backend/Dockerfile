@@ -15,9 +15,10 @@
 # ── Base Image ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
 
-# Download Chrome Stable through Google's authenticated APT repository. GPG and
-# wget remain build-only; the fixed browser runs through Playwright's supported
-# chrome channel rather than its vulnerable, separately bundled Chromium 153.
+# Download Chrome Stable through Google's authenticated APT repository. GPG
+# remains build-only; Chrome's runtime package separately requires wget/libcurl.
+# The fixed browser uses Playwright's supported chrome channel rather than its
+# vulnerable, separately bundled Chromium 153.
 FROM base AS chrome-download
 RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg \
     && wget -qO /usr/share/keyrings/google.asc https://dl.google.com/linux/linux_signing_key.pub \

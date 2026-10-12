@@ -76,11 +76,13 @@ docker run -d --name "$DB" --network "$NET" \
   -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD="$DB_PASSWORD" -e POSTGRES_DB="$DB_NAME" \
   "$PG_IMAGE" >/dev/null
 docker run -d --name "$REDIS" --network "$NET" "$REDIS_IMAGE" >/dev/null
+# initdb briefly starts a Unix-socket-only server, then restarts it. Wait for
+# TCP so that its temporary initialization listener cannot satisfy readiness.
 for _ in $(seq 1 60); do
-  docker exec "$DB" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
+  docker exec "$DB" pg_isready -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$DB" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null || fail "postgres did not become ready"
+docker exec "$DB" pg_isready -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" >/dev/null || fail "postgres did not become ready"
 [ -z "$(docker port "$DB")" ] || fail "the disposable database publishes a port"
 pass "disposable postgres and redis ready; database publishes no port"
 

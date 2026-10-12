@@ -2,15 +2,20 @@
 
 ## Decision
 
-**The reported Debian Chromium image blocker is resolved; release is not yet
-approved.** The fixed backend, unchanged frontend and unchanged gateway images
-pass their existing local vulnerability gates. Hosted CI on the eventual published
-candidate, owner approvals, the coordinated rollback rehearsal and the separately
-bundled browser risk review below remain pending. No merge, deployment, production
-configuration change or production data operation was performed. Local results do
-not constitute hosted check statuses or release approval.
+**Release is not yet approved.** The complete candidate is published for review
+as [PR #45](https://github.com/pankajkumar2498/CCure-PRO/pull/45). Its published
+security workflow and all three image gates/smokes passed. The hosted backend
+suite exposed two audit-test assumptions about an empty platform ledger; the
+tests now select their own event IDs while retaining append-only and redaction
+assertions. The one flaky custom-role audit assertion now orders events by
+creation time with the event ID as a tie-breaker.
+The updated candidate needs its mandatory hosted check statuses before release.
+Current statuses and exact artifact IDs belong to the PR's final release evidence.
+Read-only migration preflight and the isolated coordinated rollback rehearsal
+passed. Owner approvals remain pending. No merge, deployment, production
+configuration change or production data operation was performed.
 
-The candidate is the detached review worktree `/tmp/ccure-rbac-phases-20261012`,
+The candidate is the review worktree `/tmp/ccure-rbac-phases-20261012`,
 based on `08ff49e36ccdfe2a556d17a5dd5fca1e3e2bd0e7`. The running application's
 checkout was not patched. The final patch, file list and artifact manifest are
 retained as `/tmp/ccure-rbac-hardening-release-candidate.patch`,
@@ -35,8 +40,10 @@ It runs precisely the two previously excluded execution cases and fails if eithe
 skips. All head and refusal checks remain in Backend Validation, whose explicit
 scratch database is now `pytest_release_validation`. The first hosted setup failed before either execution case: Ubuntu supplied
 pg_dump 16 for PostgreSQL 18. Backup now uses the isolated service container’s
-own matching client. A successful hosted run remains required; no reset tool
-is run against production or a shared database.
+own matching client. Both execution cases then passed with no skips in hosted
+Disposable Reset Validation. Its fresh fixture now explicitly initializes the
+real lazy NVD metadata table before reset. No reset tool is run against production
+or a shared database.
 
 Publishing the complete candidate includes ten already-present prerequisite
 commits between published master `89b113aff8297a8dabce2cd865dbc377736d2400` and the
@@ -77,9 +84,26 @@ browser change and existing sandbox/worker policy remains required. See
 Manual hosted Images runs now retain their exact verified artifacts and checksums
 for coordinated promotion, rather than rebuilding after verification.
 
+The exact hosted frontend payload matches the verified integration bundle.
+All 702 non-test backend payload files and all 126 visible Python distributions
+match the verified browser-fixed backend. The gateway payload also matches;
+its transitive `pycparser` resolved from 3.1 to 3.11, so 57 affected existing
+token-verification cases were executed on that exact hosted gateway and passed.
+Passing RBAC workflows are retained rather than rerun locally. The first backend
+image smoke failed during PostgreSQL initialization; the retry passed, and its
+readiness probe now waits for TCP instead of the temporary Unix-only init server.
+
+The new Chrome package requires runtime `wget` and libcurl. Its scan adds 40
+findings, including six High findings with no fixed version reported; their IDs
+and affected packages are recorded in [CONTAINER_IMAGES.md](../ci/CONTAINER_IMAGES.md).
+The gate passed under the existing policy, with no new exception or dependency
+removal. This is an additional security-owner decision, not a zero-vulnerability
+claim. Exact published reports retain all findings and the existing backlog.
+
 CODEOWNERS contains placeholders, so it records no real approver. Security, CI,
-deployment, enrollment/recovery readiness and final release approvals are pending.
-MFA configuration remains unchanged. Independent IR security verification remains
+deployment and final release approvals are pending. MFA configuration remains
+unchanged; enrollment/recovery readiness is required for the separate future
+`require_enrolment` decision. Independent IR security verification remains
 separately owned. The isolated coordinated artifact-switch rehearsal now passed candidate →
 previous artifacts → candidate recovery. API, worker, web-worker, scheduler,
 frontend, gateway verifier and ingress were switched together. Startup

@@ -79,9 +79,10 @@ from scans.finding_normalizer import (
     RemediationConfidence,
     ScanFindings,
     StandardizedFinding,
-    _comparable_version,
+    boundary_key,
     build_scan_report,
     group_findings_for_report,
+    upgrade_target,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -867,7 +868,11 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
         # performs a single upgrade. The group therefore tracks the highest
         # boundary any of its findings requires.
         product = (remediation.product or "").strip()
-        if product and remediation.fixed_version:
+        # The boundary an upgrade must reach: a first fixed release, or — when
+        # only an inclusive bound is published — the last affected one.
+        boundary = remediation.fixed_version or remediation.last_affected_version
+        is_last = not remediation.fixed_version and bool(boundary)
+        if product and boundary:
             key: Any = product.lower()
         else:
             key = remediation.summary.strip()
@@ -879,7 +884,8 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
                 "product": product,
                 "confidence": remediation.confidence,
                 "patch_url": remediation.patch_url,
-                "fixed_version": remediation.fixed_version,
+                "fixed_version": boundary,
+                "boundary_is_last_affected": is_last,
                 "findings": [],
                 "hosts": set(),
                 "max_rank": 0,
@@ -900,10 +906,11 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
 
         # Keep the highest boundary seen; that is the one upgrade that
         # satisfies every finding in the group.
-        candidate = _comparable_version(remediation.fixed_version or "")
-        current = _comparable_version(entry.get("fixed_version") or "")
-        if candidate and (current is None or candidate > current):
-            entry["fixed_version"] = remediation.fixed_version
+        if boundary and boundary_key(boundary, is_last) > boundary_key(
+            entry.get("fixed_version") or "", entry["boundary_is_last_affected"]
+        ):
+            entry["fixed_version"] = boundary
+            entry["boundary_is_last_affected"] = is_last
 
     # Restate each grouped action in terms of the upgrade rather than the CVE
     # that happened to be seen first, and name what the upgrade clears.
@@ -914,8 +921,13 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
             shown = ", ".join(cves[:8])
             if len(cves) > 8:
                 shown += f", and {len(cves) - 8} more"
+            target = (
+                upgrade_target(None, entry["fixed_version"])
+                if entry["boundary_is_last_affected"]
+                else upgrade_target(entry["fixed_version"])
+            )
             entry["action"] = (
-                f"Upgrade {entry['product']} to {entry['fixed_version']} or later. "
+                f"Upgrade {entry['product']} to {target}. "
                 f"This single upgrade clears all {count} findings recorded against "
                 f"this component: {shown}. Version boundaries are taken from the "
                 f"CPE ranges published for those CVEs."
@@ -1302,7 +1314,7 @@ def _finding_group_card(group, styles: dict) -> List[Any]:
             _boxed(
                 _p(
                     f"<b>Remediation:</b><br/>Upgrade {escape_for_reportlab(group.product)} "
-                    f"to {escape_for_reportlab(group.fixed_version)} or later. This single "
+                    f"to {escape_for_reportlab(group.upgrade_target)}. This single "
                     f"action resolves all {len(group.findings)} findings listed above.",
                     styles["body"],
                     escape=False,

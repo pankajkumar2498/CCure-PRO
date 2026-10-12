@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
+from core.checks.platform_scope import configuration_platforms, declared_platforms
 from engines.credentialed.package_identity import (
     candidate_products,
     curated_identity,
@@ -91,12 +92,20 @@ class CredentialedCVE:
     #: or fixed version to work from, so credentialed findings could not be
     #: grouped by upgrade and their remediation text could not name one.
     affected_software: list = None
+    #: The platforms this record applies to — "android", "macos", … — read
+    #: from the CNA's description, NVD's "running on" configuration nodes or
+    #: the CPE's target_sw. Empty means no restriction could be established,
+    #: never "applies nowhere". The normalizer rules a finding out when the
+    #: host runs a platform outside this list (core.checks.platform_scope).
+    affected_platforms: list = None
 
     def __post_init__(self):
         if self.exploit_sources is None:
             self.exploit_sources = []
         if self.affected_software is None:
             self.affected_software = []
+        if self.affected_platforms is None:
+            self.affected_platforms = []
 
 
 class VulnMatcher:
@@ -238,6 +247,7 @@ class VulnMatcher:
         # depended on how many packages the host happened to have installed.
         # It also issued N queries where this issues two.
         findings = self._match_packages_batch(package_data)
+        self._attach_platform_scope(findings)
 
         elapsed = time.time() - start_time
         log.info(
@@ -287,6 +297,73 @@ class VulnMatcher:
             key=lambda item: (item.priority_score, item.cvss_score), reverse=True
         )
         return findings
+
+    def _attach_platform_scope(self, findings: list[CredentialedCVE]) -> None:
+        """
+        Record which platforms each CPE-matched finding's record applies to.
+
+        The ``cpe`` table is NVD's configuration flattened to its vulnerable
+        entries, so "chrome AND running on iphone_os" arrives as plain
+        "chrome". On a Windows host that reported 413 Chrome CVEs published
+        for Android, Mac, iOS, Linux and ChromeOS. The configuration is read
+        back from the CVE record here, once, for the findings that survived
+        version matching — not in the main query, where it would be fetched
+        for every one of Chrome's ~5,600 candidate rows.
+
+        This only records the scope. Ruling a finding out is the normalizer's
+        decision, so the candidate is still counted and named in the report's
+        suppressed-candidates appendix rather than vanishing here.
+        """
+        scoped = [f for f in findings if f.matched_by == "cpe" and f.affected_software]
+        if not scoped:
+            return
+        configurations: dict[str, Any] = {}
+        try:
+            with self.engine.connect() as conn:
+                rows = (
+                    conn.execute(
+                        text(
+                            "SELECT cve_id, raw_json->'configurations' AS configurations "
+                            "FROM cve WHERE cve_id = ANY(:ids)"
+                        ),
+                        {"ids": sorted({f.cve_id for f in scoped})},
+                    )
+                    .mappings()
+                    .all()
+                )
+            configurations = {r["cve_id"]: r["configurations"] for r in rows}
+        except SQLAlchemyError as exc:
+            # The description is still read below; only the configuration half
+            # of the scope is lost, and losing it restricts nothing.
+            log.warning("Could not read CVE configurations for platform scope: %s", exc)
+
+        for finding in scoped:
+            matched = finding.affected_software[0]
+            installed = finding.installed_ver
+
+            def version_matches(match: dict, installed: str = installed) -> bool:
+                if not installed:
+                    return True
+                return self._installed_version_matches(
+                    installed,
+                    {
+                        "cpe_uri": match.get("criteria") or "",
+                        "version_start_including": match.get("versionStartIncluding"),
+                        "version_start_excluding": match.get("versionStartExcluding"),
+                        "version_end_including": match.get("versionEndIncluding"),
+                        "version_end_excluding": match.get("versionEndExcluding"),
+                    },
+                )
+
+            configured = configuration_platforms(
+                configurations.get(finding.cve_id),
+                str(matched.get("vendor") or ""),
+                str(matched.get("product") or ""),
+                version_matches,
+            )
+            finding.affected_platforms = list(
+                declared_platforms(finding.description, configured, [finding.cpe_uri])
+            )
 
     @staticmethod
     def _row_cpe_config(row) -> dict:
@@ -1182,11 +1259,13 @@ class VulnMatcher:
         return True
 
     def _row_fixed_version(self, row: dict[str, Any]) -> str:
-        for key in ("version_end_excluding", "version_end_including"):
-            value = row.get(key)
-            if value:
-                return str(value)
-        return ""
+        # Only an exclusive upper bound names a fixed release. An inclusive one
+        # names the *last vulnerable* release: "Nmap through 7.99" was reported
+        # as "fixed in 7.99" and the report advised upgrading to it. The bound
+        # still travels in affected_software, where the normalizer words it as
+        # "a release later than 7.99".
+        value = row.get("version_end_excluding")
+        return str(value) if value else ""
 
     def to_report_format(self, findings: list[CredentialedCVE]) -> list[dict[str, Any]]:
         return [
@@ -1215,6 +1294,7 @@ class VulnMatcher:
                 "cvss_version": f.cvss_version,
                 "cvss_vector": f.cvss_vector,
                 "affected_software": f.affected_software,
+                "affected_platforms": f.affected_platforms,
             }
             for f in findings
         ]

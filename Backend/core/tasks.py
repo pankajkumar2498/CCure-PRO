@@ -1810,6 +1810,16 @@ def _restate_findings_for_corrected_ports(
         if str(finding.get("detected_version") or "").strip() == version:
             continue
         finding["detected_version"] = version
+        # What the previous verification pass derived from the superseded
+        # version goes with it. Left in place, "fixed in 14.23" — the first
+        # branch's boundary, chosen while the version was only "9.6.0 or
+        # later" — was read back as if the feed had published it, and an 18.3
+        # server was told to upgrade to 14.23. Nothing a plugin or feed
+        # supplied is touched: derived evidence is marked as such.
+        finding.pop("fixed_version", None)
+        finding.pop("last_affected_version", None)
+        if finding.get("evidence_captured") is False:
+            finding.pop("evidence", None)
         restated += 1
     return restated
 

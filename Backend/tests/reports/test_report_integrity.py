@@ -493,7 +493,12 @@ def test_inclusive_upper_bound_produces_upgrade_past_wording():
     remediation = (
         build_scan_report(_ssh_payload("8.2p1")).vulnerabilities[0].remediation
     )
-    assert remediation.fixed_version == "8.7"
+    # 8.7 is the last release published as affected, so it is not a fixed
+    # version. Recorded as one, it was written back onto the finding and the
+    # next verification pass advised "upgrade to 8.7 or later".
+    assert remediation.fixed_version is None
+    assert remediation.last_affected_version == "8.7"
+    assert remediation.upgrade_target == "a release later than 8.7"
     assert "later than 8.7" in remediation.summary
 
 
@@ -1116,3 +1121,167 @@ def test_configuration_findings_are_actionable_remediations():
         confidence=RemediationConfidence.CONFIGURATION_GUIDANCE,
     )
     assert remediation.is_actionable
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Upgrade boundaries — scan #9, 10.180.6.30, 12 Oct 2026
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: CVE-2026-6473 as the CVE database returns it: one range per supported branch.
+POSTGRES_BRANCHES = [
+    {
+        "vendor": "postgresql",
+        "product": "postgresql",
+        "cpe_uri": "cpe:2.3:a:postgresql:postgresql:*:*:*:*:*:*:*:*",
+        "version_start_including": start,
+        "version_end_excluding": end,
+    }
+    for start, end in (
+        (None, "14.23"),
+        ("15.0", "15.18"),
+        ("16.0", "16.14"),
+        ("17.0", "17.10"),
+        ("18.0", "18.4"),
+    )
+]
+
+
+def _postgres_18_3_payload():
+    return _payload(
+        [
+            {
+                "port": 5432,
+                "protocol": "tcp",
+                "service": "postgresql",
+                "product": "PostgreSQL DB",
+                "version": "18.3",
+                "version_precision": "exact",
+            }
+        ],
+        [
+            {
+                "cve_id": "CVE-2026-6473",
+                "description": "Integer overflow in PostgreSQL.",
+                "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+                "affected": POSTGRES_BRANCHES,
+                "port": 5432,
+                "detected_version": "18.3",
+            }
+        ],
+    )
+
+
+def test_the_boundary_comes_from_the_branch_the_host_runs():
+    """An 18.3 server was told to upgrade to 14.23 — the first range listed."""
+    remediation = (
+        build_scan_report(_postgres_18_3_payload()).vulnerabilities[0].remediation
+    )
+    assert remediation.fixed_version == "18.4"
+    assert "14.23" not in remediation.summary
+
+
+def _nmap_host():
+    return {
+        "ip_address": "10.180.6.30",
+        "os_guess": "Microsoft Windows 11 Pro",
+        "cves": [
+            {
+                "cve_id": "CVE-2026-58058",
+                "description": "Nmap through 7.99 does not keep the IPv6 "
+                "extension-header walk within the captured packet.",
+                "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+                "detection_method": "credentialed_package",
+                "package": "Nmap 7.95",
+                "installed_version": "7.95",
+                "affected_software": [
+                    {
+                        "vendor": "nmap",
+                        "product": "nmap",
+                        "cpe_uri": "cpe:2.3:a:nmap:nmap:*:*:*:*:*:*:*:*",
+                        "version_end_including": "7.99",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_a_last_affected_release_survives_a_second_verification_pass():
+    """
+    The pipeline verifies a credentialed host twice — once when the audit
+    produces its findings and again when they are merged into the network
+    scan. The first pass wrote 7.99 back as ``fixed_version`` and the second
+    read it as a first fixed release: "Upgrade Nmap to version 7.99 or later",
+    for a CVE whose own description says "through 7.99".
+    """
+    from scans.finding_normalizer import verify_host_findings
+
+    host = _nmap_host()
+    for _ in range(2):
+        verification = verify_host_findings(host)
+        host["cves"] = verification.verified
+        record = host["cves"][0]
+        assert not record["fixed_version"]
+        assert record["last_affected_version"] == "7.99"
+
+    remediation = build_scan_report({"data": [host]}).vulnerabilities[0].remediation
+    assert remediation.upgrade_target == "a release later than 7.99"
+    assert "7.99 or later" not in remediation.summary
+
+
+def _boundary_finding(index, fixed=None, last=None):
+    from scans.finding_normalizer import Remediation, StandardizedFinding
+
+    return StandardizedFinding(
+        plugin_id=f"CVE-2025-500{index}",
+        plugin_name=f"CVE-2025-500{index}",
+        cve_ids=[f"CVE-2025-500{index}"],
+        host="10.180.6.30",
+        severity="Medium",
+        remediation=Remediation(
+            summary=f"Upgrade Oracle Mysql (CVE-2025-500{index}).",
+            confidence=RemediationConfidence.VERSION_BOUNDARY,
+            fixed_version=fixed,
+            last_affected_version=last,
+            product="Oracle Mysql",
+        ),
+    )
+
+
+def test_a_group_names_the_furthest_upgrade_and_says_which_kind_it_is():
+    """MySQL 8.0.40 was told to upgrade to 8.0.44, which CVE-2026-21964 names."""
+    from scans.finding_normalizer import group_findings_for_report
+
+    group = group_findings_for_report(
+        [
+            _boundary_finding(1, fixed="8.0.41"),
+            _boundary_finding(2, last="8.0.42"),
+            _boundary_finding(3, last="8.0.44"),
+        ]
+    )[0]
+    assert len(group.findings) == 3
+    assert group.upgrade_target == "a release later than 8.0.44"
+
+    group = group_findings_for_report(
+        [
+            _boundary_finding(1, fixed="8.0.45"),
+            _boundary_finding(2, last="8.0.44"),
+            _boundary_finding(3, last="8.0.42"),
+        ]
+    )[0]
+    assert group.upgrade_target == "8.0.45 or later"
+
+
+def test_the_executive_plan_words_a_last_affected_boundary_correctly():
+    from reporting.pdf_generator import _remediation_plan
+    from scans.finding_normalizer import HostReport, ScanFindings
+
+    findings = [
+        _boundary_finding(1, fixed="8.0.41"),
+        _boundary_finding(2, last="8.0.44"),
+    ]
+    report = ScanFindings(hosts=[HostReport(ip="10.180.6.30", findings=findings)])
+    (entry,) = _remediation_plan(report)
+    assert entry["action"].startswith(
+        "Upgrade Oracle Mysql to a release later than 8.0.44. "
+    )

@@ -966,3 +966,99 @@ def test_correction_rules_out_the_inapplicable_and_keeps_the_real():
     # Fixed in 18.4 — 18.3 is inside the vulnerable range. A genuine finding
     # must survive the correction, not be swept up with the false ones.
     assert "CVE-2026-6473" in kept_after
+
+
+def test_restating_a_finding_drops_what_was_derived_from_the_old_version():
+    """
+    The first verification pass derives a fixed version and an evidence block
+    from the version it was given. Kept after the correction, "fixed in 14.23"
+    — chosen while the version was only "9.6.0 or later" — was read back as if
+    the feed had published it, and an 18.3 server was told to upgrade to 14.23.
+    """
+    from core.tasks import _restate_findings_for_corrected_ports
+
+    derived = {
+        "cve_id": "CVE-2026-6473",
+        "port": 5432,
+        "detected_version": "9.6.0 or later",
+        "fixed_version": "14.23",
+        "evidence": "Detected version  : 9.6.0 or later",
+        "evidence_captured": False,
+    }
+    captured = {
+        "cve_id": "CCURE-CHK-PG-SSL",
+        "port": 5432,
+        "detected_version": "9.6.0 or later",
+        "evidence": "server answered N to SSLRequest",
+        "evidence_captured": True,
+    }
+    _restate_findings_for_corrected_ports([derived, captured], {(5432, "tcp"): "18.3"})
+
+    assert derived["detected_version"] == "18.3"
+    assert "fixed_version" not in derived
+    assert "evidence" not in derived
+    # Scanner output is not ours to discard.
+    assert captured["evidence"] == "server answered N to SSLRequest"
+
+
+def test_a_corrected_version_gets_its_own_branchs_fixed_release():
+    """End to end: scan #9's PostgreSQL record, before and after correction."""
+    from scans.finding_normalizer import build_scan_report, verify_host_findings
+
+    from core.tasks import (
+        _restate_findings_for_corrected_ports,
+        _upgrade_network_fingerprints,
+    )
+
+    branches = [
+        {
+            "criteria": "cpe:2.3:a:postgresql:postgresql:*:*:*:*:*:*:*:*",
+            "versionStartIncluding": start,
+            "versionEndExcluding": end,
+            "vulnerable": True,
+        }
+        for start, end in (
+            (None, "14.23"),
+            ("15.0", "15.18"),
+            ("16.0", "16.14"),
+            ("17.0", "17.10"),
+            ("18.0", "18.4"),
+        )
+    ]
+    host = {
+        "ip_address": "10.180.6.30",
+        "os_guess": "Microsoft Windows 11 Pro",
+        "open_ports": [
+            {
+                "port": 5432,
+                "protocol": "tcp",
+                "product": "PostgreSQL DB",
+                "version": "9.6.0 or later",
+                "version_precision": "floor",
+                "cpe": ["cpe:2.3:a:postgresql:postgresql:9.6:*:*:*:*:*:*:*"],
+            }
+        ],
+        "cves": [
+            {
+                "cve_id": "CVE-2026-6473",
+                "port": 5432,
+                "severity": "High",
+                "detected_version": "9.6.0 or later",
+                "affected_software": [{"nodes": [{"cpeMatch": branches}]}],
+            }
+        ],
+    }
+
+    host.update(verify_host_findings(host).as_host_fields())
+    listeners = [{"port": "5432", "product": "PostgreSQL", "version": "18.3"}]
+    corrected = _upgrade_network_fingerprints(host["open_ports"], listeners)
+    _restate_findings_for_corrected_ports(host["cves"], corrected)
+    host.update(verify_host_findings(host).as_host_fields())
+
+    (record,) = host["cves"]
+    assert record["fixed_version"] == "18.4"
+    assert "9.6.0 or later" not in (record.get("evidence") or "")
+
+    (finding,) = build_scan_report({"data": [host]}).vulnerabilities
+    assert finding.remediation.fixed_version == "18.4"
+    assert "14.23" not in finding.remediation.summary

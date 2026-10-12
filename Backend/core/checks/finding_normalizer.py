@@ -62,6 +62,12 @@ from core.checks.cvss import (
     parse_cvss_vector,
     severity_from_score,
 )
+from core.checks.platform_scope import (
+    PLATFORM_LABELS,
+    declared_platforms,
+    describe_scope,
+    scope_excludes_host,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Secret redaction
@@ -332,6 +338,19 @@ class Remediation:
     #: Grouping on the prose instead collapses nothing, because the summary
     #: names the CVE and is therefore unique per finding.
     product: Optional[str] = None
+    #: The last release published as affected, when only an inclusive upper
+    #: bound is known. Kept apart from ``fixed_version`` because the two ask
+    #: for different upgrades: "8.0.42 or later" includes 8.0.42, "later than
+    #: 8.0.44" does not. Folding this into ``fixed_version`` is how a report
+    #: told an administrator to upgrade MySQL to 8.0.44, a release the same
+    #: CVE names as vulnerable — the value was written back onto the record and
+    #: read on the next verification pass as a first fixed release.
+    last_affected_version: Optional[str] = None
+
+    @property
+    def upgrade_target(self) -> str:
+        """The release to upgrade to, as a phrase; "" when none is known."""
+        return upgrade_target(self.fixed_version, self.last_affected_version)
 
     @property
     def is_actionable(self) -> bool:
@@ -367,6 +386,12 @@ class StandardizedFinding:
     #: made the call, so the suppression reason states what actually happened
     #: rather than inferring it from which fields happen to be populated.
     suppression_basis: str = ""
+    #: When ``suppression_basis`` is "platform_mismatch" because the record
+    #: names its platforms: those platforms, and the one this host runs. Kept so
+    #: the appendix can say "published for Android only; this host runs
+    #: Windows" rather than a sentence that fits every mismatch.
+    applies_to_platforms: Tuple[str, ...] = ()
+    host_platform: str = ""
 
     # ── Scoring (never fabricated) ───────────────────────────────────────────
     cvss: Optional[CvssData] = None
@@ -1576,6 +1601,23 @@ def _classify_platform_finding(
     return DetectionMethod.OS_REPORTED, os_version, fixed_hint, ""
 
 
+def record_platform_scope(
+    finding_dict: Dict[str, Any], cpes: Optional[List[Dict[str, Any]]] = None
+) -> Tuple[str, ...]:
+    """The platforms a candidate's record says it applies to; () for any."""
+    if cpes is None:
+        cpes = _cpe_products(
+            _first(finding_dict, "affected_software", "affected", "cpe_ids", "cpes")
+            or []
+        )
+    configured = finding_dict.get("affected_platforms")
+    return declared_platforms(
+        _first(finding_dict, "description", "desc", "details", "summary"),
+        configured if isinstance(configured, (list, tuple)) else None,
+        [c.get("cpe23Uri") for c in cpes],
+    )
+
+
 def classify_detection(
     finding_dict: Dict[str, Any],
     service: Optional[ServiceRecord],
@@ -1662,6 +1704,18 @@ def classify_detection(
         "package",
     )
     if is_credentialed_package:
+        # A package matched by name and version is still not affected when the
+        # record is about another platform's build of it. The matcher reads
+        # NVD's "running on" nodes into affected_platforms; the description
+        # and the CPE's target_sw are read here as well, so payloads stored
+        # before the matcher did so are judged the same way.
+        if scope_excludes_host(record_platform_scope(finding_dict, cpes), host_os):
+            return (
+                DetectionMethod.UNVERIFIED,
+                detected_version,
+                fixed_hint,
+                "platform_mismatch",
+            )
         if not detected_version:
             # The package is installed but the audit did not capture a version,
             # so vulnerability cannot be asserted — only that the package which
@@ -1858,6 +1912,7 @@ def resolve_remediation(
     references: List[str],
     service: Optional[ServiceRecord],
     fixed_version_hint: str = "",
+    detected_version: str = "",
 ) -> Remediation:
     """
     Build remediation guidance from structured data only.
@@ -1878,16 +1933,30 @@ def resolve_remediation(
 
     product_label = ""
     fixed_version = fixed_version_hint
-    boundary_is_exclusive = bool(fixed_version_hint)
+    last_affected = ""
 
-    for cpe in _cpe_products(affected_software):
-        if service and not _cpe_matches_product(cpe, service):
-            continue
+    cpes = [
+        cpe
+        for cpe in _cpe_products(affected_software)
+        if not (service and not _cpe_matches_product(cpe, service))
+    ]
+    # A record often publishes one range per supported branch — PostgreSQL's
+    # run < 14.23, 15.0–15.18, … 18.0–18.4. The boundary that applies is the
+    # one from the range this host's version falls in; taking the first range
+    # listed told an 18.3 server to upgrade to 14.23.
+    if detected_version:
+        containing = [
+            cpe for cpe in cpes if version_in_cpe_range(detected_version, cpe) is True
+        ]
+        if containing:
+            cpes = containing
+
+    for cpe in cpes:
         vendor = _as_str(cpe.get("vendor")).replace("_", " ").title()
         product = _as_str(cpe.get("product")).replace("_", " ").title()
         if product:
             product_label = f"{vendor} {product}".strip()
-        if not fixed_version:
+        if not fixed_version and not last_affected:
             # versionEndExcluding names the first fixed release. When only an
             # inclusive upper bound is published, the last vulnerable release
             # is known instead, so the guidance is worded accordingly.
@@ -1896,27 +1965,23 @@ def resolve_remediation(
             )
             if exclusive:
                 fixed_version = exclusive
-                boundary_is_exclusive = True
             else:
-                inclusive = _as_str(
+                last_affected = _as_str(
                     cpe.get("versionEndIncluding") or cpe.get("version_end_including")
                 )
-                if inclusive:
-                    fixed_version = inclusive
-                    boundary_is_exclusive = False
-        if fixed_version and product_label:
+        if (fixed_version or last_affected) and product_label:
             break
 
     if not product_label and service:
         product_label = service.product or service.service_name
 
-    if fixed_version:
+    if fixed_version or last_affected:
         target = product_label or "the affected component"
-        if boundary_is_exclusive:
+        if fixed_version:
             action = f"Upgrade {target} to version {fixed_version} or later."
         else:
             action = (
-                f"Upgrade {target} to a release later than {fixed_version}; that "
+                f"Upgrade {target} to a release later than {last_affected}; that "
                 f"version is the last one published as affected."
             )
         return Remediation(
@@ -1925,7 +1990,8 @@ def resolve_remediation(
                 f"published for {cve_id or 'this finding'}."
             ),
             confidence=RemediationConfidence.VERSION_BOUNDARY,
-            fixed_version=fixed_version,
+            fixed_version=fixed_version or None,
+            last_affected_version=last_affected or None,
             product=product_label or None,
         )
 
@@ -2000,9 +2066,17 @@ def _build_evidence(
     (banner, detected version, matched range) and flagged as derived, so it is
     never presented as captured tool output.
     """
-    raw = _as_str(
-        _first(finding_dict, "plugin_output", "evidence", "proof", "output", "detail")
-    )
+    if finding_dict.get("evidence_captured") is False:
+        # Derived on an earlier pass: rebuild it from what is recorded now.
+        raw = _as_str(
+            _first(finding_dict, "plugin_output", "proof", "output", "detail")
+        )
+    else:
+        raw = _as_str(
+            _first(
+                finding_dict, "plugin_output", "evidence", "proof", "output", "detail"
+            )
+        )
     if raw:
         return redact_sensitive_data(raw), True
 
@@ -2135,8 +2209,22 @@ def parse_raw_finding(
             references.append(nvd_url)
 
     remediation = resolve_remediation(
-        finding_dict, primary_cve, affected_software, references, service, fixed_hint
+        finding_dict,
+        primary_cve,
+        affected_software,
+        references,
+        service,
+        fixed_hint,
+        detected_version=detected_version,
     )
+
+    applies_to: Tuple[str, ...] = ()
+    host_family = ""
+    if suppression_basis == "platform_mismatch":
+        applies_to = record_platform_scope(finding_dict)
+        host_family = scope_excludes_host(applies_to, host_os)
+        if not host_family:
+            applies_to = ()
 
     evidence, evidence_real = _build_evidence(
         finding_dict, service, detected_version, method, primary_cve
@@ -2195,6 +2283,8 @@ def parse_raw_finding(
         service_product=service.product if service else "",
         detected_version=detected_version,
         suppression_basis=suppression_basis,
+        applies_to_platforms=applies_to,
+        host_platform=host_family,
         cvss=cvss,
         severity=severity,
         severity_source=source,
@@ -2495,6 +2585,32 @@ def _extract_credentialed_host(report: Dict[str, Any]) -> Optional[Dict[str, Any
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def upgrade_target(
+    fixed_version: Optional[str], last_affected_version: Optional[str] = None
+) -> str:
+    """
+    The release an upgrade must reach, as a phrase for "Upgrade X to …".
+
+    "8.0.42 or later" when the first fixed release is known; "a release later
+    than 8.0.44" when only the last affected one is. "" when neither is.
+    """
+    if fixed_version:
+        return f"{fixed_version} or later"
+    if last_affected_version:
+        return f"a release later than {last_affected_version}"
+    return ""
+
+
+def boundary_key(version: str, is_last_affected: bool) -> Tuple[Tuple[int, ...], int]:
+    """
+    Order upgrade boundaries by how far they require the upgrade to go.
+
+    A last-affected release outranks a fixed release with the same number:
+    "later than 8.0.44" asks for more than "8.0.44 or later".
+    """
+    return (_comparable_version(version or "") or (), 1 if is_last_affected else 0)
+
+
 @dataclass
 class FindingGroup:
     """
@@ -2510,8 +2626,18 @@ class FindingGroup:
     """
 
     product: str
+    #: The boundary the group's upgrade must reach. A first fixed release,
+    #: unless ``boundary_is_last_affected`` says it is the last vulnerable one.
     fixed_version: str
     findings: List[StandardizedFinding] = field(default_factory=list)
+    boundary_is_last_affected: bool = False
+
+    @property
+    def upgrade_target(self) -> str:
+        """The release to upgrade to, as a phrase ("… or later")."""
+        if self.boundary_is_last_affected:
+            return upgrade_target(None, self.fixed_version)
+        return upgrade_target(self.fixed_version)
 
     @property
     def representative(self) -> StandardizedFinding:
@@ -2574,7 +2700,9 @@ def group_findings_for_report(
         remediation = finding.remediation
         product = (remediation.product or "").strip() if remediation else ""
         fixed = (remediation.fixed_version or "").strip() if remediation else ""
-        if not product or not fixed:
+        last = (remediation.last_affected_version or "").strip() if remediation else ""
+        boundary, is_last = (fixed, False) if fixed else (last, bool(last))
+        if not product or not boundary:
             singles.append(
                 FindingGroup(product="", fixed_version="", findings=[finding])
             )
@@ -2587,13 +2715,19 @@ def group_findings_for_report(
         # cannot disagree about how much work there is.
         key = (finding.host, product.lower())
         entry = grouped.setdefault(
-            key, FindingGroup(product=product, fixed_version=fixed)
+            key,
+            FindingGroup(
+                product=product,
+                fixed_version=boundary,
+                boundary_is_last_affected=is_last,
+            ),
         )
         entry.findings.append(finding)
-        candidate = _comparable_version(fixed)
-        current = _comparable_version(entry.fixed_version)
-        if candidate and (not current or candidate > current):
-            entry.fixed_version = fixed
+        if boundary_key(boundary, is_last) > boundary_key(
+            entry.fixed_version, entry.boundary_is_last_affected
+        ):
+            entry.fixed_version = boundary
+            entry.boundary_is_last_affected = is_last
 
     result: List[FindingGroup] = []
     for entry in grouped.values():
@@ -2630,6 +2764,13 @@ def suppression_reason(finding: StandardizedFinding) -> str:
                 f"range published for this record."
             )
         if finding.suppression_basis == "platform_mismatch":
+            if finding.applies_to_platforms and finding.host_platform:
+                return (
+                    f"Ruled out: this record is published for "
+                    f"{describe_scope(finding.applies_to_platforms)} only, and "
+                    f"this host runs "
+                    f"{PLATFORM_LABELS.get(finding.host_platform, finding.host_platform)}."
+                )
             return (
                 "Ruled out: every published configuration for this record is "
                 "scoped to a platform this host is not running."
@@ -2753,10 +2894,24 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
                         "epss_percentile": finding.epss_percentile,
                         "in_kev": finding.in_kev,
                         "kev_due_date": finding.kev_due_date or None,
+                        # A first fixed release only. The last affected one
+                        # travels under its own key: written here as
+                        # fixed_version, the next verification pass read it
+                        # back as a fixed release and advised upgrading to a
+                        # version the CVE names as vulnerable.
                         "fixed_version": getattr(
                             finding.remediation, "fixed_version", ""
                         ),
+                        "last_affected_version": getattr(
+                            finding.remediation, "last_affected_version", None
+                        ),
                         "evidence": finding.evidence,
+                        # Whether that evidence is scanner output or a block
+                        # this module derived. Without it, the next pass found
+                        # derived text under "evidence" and presented it as
+                        # captured output — and kept a "Detected version" line
+                        # an authenticated correction had since superseded.
+                        "evidence_captured": finding.evidence_available,
                     }
                 )
                 # An OS-level finding is about the host, not about whatever

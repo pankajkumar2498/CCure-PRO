@@ -2301,16 +2301,28 @@ def _apply_credentialed_enrichment(
         # findings, so re-verification cannot rediscover them. Carrying their
         # records forward keeps the methodology appendix able to account for
         # every candidate the scan evaluated.
+        #
+        # The same holds for what the credentialed audit ruled out when it
+        # verified its own findings: only its survivors arrive in new_findings.
+        # Its suppressed list was dropped here, so a vulnerability audit's
+        # appendix never named a single credentialed candidate it withheld —
+        # on 10.180.6.30 (scan #10, 12 Oct 2026) that was 410 Chrome CVEs
+        # published for other platforms, removed without a trace.
         seen = {
             (item.get("identifier"), item.get("host"))
             for item in fields["suppressed_cves"]
         }
-        fields["suppressed_cves"] = fields["suppressed_cves"] + [
-            item
-            for item in prior_suppressed
-            if (item.get("identifier"), item.get("host")) not in seen
-        ]
-        fields["candidates_evaluated"] = prior_evaluated + len(new_findings)
+        carried = []
+        for item in prior_suppressed + list(stored_report.get("suppressed_cves") or []):
+            key = (item.get("identifier"), item.get("host"))
+            if key not in seen:
+                seen.add(key)
+                carried.append(item)
+        fields["suppressed_cves"] = fields["suppressed_cves"] + carried
+        # Everything the audit evaluated, not only what it kept.
+        fields["candidates_evaluated"] = prior_evaluated + int(
+            stored_report.get("candidates_evaluated") or len(new_findings)
+        )
         host.update(fields)
 
         score, level = calculate_risk(

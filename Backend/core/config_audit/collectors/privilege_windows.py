@@ -114,8 +114,12 @@ _UNQUOTED_SERVICE_PATH = _emit(
     "  $t = $p.Trim(); "
     # Already quoted -> not hijackable.
     "  if ($t.StartsWith('\"')) { return }; "
-    # No space in the executable portion -> nothing to hijack.
-    "  $exe = $t; $sp = $t.IndexOf('.exe'); "
+    # No space in the executable portion -> nothing to hijack. The search for
+    # ".exe" must ignore case: String.IndexOf(string) is case-sensitive, so
+    # "c:\oraclexe\...\bin\ORACLE.EXE XE" found no ".exe", the argument
+    # stayed in the path, and its space was reported as a hijackable gap in a
+    # path that has none (10.180.6.30, 12 Oct 2026).
+    "  $exe = $t; $sp = $t.IndexOf('.exe', [System.StringComparison]::OrdinalIgnoreCase); "
     "  if ($sp -ge 0) { $exe = $t.Substring(0, $sp + 4) }; "
     "  if ($exe -notmatch ' ') { return }; "
     # Under %SystemRoot% the directories are already admin-only.

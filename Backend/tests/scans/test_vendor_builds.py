@@ -407,3 +407,30 @@ def test_scan_11s_sequence_ends_potential():
 
     (record,) = host["cves"]
     assert record["confidence"] == Confidence.POTENTIAL.value
+
+
+def test_a_record_with_no_version_stays_withheld_against_a_vendor_build():
+    """
+    "openssh:*" names the product and no version, so no version — exact or
+    floor — decides it. Scan #12 promoted seven such records (a 2008 Red Hat
+    package trojan among them) from withheld to Potential once the build read
+    as a floor; they belong where an exact version leaves them.
+    """
+    unversioned = {
+        "cve_id": "CVE-2008-3844",
+        "description": "Trojaned OpenSSH packages.",
+        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "affected": [{"vendor": "openbsd", "product": "openssh", "cpe_uri": OPENSSH}],
+        "port": 22,
+        "protocol": "tcp",
+        "detected_version": "for_Windows_9.5",
+    }
+    for version in ("for_Windows_9.5", "9.5p1"):
+        port = _ssh_port(version=version)
+        kept, withheld = _by_id(
+            verify_host_findings(
+                _host([port], [{**unversioned, "detected_version": version}])
+            )
+        )
+        assert "CVE-2008-3844" not in kept, version
+        assert "CVE-2008-3844" in withheld, version

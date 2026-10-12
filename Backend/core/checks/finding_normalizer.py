@@ -1158,6 +1158,28 @@ def effective_precision(version: str, recorded: str = "") -> str:
     return version_precision(version)
 
 
+def _publishes_version(cpe: Dict[str, Any]) -> bool:
+    """Whether a CPE entry states any version: a bound, or a pinned release."""
+    if any(
+        cpe.get(camel) or cpe.get(snake)
+        for camel, snake in (
+            ("versionStartIncluding", "version_start_including"),
+            ("versionStartExcluding", "version_start_excluding"),
+            ("versionEndIncluding", "version_end_including"),
+            ("versionEndExcluding", "version_end_excluding"),
+        )
+    ):
+        return True
+    uri = _as_str(
+        cpe.get("cpe23Uri")
+        or cpe.get("cpe23_uri")
+        or cpe.get("cpe_uri")
+        or cpe.get("criteria")
+    )
+    parts = uri.split(":")
+    return len(parts) > 5 and parts[5] not in ("*", "-", "")
+
+
 def version_in_cpe_range(
     detected: str, cpe: Dict[str, Any], recorded_precision: str = ""
 ) -> Optional[bool]:
@@ -2051,10 +2073,24 @@ def classify_detection(
             if vendor_build_for(candidate.product, candidate.banner, candidate.extra):
                 precision = "floor"
             verdict = version_in_cpe_range(version, cpe, precision)
-            if verdict is None and version and precision != "exact":
+            if (
+                verdict is None
+                and version
+                and precision != "exact"
+                and _publishes_version(cpe)
+            ):
                 # The fingerprint is a bound, not a value: it lands inside the
                 # published range but cannot rule out a fixed release beyond
                 # the open end. Remember it in case no CPE gives a firm answer.
+                #
+                # Only where the record publishes a version. One that names the
+                # product and nothing else ("openssh:*", "openssh:-") is not
+                # undecided by an imprecise version — no version could decide
+                # it — and stays a product-present candidate, as it is for an
+                # exact one. Without this, seven unversioned OpenSSH records
+                # (a 2008 Red Hat package trojan among them) went from withheld
+                # to reported as soon as OpenSSH for Windows read as a floor
+                # (10.180.6.30, scan #12).
                 imprecise_version = version
                 imprecise_hint = imprecise_hint or _as_str(
                     cpe.get("versionEndExcluding") or cpe.get("version_end_excluding")

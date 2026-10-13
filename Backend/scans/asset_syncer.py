@@ -32,6 +32,7 @@ from db.models.findings import (
 )
 from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
 from core.checks.contract import normalize_severity
+from core.findings.comparison import STATUS_RULED_OUT
 from scans.db_text import sanitize_for_db_in_place
 from scans.cvss import (
     canonical_severity,
@@ -2437,7 +2438,7 @@ def sync_vulnerability_audit(
                 .first()
             )
 
-            if existing_fnd and existing_fnd.status == "fixed":
+            if existing_fnd and existing_fnd.status in ("fixed", STATUS_RULED_OUT):
                 _record_asset_change(
                     db, asset_id, scan_id, "vulnerability_reopened", cve_id, "open"
                 )
@@ -2573,6 +2574,18 @@ def sync_vulnerability_audit(
             .all()
         )
 
+        # What this scan positively ruled out on this host — "Ruled out: the
+        # version detected … falls outside the vulnerable range" and the like.
+        # A finding that disappears for that reason was never there, and
+        # recording it as "fixed" claimed a remediation nobody made: 41
+        # PostgreSQL findings raised against nmap's "9.6.0 or later" were
+        # marked fixed once an authenticated scan read the real 18.3.
+        ruled_out_here = {
+            str(entry.get("identifier") or "").strip().upper()
+            for entry in host.get("suppressed_cves") or []
+            if isinstance(entry, dict)
+            and str(entry.get("reason") or "").startswith("Ruled out")
+        }
         for f in open_findings:
             if _finding_family(_finding_source_from_record(f)) != source_family:
                 continue
@@ -2584,10 +2597,18 @@ def sync_vulnerability_audit(
                 written_components.get(f.vuln_id) or set()
             )
             if f.vuln_id not in found_in_this_scan or gone_product:
-                f.status = "fixed"
+                ruled_out = (
+                    not gone_product and str(f.vuln_id or "").upper() in ruled_out_here
+                )
+                f.status = STATUS_RULED_OUT if ruled_out else "fixed"
                 f.fixed_at = utcnow()
                 _record_asset_change(
-                    db, asset_id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed"
+                    db,
+                    asset_id,
+                    scan_id,
+                    "vulnerability_ruled_out" if ruled_out else "vulnerability_fixed",
+                    f.vuln_id,
+                    f.status,
                 )
 
         # What this scan looked at on this asset, so a later comparison can

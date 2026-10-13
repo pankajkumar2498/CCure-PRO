@@ -32,7 +32,7 @@
 
 import api from "@shell/api/axiosInstance";
 
-/** The backend's five classes, in the order an operator reads them. */
+/** The backend's six classes, in the order an operator reads them. */
 export const CLASSIFICATIONS = [
   {
     value: "new",
@@ -63,6 +63,12 @@ export const CLASSIFICATIONS = [
     label: "Not assessed",
     tone: "neutral",
     hint: "This scan did not look, so nothing can be said either way.",
+  },
+  {
+    value: "ruled_out",
+    label: "Ruled out",
+    tone: "neutral",
+    hint: "This scan established it never applied — not a fix.",
   },
 ];
 

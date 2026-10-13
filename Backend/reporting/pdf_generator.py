@@ -1407,6 +1407,11 @@ _COMPARISON_ROWS = (
         "Not assessed",
         "Was open; this scan did not assess the check, so it is NOT reported fixed",
     ),
+    (
+        "ruled_out",
+        "Ruled out",
+        "Was open; this scan established it never applied, so it is NOT reported fixed",
+    ),
 )
 
 

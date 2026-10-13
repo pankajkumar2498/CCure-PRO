@@ -21,7 +21,11 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import case, func
 
-from core.remediation.states import ACTIVE_STATES, REMEDIATION_STATES
+from core.remediation.states import (
+    ACTIVE_STATES,
+    REMEDIATION_STATES,
+    is_remediation_work,
+)
 
 log = logging.getLogger("ccure.remediation.reporting")
 
@@ -61,6 +65,7 @@ def remediation_report_payload(
         db.query(AssetVulnerability)
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(Asset.org_id == org_id)
+        .filter(is_remediation_work(AssetVulnerability.status))
     )
     if asset_ids:
         base = base.filter(AssetVulnerability.asset_id.in_(list(asset_ids)))

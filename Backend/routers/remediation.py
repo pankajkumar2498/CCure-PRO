@@ -83,6 +83,7 @@ from core.remediation import (
     sla_state,
     withdraw_acceptance,
 )
+from core.remediation.states import is_remediation_work
 from core.remediation.sla import (
     DEFAULT_SLA_DAYS,
     org_sla_setting,
@@ -297,6 +298,7 @@ def remediation_summary(
         db.query(AssetVulnerability)
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(Asset.org_id == org)
+        .filter(is_remediation_work(AssetVulnerability.status))
     )
     if asset_id:
         base = base.filter(AssetVulnerability.asset_id == asset_id)
@@ -364,6 +366,7 @@ def _listing(
         db.query(AssetVulnerability)
         .join(Asset, AssetVulnerability.asset_id == Asset.id)
         .filter(Asset.org_id == org)
+        .filter(is_remediation_work(AssetVulnerability.status))
     )
     if states:
         query = query.filter(AssetVulnerability.remediation_state.in_(states))

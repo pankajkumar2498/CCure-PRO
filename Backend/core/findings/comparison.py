@@ -20,7 +20,8 @@ carries everything this needs and has since before Phase 0:
 * ``first_found_at``  — when it was first seen
 * ``last_found_at``   — when it was last seen
 * ``fixed_at``        — when it was last observed to have gone
-* ``status``          — ``open`` / ``fixed``
+* ``status``          — ``open`` / ``fixed`` / ``ruled_out`` (a later scan
+                        established it never applied)
 
 Reconstructing a baseline without a per-scan occurrence table
 ─────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ __all__ = [
     "CLASS_FIXED",
     "CLASS_REAPPEARED",
     "CLASS_NOT_ASSESSED",
+    "CLASS_RULED_OUT",
     "CLASSIFICATIONS",
     "AssessmentScope",
     "FindingDelta",
@@ -80,6 +82,9 @@ __all__ = [
     "record_assessment_scope",
     "read_assessment_scope",
 ]
+
+#: A finding a later scan established never applied (see asset_syncer).
+STATUS_RULED_OUT = "ruled_out"
 
 #: Open now, and not open at the baseline.
 CLASS_NEW = "new"
@@ -92,6 +97,11 @@ CLASS_REAPPEARED = "reappeared"
 #: Open at the baseline, absent now, and **this scan did not look**. Never
 #: folded into ``fixed`` — see the module docstring.
 CLASS_NOT_ASSESSED = "not_assessed"
+#: Open at the baseline, and this scan established it never applied — a better
+#: reading of the host (an authenticated version, a corrected fingerprint)
+#: put it outside the published range. Not a fix: nothing was remediated, so
+#: remediation verification never acts on it.
+CLASS_RULED_OUT = "ruled_out"
 
 CLASSIFICATIONS: Tuple[str, ...] = (
     CLASS_NEW,
@@ -99,6 +109,7 @@ CLASSIFICATIONS: Tuple[str, ...] = (
     CLASS_FIXED,
     CLASS_REAPPEARED,
     CLASS_NOT_ASSESSED,
+    CLASS_RULED_OUT,
 )
 
 #: Where the per-scan assessment scope lives. ``scans.options`` is JSONB, is
@@ -275,6 +286,9 @@ class ScanComparison:
             # and not told "40 not assessed" has been given a number that
             # implies progress the scan did not establish.
             parts.append(f"{not_assessed} not assessed")
+        ruled_out = self.counts.get(CLASS_RULED_OUT, 0)
+        if ruled_out:
+            parts.append(f"{ruled_out} ruled out")
         return ", ".join(parts)
 
     def as_dict(self, *, include_findings: bool = True) -> Dict[str, Any]:
@@ -497,6 +511,14 @@ def _classify(
         if fixed_at is not None and fixed_at <= baseline_end:
             return CLASS_REAPPEARED
         return CLASS_NEW
+
+    if (
+        open_at_baseline
+        and not seen_by_current
+        and (row.status or "").lower() == (STATUS_RULED_OUT)
+    ):
+        # The sync recorded that this scan ruled it out rather than saw it go.
+        return CLASS_RULED_OUT
 
     if open_at_baseline and not seen_by_current:
         # The finding was open and this scan did not report it. Whether that is

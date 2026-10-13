@@ -60,6 +60,7 @@ const BADGE_VARIANT = {
   still_open: "warning",
   fixed: "success",
   not_assessed: "neutral",
+  ruled_out: "neutral",
 };
 
 function scanLabel(scan) {

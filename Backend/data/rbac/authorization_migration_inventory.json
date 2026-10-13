@@ -1867,7 +1867,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 116,
+      "line": 117,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1877,7 +1877,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 278,
+      "line": 279,
       "function": "remediation_summary",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1887,7 +1887,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 403,
+      "line": 406,
       "function": "overdue_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1897,7 +1897,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 431,
+      "line": 434,
       "function": "pending_verification",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1907,7 +1907,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 460,
+      "line": 463,
       "function": "finding_remediation",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1917,7 +1917,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 476,
+      "line": 479,
       "function": "finding_history",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1927,7 +1927,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 542,
+      "line": 545,
       "function": "get_sla_policy",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1937,7 +1937,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 561,
+      "line": 564,
       "function": "set_sla_policy",
       "mechanism": "require_authorized",
       "permission": "audit.remediation.manage_sla",
@@ -1947,7 +1947,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 631,
+      "line": 634,
       "function": "assign",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1957,7 +1957,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 707,
+      "line": 710,
       "function": "set_state",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1967,7 +1967,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 764,
+      "line": 767,
       "function": "append_note",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1977,7 +1977,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 798,
+      "line": 801,
       "function": "accept_finding_risk",
       "mechanism": "require_authorized",
       "permission": "audit.finding.accept_risk",
@@ -1987,7 +1987,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 860,
+      "line": 863,
       "function": "withdraw_finding_acceptance",
       "mechanism": "require_authorized",
       "permission": "audit.finding.accept_risk",

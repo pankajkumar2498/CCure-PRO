@@ -58,6 +58,7 @@ __all__ = [
     "STATE_REOPENED",
     "STATE_RISK_ACCEPTED",
     "STATE_VERIFIED_FIXED",
+    "is_remediation_work",
     "TERMINAL_STATES",
     "TransitionError",
     "assert_transition",
@@ -268,3 +269,17 @@ COLUMN_AREAS: Dict[str, str] = {
     "remediation_state": "rem.state.open",
     "exception_expires_at": "rem.exc.expiry",
 }
+
+
+def is_remediation_work(column):
+    """
+    SQL predicate: the finding is remediation work at all.
+
+    A finding a later scan ruled out (detection status ``ruled_out``) was never
+    present on the host. It keeps its remediation state — the CHECK constraint
+    has no state for it, and nobody moved it — so every remediation query must
+    leave it out, or it is counted as open work and can go overdue.
+    """
+    from sqlalchemy import or_
+
+    return or_(column.is_(None), column != "ruled_out")

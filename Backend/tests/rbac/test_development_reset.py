@@ -52,9 +52,9 @@ def test_reset_migration_head_gate_only_reads_the_database(rbac_db):
 @pytest.mark.parametrize(
     "heads",
     [
-        {"e5a7c9d1f3b2", "policy_pro_0001", "rank_0001"},
-        {"f6a8c0e2b4d7", "policy_pro_0001"},
-        {"f6a8c0e2b4d7", "policy_pro_0001", "rank_0001", "unreviewed_head"},
+        {"f6a8c0e2b4d7", "policy_pro_0001", "rank_0001"},
+        {"a7c9e1b3d5f8", "policy_pro_0001"},
+        {"a7c9e1b3d5f8", "policy_pro_0001", "rank_0001", "unreviewed_head"},
         set(),
     ],
 )

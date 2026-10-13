@@ -32,8 +32,11 @@ MANIFEST = (
     Path(__file__).resolve().parents[2] / "data/rbac/development_reset_manifest.json"
 )
 # Explicitly reviewed after f6a8c0e2b4d7 removed only organisation subscription
-# columns. Never derive this allowlist from the current migration tree.
-HEADS = {"f6a8c0e2b4d7", "policy_pro_0001", "rank_0001"}
+# columns, and after a7c9e1b3d5f8 (13 Oct 2026) widened only the unique key of
+# asset_vulnerabilities to include component — no RBAC, identity, audit-log or
+# catalogue table, and nothing this reset preserves or removes changes shape.
+# Never derive this allowlist from the current migration tree.
+HEADS = {"a7c9e1b3d5f8", "policy_pro_0001", "rank_0001"}
 SERVICES = ("ccure-api", "ccure-worker", "ccure-web-worker", "ccure-beat")
 NATIVE = (
     "rbac_roles",

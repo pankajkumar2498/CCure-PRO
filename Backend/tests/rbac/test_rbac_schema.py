@@ -923,11 +923,17 @@ def test_the_migrations_form_one_chain_and_the_latest_is_audits_head():
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     heads = set(ScriptDirectory.from_config(cfg).get_heads())
     # RBAC-8 appended c9e3a7b5d1f2 (``users.role_id`` becomes non-authoritative)
-    assert "f6a8c0e2b4d7" in heads
+    assert "a7c9e1b3d5f8" in heads
+    assert _load("a7c9e1b3d5f8").down_revision == "f6a8c0e2b4d7"
     assert _load("f6a8c0e2b4d7").down_revision == "e5a7c9d1f3b2"
     assert _load("e5a7c9d1f3b2").down_revision == "d4f8b2c6e0a1"
     assert _load("d4f8b2c6e0a1").down_revision == "c9e3a7b5d1f2"
-    assert not heads & {"c9e3a7b5d1f2", "b8d2f6a4c0e1", "a7c1e5b3d9f2"}
+    assert not heads & {
+        "c9e3a7b5d1f2",
+        "b8d2f6a4c0e1",
+        "a7c1e5b3d9f2",
+        "f6a8c0e2b4d7",
+    }
     assert len(heads) == 3  # Audit's, policy_pro, rank — still exactly three
 
 

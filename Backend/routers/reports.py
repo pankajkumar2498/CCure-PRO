@@ -521,7 +521,12 @@ def download_report(
                 payload, csv_path, scan_type="network", remediation_context=context
             )
         else:
-            generate_host_inventory_csv(payload, csv_path)
+            # A Basic Network Scan is host discovery only: no ports were probed.
+            generate_host_inventory_csv(
+                payload,
+                csv_path,
+                ports_scanned=(scan.pipeline_mode or "basic") != "basic",
+            )
 
         _audit_report_download(db, user, request, scan, "CSV")
 

@@ -2027,7 +2027,7 @@
     },
     {
       "file": "routers/reports.py",
-      "line": 630,
+      "line": 635,
       "function": "_scan_for_user",
       "mechanism": "acts_across_organisations",
       "permission": null,
@@ -2037,7 +2037,7 @@
     },
     {
       "file": "routers/reports.py",
-      "line": 644,
+      "line": 649,
       "function": "_scan_for_user",
       "mechanism": "resource_organisation_allowed",
       "permission": null,

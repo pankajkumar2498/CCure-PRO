@@ -264,6 +264,51 @@ def _scan_reference_text(meta: Dict[str, Any]) -> str:
     return "Not recorded"
 
 
+#: Report types whose scan policies run no vulnerability checks.
+_INVENTORY_ONLY_REPORTS = frozenset({"host_discovery", "asset_discovery"})
+#: Report types whose scan policies probe no ports.
+_NO_PORT_SCAN_REPORTS = frozenset({"host_discovery"})
+
+
+def _assesses_vulnerabilities(scan_type: str) -> bool:
+    """False for a discovery report: nothing was assessed, so nothing is 0."""
+    return scan_type not in _INVENTORY_ONLY_REPORTS
+
+
+def _scans_ports(scan_type: str) -> bool:
+    """False for host discovery, which identifies hosts without port scanning."""
+    return scan_type not in _NO_PORT_SCAN_REPORTS
+
+
+def _network_reachable_count(findings) -> int:
+    """
+    High/Critical findings in a service the network can actually reach.
+
+    ``attack_surface == "remote"`` describes the *flaw* — its CVSS attack
+    vector — not this host. Counting it as "reachable against a network-
+    listening service" told an executive that 783 of 802 High/Critical
+    findings on a Windows desktop were network-reachable when 12 were bound to
+    an open port at all. A finding counts only when it is bound to a port and
+    that port's service is not known to be host-only or filtered.
+    """
+    exposure: dict = {}
+    for host in findings.reachable_hosts:
+        for service in host.services:
+            key = (host.ip, service.port, (service.protocol or "tcp").lower())
+            exposure[key] = service.exposure or ""
+    count = 0
+    for f in findings.vulnerabilities:
+        if f.severity not in ("Critical", "High") or f.attack_surface != "remote":
+            continue
+        if f.port is None:
+            continue
+        key = (f.host, f.port, (f.protocol or "tcp").lower())
+        if exposure.get(key, "") in ("host_only", "filtered"):
+            continue
+        count += 1
+    return count
+
+
 def _hosts_reported_text(findings) -> str:
     """
     "Hosts reported" counts hosts that answered.
@@ -2537,7 +2582,20 @@ class ScanReportGenerator:
         kev = findings.kev_findings
         actionable = vuln_counts["Critical"] + vuln_counts["High"]
 
-        if total_vulns == 0:
+        assesses = _assesses_vulnerabilities(scan_type)
+        if not assesses:
+            # A discovery scan runs no vulnerability checks. Saying "no
+            # vulnerabilities were confirmed" over 0/0/0/0 tiles read as a
+            # clean bill of health for hosts nobody assessed.
+            posture = (
+                f"Vulnerability assessment was not part of this scan. The "
+                f"{SCAN_POLICY_LABELS.get(scan_type, 'discovery').lower()} policy "
+                f"identifies live hosts"
+                f"{' and their open services' if _scans_ports(scan_type) else ''}; "
+                f"{len(findings.reachable_hosts)} host(s) responded. Run a "
+                f"Vulnerability Audit to assess them."
+            )
+        elif total_vulns == 0:
             posture = (
                 f"No vulnerabilities were confirmed across {len(findings.reachable_hosts)} "
                 f"scanned host(s). Open ports discovered during the scan are "
@@ -2571,290 +2629,314 @@ class ScanReportGenerator:
         story.append(_boxed(_p(posture, styles["body"], escape=False), BG_ALT, BORDER))
         story.append(Spacer(1, 4 * mm))
 
-        # The strip counts vulnerabilities only. It previously mixed the
-        # port-inventory entries into the same row as the severity tiers, so the
-        # row summed to more than the stated finding total.
-        story.append(_kpi_row(vuln_counts, styles))
-        story.append(Spacer(1, 1.5 * mm))
-        # counts includes the port-observation entries, which exist only for
-        # ports that carried no vulnerability finding of their own.
-        informational = counts["None"] + counts["Unscored"]
-        note = (
-            f"The severity tiers above cover the {total_vulns} vulnerability "
-            f"finding(s) and sum to that total."
-        )
-        if informational:
-            note += (
-                f" A further {informational} open port(s) carried no vulnerability "
-                f"finding and are listed in the technical report's port inventory "
-                f"for attack-surface review."
+        # Severity, exposure and remediation describe an assessment; a
+        # discovery scan made none, so they are omitted rather than shown
+        # as zeros.
+        if assesses:
+            # The strip counts vulnerabilities only. It previously mixed the
+            # port-inventory entries into the same row as the severity tiers, so the
+            # row summed to more than the stated finding total.
+            story.append(_kpi_row(vuln_counts, styles))
+            story.append(Spacer(1, 1.5 * mm))
+            # A vulnerability rated None is still a vulnerability; it used to be
+            # added to the port-observation count and called "a further N open
+            # port(s)" — 53 CVEs on one Linux host, beside a sentence saying the
+            # tiles summed to a total they were 53 short of.
+            # The strip shows an Unscored tile whenever there are unscored
+            # findings (see _kpi_row), so the only ones it leaves out are rated None.
+            untiled = vuln_counts.get("None", 0)
+            port_only = sum(
+                1
+                for f in findings.active
+                if f.detection_method == DetectionMethod.PORT_OBSERVATION
             )
-        story.append(_p(note, styles["small"]))
-        story.append(Spacer(1, 4 * mm))
-
-        # ── Attack-surface qualification ─────────────────────────────────────
-        # A Critical whose attack path is a client binary is a different
-        # operational problem from one reachable across the network, and an
-        # executive reading only the tier counts cannot tell them apart.
-        remote_actionable = sum(
-            1
-            for f in findings.vulnerabilities
-            if f.attack_surface == "remote" and f.severity in ("Critical", "High")
-        )
-        if actionable and remote_actionable != actionable:
-            story.append(
-                _boxed(
-                    _p(
-                        f"Of the {actionable} High or Critical finding(s), "
-                        f"<b>{remote_actionable}</b> {'is' if remote_actionable == 1 else 'are'} "
-                        f"reachable against a network-listening service. The "
-                        f"remainder affect client or utility components of the "
-                        f"same packages, which still require the upgrade but are "
-                        f"not exploitable through the open port.",
-                        styles["body"],
-                        escape=False,
-                    ),
-                    colors.HexColor("#FFF7ED"),
-                    colors.HexColor("#FDBA74"),
+            if untiled:
+                note = (
+                    f"The severity tiers above cover {total_vulns - untiled} of the "
+                    f"{total_vulns} vulnerability finding(s). The other {untiled} "
+                    f"{'is' if untiled == 1 else 'are'} rated None and listed in the "
+                    f"technical report."
                 )
-            )
+            else:
+                note = (
+                    f"The severity tiers above cover the {total_vulns} vulnerability "
+                    f"finding(s) and sum to that total."
+                )
+            if port_only:
+                note += (
+                    f" A further {port_only} open port(s) carried no vulnerability "
+                    f"finding and are listed in the technical report's port inventory "
+                    f"for attack-surface review."
+                )
+            story.append(_p(note, styles["small"]))
             story.append(Spacer(1, 4 * mm))
 
-        # ── Exposure signal ──────────────────────────────────────────────────
-        # Severity alone tells a reader how bad a flaw could be, not how likely
-        # it is to be used. KEV membership and EPSS answer that, and they are
-        # what an executive actually decides on, so they lead rather than being
-        # buried in the per-finding detail.
-        kev_findings = [f for f in findings.vulnerabilities if f.in_kev]
-        likely = sorted(
-            (f for f in findings.vulnerabilities if (f.epss_score or 0) >= 0.10),
-            key=lambda f: f.epss_score or 0,
-            reverse=True,
-        )
-        if kev_findings or likely:
-            lines = []
-            if kev_findings:
-                ids = ", ".join(
-                    sorted({f.primary_cve for f in kev_findings if f.primary_cve})[:6]
-                )
-                unconfirmed_ids = sorted(
-                    {f.primary_cve for f in kev_findings if _unconfirmed(f)}
-                    - {None, ""}
-                )
-                lines.append(
-                    f"<b>{len(kev_findings)}</b> finding(s) appear in the CISA "
-                    f"Known Exploited Vulnerabilities catalog and are being "
-                    f"exploited in the wild: {escape_for_reportlab(ids)}. "
-                    f"Treat these as the first call on remediation capacity."
-                    + (
-                        f" Not confirmed on this host: "
-                        f"{escape_for_reportlab(', '.join(unconfirmed_ids))} — "
-                        f"verify the version before acting."
-                        if unconfirmed_ids
-                        else ""
-                    )
-                )
-            if likely:
-                top = likely[0]
-                lines.append(
-                    f"<b>{len(likely)}</b> finding(s) carry a 10% or greater "
-                    f"probability of exploitation within 30 days (EPSS). The "
-                    f"highest is {escape_for_reportlab(top.primary_cve or 'a finding')} "
-                    f"at {(top.epss_score or 0) * 100:.1f}%."
-                )
-            if not kev_findings:
-                lines.append(
-                    "No finding in this scope appears in the CISA Known "
-                    "Exploited Vulnerabilities catalog."
-                )
-            for line in lines:
+            # ── Attack-surface qualification ─────────────────────────────────────
+            # A Critical whose attack path is a client binary is a different
+            # operational problem from one reachable across the network, and an
+            # executive reading only the tier counts cannot tell them apart.
+            remote_actionable = _network_reachable_count(findings)
+            if actionable and remote_actionable != actionable:
                 story.append(
                     _boxed(
-                        _p(line, styles["body"], escape=False),
-                        (
-                            colors.HexColor("#FEF2F2")
-                            if kev_findings
-                            else colors.HexColor("#FFF7ED")
+                        _p(
+                            f"Of the {actionable} High or Critical finding(s), "
+                            f"<b>{remote_actionable}</b> {'is' if remote_actionable == 1 else 'are'} "
+                            f"in a service this scan found listening on the network. "
+                            f"The remainder affect software with no network-reachable "
+                            f"listener on this host — client applications, libraries "
+                            f"and locally used components — which still require the "
+                            f"upgrade but cannot be reached through an open port.",
+                            styles["body"],
+                            escape=False,
                         ),
-                        (
-                            colors.HexColor("#FCA5A5")
-                            if kev_findings
-                            else colors.HexColor("#FDBA74")
-                        ),
+                        colors.HexColor("#FFF7ED"),
+                        colors.HexColor("#FDBA74"),
                     )
                 )
-                story.append(Spacer(1, 2 * mm))
-        story.append(Spacer(1, 3 * mm))
+                story.append(Spacer(1, 4 * mm))
 
-        # ── Distribution ─────────────────────────────────────────────────────
-        story.append(_heading("Severity distribution", styles["h1"], 0))
-        if total_vulns:
-            donut = severity_donut(vuln_counts, font=styles["fonts"]["bold"])
-            bars = severity_bar_chart(
-                vuln_counts,
-                width=CONTENT_W - 80 * mm,
-                font=styles["fonts"]["regular"],
-                bold_font=styles["fonts"]["bold"],
+            # ── Exposure signal ──────────────────────────────────────────────────
+            # Severity alone tells a reader how bad a flaw could be, not how likely
+            # it is to be used. KEV membership and EPSS answer that, and they are
+            # what an executive actually decides on, so they lead rather than being
+            # buried in the per-finding detail.
+            kev_findings = [f for f in findings.vulnerabilities if f.in_kev]
+            likely = sorted(
+                (f for f in findings.vulnerabilities if (f.epss_score or 0) >= 0.10),
+                key=lambda f: f.epss_score or 0,
+                reverse=True,
             )
-            row = Table(
-                [[donut or Spacer(1, 1), bars]],
-                colWidths=[76 * mm, CONTENT_W - 76 * mm],
-            )
-            row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
-            story.append(row)
-        else:
-            story.append(_p("No scored vulnerabilities to plot.", styles["body"]))
-        story.append(Spacer(1, 4 * mm))
-
-        # ── Host ranking ─────────────────────────────────────────────────────
-        if len(findings.reachable_hosts) > 1:
-            rows = [
-                (
-                    h.display_name,
-                    {
-                        t: sum(1 for f in h.vulnerability_findings if f.severity == t)
-                        for t in SEVERITY_TIERS
-                    },
-                )
-                for h in findings.reachable_hosts
-            ]
-            chart = host_risk_chart(
-                rows,
-                width=CONTENT_W,
-                font=styles["fonts"]["regular"],
-                bold_font=styles["fonts"]["bold"],
-            )
-            # Build the chart before writing the heading. Emitting the heading
-            # first left a bare "Most affected hosts" title with nothing beneath
-            # it on any scan with no vulnerabilities to rank.
-            if chart:
-                story.append(_heading("Most affected hosts", styles["h1"], 0))
-                story.append(chart)
-                story.append(Spacer(1, 1.5 * mm))
-                story.append(chart_legend(vuln_counts, font=styles["fonts"]["regular"]))
-                if len(findings.reachable_hosts) > 15:
-                    story.append(Spacer(1, 1.5 * mm))
-                    story.append(
-                        _p(
-                            f"Chart shows the 15 most affected hosts. All "
-                            f"{len(findings.reachable_hosts)} hosts are listed in the "
-                            f"technical report.",
-                            styles["small"],
+            if kev_findings or likely:
+                lines = []
+                if kev_findings:
+                    ids = ", ".join(
+                        sorted({f.primary_cve for f in kev_findings if f.primary_cve})[
+                            :6
+                        ]
+                    )
+                    unconfirmed_ids = sorted(
+                        {f.primary_cve for f in kev_findings if _unconfirmed(f)}
+                        - {None, ""}
+                    )
+                    lines.append(
+                        f"<b>{len(kev_findings)}</b> finding(s) appear in the CISA "
+                        f"Known Exploited Vulnerabilities catalog and are being "
+                        f"exploited in the wild: {escape_for_reportlab(ids)}. "
+                        f"Treat these as the first call on remediation capacity."
+                        + (
+                            f" Not confirmed on this host: "
+                            f"{escape_for_reportlab(', '.join(unconfirmed_ids))} — "
+                            f"verify the version before acting."
+                            if unconfirmed_ids
+                            else ""
                         )
                     )
-            story.append(Spacer(1, 4 * mm))
-
-        # ── Exploited in the wild ────────────────────────────────────────────
-        if kev:
-            story.append(
-                _heading(
-                    "Known exploited vulnerabilities — immediate action",
-                    styles["h1"],
-                    0,
-                )
-            )
-            rows = [
-                [
-                    _p("<b>CVE</b>", styles["th"], escape=False),
-                    _p("<b>Host</b>", styles["th"], escape=False),
-                    _p("<b>Finding</b>", styles["th"], escape=False),
-                    _p("<b>Severity</b>", styles["th"], escape=False),
-                    _p("<b>CISA due date</b>", styles["th"], escape=False),
-                ]
-            ]
-            for finding in kev[:20]:
-                name = escape_for_reportlab(finding.plugin_name)
-                if _unconfirmed(finding):
-                    name += f"<br/><i>{finding.confidence.value}: {UNCONFIRMED_KEV_NOTE}</i>"
-                rows.append(
-                    [
-                        _p(finding.primary_cve, styles["body"]),
-                        _p(finding.host, styles["body"]),
-                        _p(name, styles["body"], escape=False),
-                        _severity_badge(finding.severity, styles),
-                        _p(finding.kev_due_date or "Not specified", styles["body"]),
-                    ]
-                )
-            story.append(_grid(rows, [26 * mm, 28 * mm, 66 * mm, 20 * mm, 26 * mm]))
-            story.append(Spacer(1, 4 * mm))
-
-        # ── Remediation plan ─────────────────────────────────────────────────
-        story.append(_heading("Prioritised remediation plan", styles["h1"], 0))
-        plan = _remediation_plan(findings)
-
-        if plan:
-            story.append(
-                _p(
-                    "Actions are ranked by risk eliminated: known-exploited first, "
-                    "then by highest severity and the number of findings each "
-                    "action resolves.",
-                    styles["small"],
-                )
-            )
-            story.append(Spacer(1, 2 * mm))
-
-            rows = [
-                [
-                    _p("<b>#</b>", styles["th"], escape=False),
-                    _p("<b>Remediation action</b>", styles["th"], escape=False),
-                    _p("<b>Resolves</b>", styles["th"], escape=False),
-                    _p("<b>Hosts</b>", styles["th"], escape=False),
-                    _p("<b>Highest severity</b>", styles["th"], escape=False),
-                    _p("<b>Target window</b>", styles["th"], escape=False),
-                ]
-            ]
-            for index, entry in enumerate(plan[:12], start=1):
-                action = entry["action"]
-                if entry["kev_confirmed"]:
-                    action = "[Actively exploited] " + action
-                elif entry["kev"]:
-                    action = "[Exploited elsewhere — unconfirmed here] " + action
-                rows.append(
-                    [
-                        _p(str(index), styles["body"]),
-                        _p(action, styles["body"]),
-                        _p(f"{len(entry['findings'])} finding(s)", styles["body"]),
-                        _p(str(len(entry["hosts"])), styles["body"]),
-                        _severity_badge(entry["max_severity"], styles),
-                        _p(
-                            REMEDIATION_SLA.get(
-                                entry["max_severity"], "Triage required"
+                if likely:
+                    top = likely[0]
+                    lines.append(
+                        f"<b>{len(likely)}</b> finding(s) carry a 10% or greater "
+                        f"probability of exploitation within 30 days (EPSS). The "
+                        f"highest is {escape_for_reportlab(top.primary_cve or 'a finding')} "
+                        f"at {(top.epss_score or 0) * 100:.1f}%."
+                    )
+                if not kev_findings:
+                    lines.append(
+                        "No finding in this scope appears in the CISA Known "
+                        "Exploited Vulnerabilities catalog."
+                    )
+                for line in lines:
+                    story.append(
+                        _boxed(
+                            _p(line, styles["body"], escape=False),
+                            (
+                                colors.HexColor("#FEF2F2")
+                                if kev_findings
+                                else colors.HexColor("#FFF7ED")
                             ),
-                            styles["body"],
-                        ),
-                    ]
+                            (
+                                colors.HexColor("#FCA5A5")
+                                if kev_findings
+                                else colors.HexColor("#FDBA74")
+                            ),
+                        )
+                    )
+                    story.append(Spacer(1, 2 * mm))
+            story.append(Spacer(1, 3 * mm))
+
+            # ── Distribution ─────────────────────────────────────────────────────
+            story.append(_heading("Severity distribution", styles["h1"], 0))
+            if total_vulns:
+                donut = severity_donut(vuln_counts, font=styles["fonts"]["bold"])
+                bars = severity_bar_chart(
+                    vuln_counts,
+                    width=CONTENT_W - 80 * mm,
+                    font=styles["fonts"]["regular"],
+                    bold_font=styles["fonts"]["bold"],
                 )
-            story.append(
-                _grid(rows, [8 * mm, 78 * mm, 24 * mm, 14 * mm, 24 * mm, 28 * mm])
-            )
-            if len(plan) > 12:
-                story.append(Spacer(1, 1.5 * mm))
+                row = Table(
+                    [[donut or Spacer(1, 1), bars]],
+                    colWidths=[76 * mm, CONTENT_W - 76 * mm],
+                )
+                row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+                story.append(row)
+            else:
+                story.append(_p("No scored vulnerabilities to plot.", styles["body"]))
+            story.append(Spacer(1, 4 * mm))
+
+            # ── Host ranking ─────────────────────────────────────────────────────
+            if len(findings.reachable_hosts) > 1:
+                rows = [
+                    (
+                        h.display_name,
+                        {
+                            t: sum(
+                                1 for f in h.vulnerability_findings if f.severity == t
+                            )
+                            for t in SEVERITY_TIERS
+                        },
+                    )
+                    for h in findings.reachable_hosts
+                ]
+                chart = host_risk_chart(
+                    rows,
+                    width=CONTENT_W,
+                    font=styles["fonts"]["regular"],
+                    bold_font=styles["fonts"]["bold"],
+                )
+                # Build the chart before writing the heading. Emitting the heading
+                # first left a bare "Most affected hosts" title with nothing beneath
+                # it on any scan with no vulnerabilities to rank.
+                if chart:
+                    story.append(_heading("Most affected hosts", styles["h1"], 0))
+                    story.append(chart)
+                    story.append(Spacer(1, 1.5 * mm))
+                    story.append(
+                        chart_legend(vuln_counts, font=styles["fonts"]["regular"])
+                    )
+                    if len(findings.reachable_hosts) > 15:
+                        story.append(Spacer(1, 1.5 * mm))
+                        story.append(
+                            _p(
+                                f"Chart shows the 15 most affected hosts. All "
+                                f"{len(findings.reachable_hosts)} hosts are listed in the "
+                                f"technical report.",
+                                styles["small"],
+                            )
+                        )
+                story.append(Spacer(1, 4 * mm))
+
+            # ── Exploited in the wild ────────────────────────────────────────────
+            if kev:
+                story.append(
+                    _heading(
+                        "Known exploited vulnerabilities — immediate action",
+                        styles["h1"],
+                        0,
+                    )
+                )
+                rows = [
+                    [
+                        _p("<b>CVE</b>", styles["th"], escape=False),
+                        _p("<b>Host</b>", styles["th"], escape=False),
+                        _p("<b>Finding</b>", styles["th"], escape=False),
+                        _p("<b>Severity</b>", styles["th"], escape=False),
+                        _p("<b>CISA due date</b>", styles["th"], escape=False),
+                    ]
+                ]
+                for finding in kev[:20]:
+                    name = escape_for_reportlab(finding.plugin_name)
+                    if _unconfirmed(finding):
+                        name += f"<br/><i>{finding.confidence.value}: {UNCONFIRMED_KEV_NOTE}</i>"
+                    rows.append(
+                        [
+                            _p(finding.primary_cve, styles["body"]),
+                            _p(finding.host, styles["body"]),
+                            _p(name, styles["body"], escape=False),
+                            _severity_badge(finding.severity, styles),
+                            _p(finding.kev_due_date or "Not specified", styles["body"]),
+                        ]
+                    )
+                story.append(_grid(rows, [26 * mm, 28 * mm, 66 * mm, 20 * mm, 26 * mm]))
+                story.append(Spacer(1, 4 * mm))
+
+            # ── Remediation plan ─────────────────────────────────────────────────
+            story.append(_heading("Prioritised remediation plan", styles["h1"], 0))
+            plan = _remediation_plan(findings)
+
+            if plan:
                 story.append(
                     _p(
-                        f"{len(plan) - 12} further remediation action(s) are listed "
-                        f"in the technical report.",
+                        "Actions are ranked by risk eliminated: known-exploited first, "
+                        "then by highest severity and the number of findings each "
+                        "action resolves.",
                         styles["small"],
                     )
                 )
-            story.append(Spacer(1, 2 * mm))
-            story.append(
-                _p(
-                    "Target windows reflect this organisation's remediation policy "
-                    "and are not derived from scan data.",
-                    styles["small"],
-                )
-            )
-        else:
-            story.append(
-                _p(
-                    "No actionable remediation was published for the findings in "
-                    "this scan. Review the technical report for compensating "
-                    "controls.",
-                    styles["body"],
-                )
-            )
+                story.append(Spacer(1, 2 * mm))
 
-        story.append(Spacer(1, 4 * mm))
+                rows = [
+                    [
+                        _p("<b>#</b>", styles["th"], escape=False),
+                        _p("<b>Remediation action</b>", styles["th"], escape=False),
+                        _p("<b>Resolves</b>", styles["th"], escape=False),
+                        _p("<b>Hosts</b>", styles["th"], escape=False),
+                        _p("<b>Highest severity</b>", styles["th"], escape=False),
+                        _p("<b>Target window</b>", styles["th"], escape=False),
+                    ]
+                ]
+                for index, entry in enumerate(plan[:12], start=1):
+                    action = entry["action"]
+                    if entry["kev_confirmed"]:
+                        action = "[Actively exploited] " + action
+                    elif entry["kev"]:
+                        action = "[Exploited elsewhere — unconfirmed here] " + action
+                    rows.append(
+                        [
+                            _p(str(index), styles["body"]),
+                            _p(action, styles["body"]),
+                            _p(f"{len(entry['findings'])} finding(s)", styles["body"]),
+                            _p(str(len(entry["hosts"])), styles["body"]),
+                            _severity_badge(entry["max_severity"], styles),
+                            _p(
+                                REMEDIATION_SLA.get(
+                                    entry["max_severity"], "Triage required"
+                                ),
+                                styles["body"],
+                            ),
+                        ]
+                    )
+                story.append(
+                    _grid(rows, [8 * mm, 78 * mm, 24 * mm, 14 * mm, 24 * mm, 28 * mm])
+                )
+                if len(plan) > 12:
+                    story.append(Spacer(1, 1.5 * mm))
+                    story.append(
+                        _p(
+                            f"{len(plan) - 12} further remediation action(s) are listed "
+                            f"in the technical report.",
+                            styles["small"],
+                        )
+                    )
+                story.append(Spacer(1, 2 * mm))
+                story.append(
+                    _p(
+                        "Target windows reflect this organisation's remediation policy "
+                        "and are not derived from scan data.",
+                        styles["small"],
+                    )
+                )
+            else:
+                story.append(
+                    _p(
+                        "No actionable remediation was published for the findings in "
+                        "this scan. Review the technical report for compensating "
+                        "controls.",
+                        styles["body"],
+                    )
+                )
+
+            story.append(Spacer(1, 4 * mm))
 
         # ── Coverage note ────────────────────────────────────────────────────
         story.append(_heading("Assessment coverage", styles["h1"], 0))
@@ -2866,11 +2948,22 @@ class ScanReportGenerator:
                 if findings.unreachable_hosts
                 else "."
             ),
-            f"Open ports inventoried: "
-            f"<b>{sum(len(h.reachable_services) for h in findings.reachable_hosts)}</b>.",
-            f"Version-confirmed vulnerabilities: <b>{findings.confirmed_count}</b>.",
-            f"Findings requiring version verification: <b>{findings.potential_count}</b>.",
+            (
+                f"Open ports inventoried: "
+                f"<b>{sum(len(h.reachable_services) for h in findings.reachable_hosts)}</b>."
+                if _scans_ports(scan_type)
+                else "Open ports inventoried: <b>not scanned</b> (host discovery "
+                "does not scan ports)."
+            ),
         ]
+        if assesses:
+            coverage += [
+                f"Version-confirmed vulnerabilities: <b>{findings.confirmed_count}</b>.",
+                f"Findings requiring version verification: "
+                f"<b>{findings.potential_count}</b>.",
+            ]
+        else:
+            coverage.append("Vulnerabilities: <b>not assessed</b> by this scan policy.")
         if findings.excluded:
             coverage.append(
                 f"Candidate matches suppressed as not applicable: "
@@ -2908,6 +3001,8 @@ class ScanReportGenerator:
     # ── Technical report ─────────────────────────────────────────────────────
 
     def generate_technical_pdf(self, result: dict, scan_type: str) -> str:
+        assesses = _assesses_vulnerabilities(scan_type)
+        scans_ports = _scans_ports(scan_type)
         filename = os.path.join(
             self.output_dir, self._make_filename(scan_type, "technical")
         )
@@ -2999,18 +3094,26 @@ class ScanReportGenerator:
                 counts = {t: 0 for t in SEVERITY_TIERS}
                 for f in host.vulnerability_findings:
                     counts[f.severity] = counts.get(f.severity, 0) + 1
+                # A column the scan never measured is "—", not 0.
+                ports_cell = str(len(host.reachable_services)) if scans_ports else "—"
+
+                def _vuln_cell(value):
+                    return str(value) if assesses else "—"
+
                 rows.append(
                     [
                         _p(host.display_name, styles["body"]),
                         _p(host.os_label, styles["body"]),
                         # Reachable only, matching the port inventory. A
                         # loopback-bound daemon is running, not exposed.
-                        _p(str(len(host.reachable_services)), styles["body"]),
-                        _p(str(len(host.vulnerability_findings)), styles["body"]),
-                        _p(str(counts["Critical"]), styles["body"]),
-                        _p(str(counts["High"]), styles["body"]),
-                        _p(str(counts["Medium"]), styles["body"]),
-                        _p(str(counts["Low"]), styles["body"]),
+                        _p(ports_cell, styles["body"]),
+                        _p(
+                            _vuln_cell(len(host.vulnerability_findings)), styles["body"]
+                        ),
+                        _p(_vuln_cell(counts["Critical"]), styles["body"]),
+                        _p(_vuln_cell(counts["High"]), styles["body"]),
+                        _p(_vuln_cell(counts["Medium"]), styles["body"]),
+                        _p(_vuln_cell(counts["Low"]), styles["body"]),
                     ]
                 )
             table = _grid(
@@ -3114,7 +3217,16 @@ class ScanReportGenerator:
                     "Credentialed" if host.credentialed else "Unauthenticated",
                 )
             )
-            detail_rows.append(("Open ports", str(len(host.reachable_services))))
+            detail_rows.append(
+                (
+                    "Open ports",
+                    (
+                        str(len(host.reachable_services))
+                        if scans_ports
+                        else "Not scanned"
+                    ),
+                )
+            )
             host_only = len(host.services) - len(host.reachable_services)
             if host_only:
                 detail_rows.append(
@@ -3196,6 +3308,20 @@ class ScanReportGenerator:
                 for f in host.findings
                 if f.detection_method == DetectionMethod.PORT_OBSERVATION
             ]
+
+            if not assesses:
+                story.append(
+                    _boxed(
+                        _p(
+                            "Vulnerability assessment was not part of this scan; "
+                            "this host was not assessed for vulnerabilities.",
+                            styles["body"],
+                        ),
+                        BG_ALT,
+                        BORDER,
+                    )
+                )
+                continue
 
             if not vulnerabilities:
                 story.append(

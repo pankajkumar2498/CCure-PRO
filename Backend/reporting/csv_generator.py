@@ -363,7 +363,7 @@ def _port_label(p: Dict[str, Any]) -> str:
     return label
 
 
-def _host_inventory_row(host: Dict[str, Any]) -> List[str]:
+def _host_inventory_row(host: Dict[str, Any], ports_scanned: bool = True) -> List[str]:
     ports = [
         p
         for p in (host.get("open_ports") or [])
@@ -388,8 +388,10 @@ def _host_inventory_row(host: Dict[str, Any]) -> List[str]:
         _clean_cell(host.get("discovery_method") or host.get("scan_method")),
         _clean_cell(response_time),
         "Active" if host.get("is_active") or host.get("state") == "up" else "Inactive",
-        str(len(ports)),
-        port_text,
+        # A host-discovery scan probes no ports. "0" there read as "this host
+        # has no open ports", which nobody measured.
+        str(len(ports)) if ports_scanned else "Not scanned",
+        port_text if ports_scanned else "Not scanned",
         _clean_cell(host.get("first_seen_at") or host.get("first_seen")),
         _clean_cell(host.get("last_seen_at") or host.get("scan_timestamp")),
     ]
@@ -411,6 +413,7 @@ def generate_host_inventory_csv(
     result_dict: Dict[str, Any],
     output_path: str,
     include_inactive: bool = True,
+    ports_scanned: bool = True,
 ) -> str:
     """
     Write the discovered-host inventory to a CSV file.
@@ -431,7 +434,7 @@ def generate_host_inventory_csv(
         writer = csv.writer(handle)
         writer.writerow(HOST_INVENTORY_HEADERS)
         for host in hosts:
-            writer.writerow(_host_inventory_row(host))
+            writer.writerow(_host_inventory_row(host, ports_scanned))
 
     return output_path
 

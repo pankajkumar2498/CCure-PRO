@@ -185,6 +185,23 @@ VULN_ANALYSIS_POLICIES = frozenset(
 )
 
 
+#: Report keys the pipelines generate under, and the policy each one is.
+#: Without these a Vulnerability Audit's report (generated as
+#: ``phase_selective_scan``) printed "Scan policy: Phase Selective Scan", was
+#: named ``phase_selective_scan_….pdf``, and — because the key matched no
+#: policy that consults the CVE feed — omitted the vulnerability feed date,
+#: the candidate count and the reporting QoD threshold.
+_POLICY_ALIASES: Dict[str, str] = {
+    "phase_selective_scan": "vulnerability_audit",
+    "credentialed_scan": "credentialed",
+}
+
+
+def _canonical_policy(scan_type: object) -> str:
+    key = str(scan_type or "").strip().lower()
+    return _POLICY_ALIASES.get(key, key)
+
+
 def _performs_vulnerability_analysis(scan_type: object) -> bool:
     """True when this scan policy matched services against the CVE feed."""
     return str(scan_type or "").strip().lower() in VULN_ANALYSIS_POLICIES
@@ -2477,6 +2494,7 @@ class ScanReportGenerator:
     # ── Executive report ─────────────────────────────────────────────────────
 
     def generate_executive_pdf(self, result: dict, scan_type: str) -> str:
+        scan_type = _canonical_policy(scan_type)
         filename = os.path.join(
             self.output_dir, self._make_filename(scan_type, "executive")
         )
@@ -3006,6 +3024,7 @@ class ScanReportGenerator:
     # ── Technical report ─────────────────────────────────────────────────────
 
     def generate_technical_pdf(self, result: dict, scan_type: str) -> str:
+        scan_type = _canonical_policy(scan_type)
         assesses = _assesses_vulnerabilities(scan_type)
         scans_ports = _scans_ports(scan_type)
         filename = os.path.join(

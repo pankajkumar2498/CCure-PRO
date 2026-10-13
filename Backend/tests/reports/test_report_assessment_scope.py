@@ -179,3 +179,23 @@ def test_findings_rated_none_are_not_called_open_ports(tmp_path, rendered):
     assert "The other 1 is rated None" in text
     # 3389 carried no finding: that, and only that, is a port observation.
     assert "A further 1 open port(s) carried no vulnerability finding" in text
+
+
+# ── the report key the audit pipeline uses is a real policy ─────────────────
+
+
+def test_an_audit_report_names_its_policy_and_its_feed(tmp_path, rendered):
+    """
+    The Vulnerability Audit pipeline generates its reports as
+    "phase_selective_scan". That key matched no policy, so the PDF said "Scan
+    policy: Phase Selective Scan" and left out the vulnerability feed date —
+    the caveat on every finding it lists.
+    """
+    path = ScanReportGenerator(output_dir=str(tmp_path)).generate_executive_pdf(
+        _assessed_payload(), "phase_selective_scan"
+    )
+    text = "\n".join(rendered)
+    assert "Network vulnerability assessment" in text
+    assert "Phase Selective Scan" not in text
+    assert "<b>Vulnerability feed</b>" in text
+    assert path.split("/")[-1].startswith("vulnerability_audit_")

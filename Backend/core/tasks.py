@@ -1201,8 +1201,19 @@ def sync_vulnerability_audit_task(
             log.warning(
                 "Post-scan AMT reconciliation failed for org %s: %s", org_id, amt_exc
             )
-    except Exception:
+    except Exception as exc:
         log.exception("Asset Sync Phase 3 Failed")
+        # This task is the retry of the inline sync, so a failure here means
+        # nothing was stored. Say so on the scan rather than leave it reading
+        # "complete" over an empty findings list.
+        from core.scan_control import record_findings_sync_failure
+
+        record_findings_sync_failure(
+            scan_id,
+            "Findings were collected but could not be saved "
+            f"({type(exc).__name__}: {str(exc)[:200]}). The results are kept "
+            "with the scan and can be re-synced once the cause is fixed.",
+        )
     finally:
         db.close()
 

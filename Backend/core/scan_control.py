@@ -264,6 +264,59 @@ def force_terminal_status(
         db.close()
 
 
+def record_findings_sync_failure(scan_id: str, reason: str) -> bool:
+    """
+    Demote a scan whose findings could not be stored from complete to failed.
+
+    "Complete" has to mean the results are queryable. When both the inline
+    finding sync and its asynchronous retry fail, the scan's findings exist
+    only in the phase payload: the findings list, the dashboard, the asset's
+    risk and every export read nothing, while the scan row still carries the
+    severity counts it tallied first. Left as "complete", that is a scan
+    reporting success over results nobody can see.
+
+    This is the one sanctioned move out of a terminal state, and it is narrow:
+    only ``complete``/``completed`` scans are touched, so a cancellation or an
+    earlier failure is never overwritten. The phase payload is kept, so the
+    findings can be re-synced once the cause is fixed. Plain SQL, never raises,
+    for the same reason as :func:`force_terminal_status`.
+    """
+    if not scan_id:
+        return False
+
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text(
+                """
+                UPDATE scans
+                   SET status = 'failed',
+                       failure_reason = :reason,
+                       updated_at = :now
+                 WHERE id = :scan_id
+                   AND status IN ('complete', 'completed')
+                """
+            ),
+            {"reason": reason, "now": _utcnow(), "scan_id": scan_id},
+        )
+        db.commit()
+        updated = (result.rowcount or 0) > 0
+        if updated:
+            log.error("Scan %s marked failed: %s", scan_id, reason)
+        return updated
+    except Exception:
+        log.exception("Could not record the finding-sync failure for scan %s", scan_id)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        db.close()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Web-application scans live in their own table (`web_scans`) with a different
 # lifecycle from network `scans`, so they need their own terminal-status

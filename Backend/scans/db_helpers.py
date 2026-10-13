@@ -19,6 +19,7 @@ from scans.notification_vocabulary import (
     AuditNotificationCategory,
     AuditNotificationType,
 )
+from scans.db_text import sanitize_for_db
 from scans.asset_syncer import (
     sync_asset_discovery,
     sync_host_discovery,
@@ -29,33 +30,17 @@ from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.scans.db_helpers")
 
-_UNSAFE_JSONB_CHARS = {
-    codepoint: None for codepoint in range(32) if codepoint not in (9, 10, 13)
-}
-
 
 def _sanitize_jsonb_value(value: Any) -> Any:
     """
     Network probe output can contain NUL/binary control bytes from SNMP, banners,
     or service scripts. PostgreSQL JSONB rejects those characters, so clean the
     payload at the persistence boundary without changing scan execution.
+
+    The finding sync applies the same rule to the host records it writes
+    (``scans.db_text``); both must agree on what is unsafe.
     """
-    if isinstance(value, str):
-        return value.translate(_UNSAFE_JSONB_CHARS)
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace").translate(_UNSAFE_JSONB_CHARS)
-    if isinstance(value, dict):
-        return {
-            _sanitize_jsonb_value(key): _sanitize_jsonb_value(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_sanitize_jsonb_value(item) for item in value]
-    if isinstance(value, tuple):
-        return [_sanitize_jsonb_value(item) for item in value]
-    if isinstance(value, set):
-        return [_sanitize_jsonb_value(item) for item in value]
-    return value
+    return sanitize_for_db(value)
 
 
 def _phase_summary_payload(summary: dict, hosts_data: list) -> dict:

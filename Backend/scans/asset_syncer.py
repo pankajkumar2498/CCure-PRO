@@ -30,6 +30,7 @@ from db.models.findings import (
     STATE_OPEN,
 )
 from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
+from scans.db_text import sanitize_for_db_in_place
 from scans.cvss import (
     canonical_severity,
     cvss_version_of_vector,
@@ -1419,6 +1420,11 @@ def sync_host_discovery(
     if not hosts:
         return
 
+    # Probe output reaches every text column below. One NUL from an SNMP
+    # agent or a banner made psycopg2 refuse the statement and lost the whole
+    # sync, so the records are cleaned here, where every path converges.
+    sanitize_for_db_in_place(hosts)
+
     logger.info(f"Syncing {len(hosts)} hosts with Phase 4 Change Auditing")
 
     # Pre-fetch existing assets for comparison (Selective Select-then-Update for Change Log accuracy)
@@ -1673,6 +1679,11 @@ def sync_asset_discovery(
     if not hosts:
         return
 
+    # Probe output reaches every text column below. One NUL from an SNMP
+    # agent or a banner made psycopg2 refuse the statement and lost the whole
+    # sync, so the records are cleaned here, where every path converges.
+    sanitize_for_db_in_place(hosts)
+
     existing, existing_by_ip, existing_by_mac = _existing_assets_for_hosts(
         db, org_id, hosts
     )
@@ -1920,6 +1931,11 @@ def sync_vulnerability_audit(
     """
     if not hosts:
         return
+
+    # Probe output reaches every text column below. One NUL from an SNMP
+    # agent or a banner made psycopg2 refuse the statement and lost the whole
+    # sync, so the records are cleaned here, where every path converges.
+    sanitize_for_db_in_place(hosts)
 
     # Annotate every finding with exploitation provenance and the vendor's own
     # advisory before any of it is written.

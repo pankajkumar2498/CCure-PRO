@@ -143,22 +143,12 @@ export const DASHBOARD_SUMMARY = {
     risk_level: "medium",
     unmanaged: 5,
   },
-  scans: { running: 1, queued: 0, last_24h: 4, quota_limit_24h: 50 },
+  scans: { running: 1, queued: 0, last_24h: 4 },
   kev: { open_count: 3 },
 };
 
 export const SHELL_STUBS = {
   "/dashboard/summary": DASHBOARD_SUMMARY,
-  "/scan/quota": {
-    plan: "pro",
-    scans_used_24h: 3,
-    scans_limit_24h: 10,
-    concurrent_running: 1,
-    concurrent_limit: 2,
-    max_ips_per_scan: 1024,
-    quota_exceeded: false,
-    concurrent_exceeded: false,
-  },
   "/notifications/summary": { total_unread: 2, by_category: { scan: 2 } },
   "/notifications": { notifications: [], total: 0 },
 };
@@ -3089,12 +3079,6 @@ export const NS_STUBS = {
     pipeline_mode: "asset",
     scan_no: 5102,
   }),
-};
-
-export const NS_QUOTA_EXHAUSTED = {
-  ...SHELL_STUBS["/scan/quota"],
-  scans_used_24h: 10,
-  quota_exceeded: true,
 };
 
 export const NS_WRITES = {

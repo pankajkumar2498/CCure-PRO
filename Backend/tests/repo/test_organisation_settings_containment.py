@@ -1,10 +1,8 @@
 """
-Organisation plan features stay removable (Phase 8.4).
+Organisation settings stay behind their platform boundary.
 
-Scan limits (quota), scan scope and the remediation SLA are platform-owned plan
-features that CCure Audit consumes. None of them is needed to run an
-assessment, and the project owner expects stakeholders may ask for any of them
-to be removed. These tests keep that a small, known change:
+Scan scope and remediation SLA settings are platform-owned settings that Audit
+consumes through one seam each. These tests preserve that separation:
 
 * **one seam per feature** — exactly one Audit module calls each feature's
   functions in ``ccure_platform.api``. Removing the feature means deleting its
@@ -12,11 +10,10 @@ to be removed. These tests keep that a small, known change:
   in Audit knows the feature exists;
 * **features are independent** — no feature module imports another, so
   removing one cannot break the rest;
-* **no Audit logic in the platform** — the plan package imports no module
+* **no Audit logic in the platform** — the settings package imports no module
   code.
 
-The removal recipe for each feature is in
-``docs/architecture/PHASE8_4_ORGANISATION_PLAN.md`` §9.
+See ``docs/architecture/ORGANISATION_SETTINGS.md``.
 """
 
 from __future__ import annotations
@@ -30,7 +27,6 @@ from scripts.architecture.import_graph import collect_edges, discover_modules
 
 #: feature -> (its API functions, the one Audit module allowed to call them)
 FEATURES = {
-    "scan_limits": (frozenset({"scan_limits"}), "core.quota"),
     "scan_scope": (frozenset({"scan_scope"}), "core.scan_scope"),
     "remediation_sla": (
         frozenset({"remediation_sla_setting", "store_remediation_sla_setting"}),
@@ -38,9 +34,8 @@ FEATURES = {
     ),
 }
 FEATURE_MODULES = {
-    "scan_limits": "ccure_platform.plan.scan_limits",
-    "scan_scope": "ccure_platform.plan.scan_scope",
-    "remediation_sla": "ccure_platform.plan.remediation_sla",
+    "scan_scope": "ccure_platform.organisation_settings.scan_scope",
+    "remediation_sla": "ccure_platform.organisation_settings.remediation_sla",
 }
 
 
@@ -80,8 +75,8 @@ def callers():
 
 
 def test_the_detector_sees_every_import_form():
-    assert _api_uses("from ccure_platform import api as p\np.scan_limits(db, o)\n") == {
-        "scan_limits"
+    assert _api_uses("from ccure_platform import api as p\np.scan_scope(db, o)\n") == {
+        "scan_scope"
     }
     assert _api_uses("from ccure_platform.api import scan_scope\n") == {"scan_scope"}
     assert _api_uses("import ccure_platform.api as a\na.remediation_sla_setting\n") == {
@@ -90,10 +85,10 @@ def test_the_detector_sees_every_import_form():
 
 
 @pytest.mark.parametrize("feature", sorted(FEATURES))
-def test_each_plan_feature_has_exactly_one_audit_seam(callers, feature):
+def test_each_organisation_setting_has_exactly_one_audit_seam(callers, feature):
     _, seam = FEATURES[feature]
     assert callers[feature] == {seam}, (
-        f"the {feature!r} plan feature must be consumed only through {seam} — "
+        f"the {feature!r} organisation setting must be consumed only through {seam} — "
         f"found {sorted(callers[feature])}. A second caller is a second place "
         "to change when stakeholders ask for the feature to be removed; route "
         "it through the seam instead."
@@ -101,28 +96,32 @@ def test_each_plan_feature_has_exactly_one_audit_seam(callers, feature):
 
 
 @pytest.mark.parametrize("feature", sorted(FEATURE_MODULES))
-def test_plan_features_do_not_depend_on_each_other(feature):
+def test_organisation_settings_do_not_depend_on_each_other(feature):
     _, edges = collect_edges()
     others = set(FEATURE_MODULES.values()) - {FEATURE_MODULES[feature]}
     bad = sorted(
         e.dst for e in edges if e.src == FEATURE_MODULES[feature] and e.dst in others
     )
-    assert not bad, f"{feature} imports another plan feature: {bad}"
+    assert not bad, f"{feature} imports another organisation setting: {bad}"
 
 
-def test_the_plan_package_imports_no_module_code():
+def test_the_settings_package_imports_no_module_code():
     """Entitlements are data; counting, admission and due dates are Audit's."""
     _, edges = collect_edges()
     allowed_prefixes = ("ccure_platform", "db", "config")
     bad = sorted(
         (e.src, e.dst)
         for e in edges
-        if e.src.startswith("ccure_platform.plan")
+        if e.src.startswith("ccure_platform.organisation_settings")
         and not e.dst.startswith(allowed_prefixes)
     )
     assert not bad, bad
 
 
-def test_every_plan_feature_module_is_listed():
-    present = {m for m in discover_modules() if m.startswith("ccure_platform.plan.")}
-    assert present == set(FEATURE_MODULES.values()) | {"ccure_platform.plan.catalogue"}
+def test_every_organisation_setting_module_is_listed():
+    present = {
+        m
+        for m in discover_modules()
+        if m.startswith("ccure_platform.organisation_settings.")
+    }
+    assert present == set(FEATURE_MODULES.values())

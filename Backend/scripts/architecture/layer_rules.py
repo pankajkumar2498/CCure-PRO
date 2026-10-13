@@ -427,7 +427,7 @@ RULES: tuple[Rule, ...] = (
             "ccure_platform.administration",
             "ccure_platform.hub",
             "ccure_platform.notifications",
-            "ccure_platform.plan",
+            "ccure_platform.organisation_settings",
             "ccure_platform.service_identity",
         ),
         reason=(

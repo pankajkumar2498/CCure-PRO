@@ -20,6 +20,13 @@ from ccure_platform.identity.jwt_handler import (
     hash_password,
     validate_password_strength,
 )
+from ccure_platform.administration.rbac_security import (
+    assignment_step_up,
+    mutation_organisation,
+    retain_user_administrator,
+    record_assignment_denial,
+    step_up,
+)
 from ccure_platform.rbac.dependencies import require_authorized
 from ccure_platform.rbac.scope import acts_across_organisations
 from ccure_platform.offboarding import run_user_purge_hooks
@@ -51,19 +58,7 @@ log = logging.getLogger(__name__)
 def _audit_refused_assignment(actor, error: GovernanceError, org_id: str) -> None:
     """Record a refused role assignment in its own transaction (the request rolls back),
     owned by the actor's organisation."""
-    codes = sorted({v.code for v in error.violations})
-    escalation = bool(set(codes) & rbac_admin.ESCALATION_CODES)
-    audit_isolated(
-        actor,
-        EventDraft(
-            action=(
-                "rbac.escalation.refused" if escalation else "rbac.assignment.denied"
-            ),
-            resource_type="rbac_user_role",
-            changes={"violations": codes, "target_org_id": org_id},
-            org_id=getattr(actor, "org_id", None),
-        ),
-    )
+    record_assignment_denial(actor, error, org_id)
 
 
 def _is_superadmin(user: User) -> bool:
@@ -119,7 +114,7 @@ def _resolve_target_org_id(
     db: Session, current_user: User, requested_org_id: str | None
 ) -> str:
     if not _is_superadmin(current_user):
-        return str(current_user.org_id)
+        return mutation_organisation(current_user, requested_org_id)
 
     if not requested_org_id:
         raise HTTPException(
@@ -131,7 +126,7 @@ def _resolve_target_org_id(
     if not org:
         raise HTTPException(status_code=400, detail="Invalid organization_id")
 
-    return str(org.id)
+    return mutation_organisation(current_user, str(org.id))
 
 
 def _notify_user_admin_action(
@@ -299,6 +294,9 @@ def create_user(
     current_user: User = Depends(require_authorized("platform.user.create")),
 ):
     target_org_id = _resolve_target_org_id(db, current_user, user_data.organization_id)
+    step = assignment_step_up(
+        db, current_user, request, user_data.rbac_role_id, target_org_id
+    )
     email = normalize_email(user_data.email)
 
     if (
@@ -369,6 +367,8 @@ def create_user(
                 ],
             },
         ) from None
+    for event in rbac_events:
+        event.changes["reauth"] = step
     emit_rbac(db, rbac_events, actor=current_user, request=request)
 
     log_audit_event(
@@ -460,8 +460,44 @@ def move_user_to_organization(
     old_org = db.query(Organization).filter(Organization.id == old_org_id).first()
     old_org_name = old_org.name if old_org else old_org_id
 
-    # Move the user
-    user.org_id = body.organization_id
+    mutation_organisation(current_user, old_org_id)
+    mutation_organisation(current_user, body.organization_id)
+    retain_user_administrator(db, current_user, str(user.id))
+
+    step = step_up(current_user, request, sensitive=True)
+    # Organisation assignments are tied to membership, never carried to a new tenant.
+    # Revoke through governance and leave assignment history; the destination's roles
+    # are assigned separately by an administrator with authority there.
+    from ccure_platform.rbac.model import RbacUserRole
+
+    try:
+        with db.begin_nested():
+            actor = rbac_admin.actor_for(db, current_user)
+            rbac_events = []
+            for assignment in (
+                db.query(RbacUserRole)
+                .filter_by(user_id=user.id, scope_type="organization", revoked_at=None)
+                .all()
+            ):
+                rbac_events.extend(
+                    rbac_admin.revoke(db, actor, str(assignment.id), reason="manual")
+                )
+            user.org_id = body.organization_id
+    except GovernanceError as error:
+        _audit_refused_assignment(current_user, error, old_org_id)
+        raise HTTPException(
+            403,
+            detail={
+                "code": "governance_refused",
+                "violations": [
+                    {"code": v.code, "message": v.message} for v in error.violations
+                ],
+            },
+        ) from None
+    for event in rbac_events:
+        event.changes["reauth"] = step
+        event.changes["reason"] = "organization_changed"
+    emit_rbac(db, rbac_events, actor=current_user, request=request)
 
     # Revoke all active sessions — next login will get a fresh token with new org context
     db.query(RefreshTokenSession).filter(RefreshTokenSession.user_id == user.id).delete(
@@ -554,6 +590,15 @@ def change_role(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    step = assignment_step_up(
+        db,
+        current_user,
+        request,
+        role_data.rbac_role_id,
+        user.org_id,
+        replacing_user=str(user.id),
+    )
+
     # The role is an RBAC assignment (RBAC-8): this route replaces the user's role through
     # the governed assignment API (organisation boundary, ceilings, hierarchy,
     # self-assignment, continuity) and nothing else is written.
@@ -574,6 +619,8 @@ def change_role(
                 ],
             },
         ) from None
+    for event in rbac_events:
+        event.changes["reauth"] = step
     emit_rbac(db, rbac_events, actor=current_user, request=request)
     log_audit_event(
         db,
@@ -610,6 +657,9 @@ def change_status(
         raise HTTPException(
             status_code=400, detail="You cannot deactivate your own account."
         )
+
+    if status_data.is_active is False and user.is_active:
+        retain_user_administrator(db, current_user, str(user.id))
 
     changes = {}
     if status_data.is_active is not None and user.is_active != status_data.is_active:
@@ -913,6 +963,7 @@ def delete_user(
             "moved_to_deleted_users": False,
         }
 
+    retain_user_administrator(db, current_user, str(user.id))
     previous_active = bool(user.is_active)
     user.is_deleted = True
     user.deleted_at = utcnow()

@@ -257,7 +257,7 @@ async def lifespan(app: FastAPI):
         from db.base import SessionLocal as _RbacSession
 
         with _RbacSession() as rbac_db:
-            sync(rbac_db, composition.load_permission_sources(), audit=False)
+            sync(rbac_db, composition.load_permission_sources(), audit=True)
             ensure_system_roles(rbac_db)
             rbac_db.commit()
     except Exception as e:  # noqa: BLE001

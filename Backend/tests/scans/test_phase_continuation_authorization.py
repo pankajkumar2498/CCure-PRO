@@ -9,7 +9,7 @@ scan that Host Discovery admitted. Both loaded it with a bare
     options and task id, and have results written into it;
   * any address could be port-scanned and vulnerability-scanned by attaching it
     to a scan admitted for something else — outside the organisation's
-    authorised scope and outside what the quota charged for.
+    authorised scope.
 
 The routes are called directly with a real session rather than through
 TestClient with a login, which commits pending fixture rows (CLAUDE.md, "Scan
@@ -111,8 +111,6 @@ def _other_org_with_user(db) -> tuple[Organization, User]:
         id=f"org_{uid}",
         name=f"Other Org {uid}",
         slug=f"other-org-{uid}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db.add(org)

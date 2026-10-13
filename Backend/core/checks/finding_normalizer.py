@@ -62,6 +62,12 @@ from core.checks.cvss import (
     parse_cvss_vector,
     severity_from_score,
 )
+from core.checks.platform_scope import (
+    PLATFORM_LABELS,
+    declared_platforms,
+    describe_scope,
+    scope_excludes_host,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Secret redaction
@@ -163,11 +169,15 @@ DETECTION_SEMANTICS: Dict[DetectionMethod, Tuple[Confidence, str]] = {
     ),
     DetectionMethod.VERSION_IMPRECISE: (
         Confidence.POTENTIAL,
-        "The affected product is running on this port and the version reported "
-        "by the scanner falls inside the vulnerable range, but that version was "
-        'reported as an open-ended bound (for example "9.6.0 or later") rather '
-        "than an exact release. The host may be running a fixed version above "
-        "that bound. Confirm the exact version before remediating.",
+        "The affected product is present and its version may fall inside the "
+        "vulnerable range, but the version this scan could read is not precise "
+        'enough to decide: an open-ended bound (for example "9.6.0 or '
+        "later\"), a vendor's or distribution's own build that carries "
+        "backported fixes without changing the version it reports (for example "
+        "Microsoft's OpenSSH for Windows, or a Debian or Ubuntu package), or a "
+        'release named without its update level (for example "V19" against a '
+        "fix in V19 Update 2). Confirm the exact version or patch level before "
+        "remediating.",
     ),
     DetectionMethod.SERVICE_PRODUCT: (
         Confidence.POTENTIAL,
@@ -332,6 +342,19 @@ class Remediation:
     #: Grouping on the prose instead collapses nothing, because the summary
     #: names the CVE and is therefore unique per finding.
     product: Optional[str] = None
+    #: The last release published as affected, when only an inclusive upper
+    #: bound is known. Kept apart from ``fixed_version`` because the two ask
+    #: for different upgrades: "8.0.42 or later" includes 8.0.42, "later than
+    #: 8.0.44" does not. Folding this into ``fixed_version`` is how a report
+    #: told an administrator to upgrade MySQL to 8.0.44, a release the same
+    #: CVE names as vulnerable — the value was written back onto the record and
+    #: read on the next verification pass as a first fixed release.
+    last_affected_version: Optional[str] = None
+
+    @property
+    def upgrade_target(self) -> str:
+        """The release to upgrade to, as a phrase; "" when none is known."""
+        return upgrade_target(self.fixed_version, self.last_affected_version)
 
     @property
     def is_actionable(self) -> bool:
@@ -367,6 +390,15 @@ class StandardizedFinding:
     #: made the call, so the suppression reason states what actually happened
     #: rather than inferring it from which fields happen to be populated.
     suppression_basis: str = ""
+    #: When ``suppression_basis`` is "platform_mismatch" because the record
+    #: names its platforms: those platforms, and the one this host runs. Kept so
+    #: the appendix can say "published for Android only; this host runs
+    #: Windows" rather than a sentence that fits every mismatch.
+    applies_to_platforms: Tuple[str, ...] = ()
+    host_platform: str = ""
+    #: When ``suppression_basis`` is "countermeasure_observed": what the probe
+    #: saw, completing the sentence "Ruled out: …".
+    suppression_detail: str = ""
 
     # ── Scoring (never fabricated) ───────────────────────────────────────────
     cvss: Optional[CvssData] = None
@@ -865,6 +897,192 @@ def clean_hostname(hostname: str, ip: str = "") -> str:
     return name
 
 
+@dataclass(frozen=True)
+class VendorBuild:
+    """
+    A vendor's own build of a product, serviced with backported fixes.
+
+    Such a build keeps reporting the upstream release it was cut from, so its
+    version is a *floor* on its patch level rather than the patch level — the
+    same thing nmap's "9.6.0 or later" says, and judged the same way: a CVE
+    fixed before the floor is ruled out, one fixed after it cannot be confirmed
+    from the version and is reported as Potential. Measured on 10.180.6.30
+    (12 Oct 2026): the banner said "OpenSSH_for_Windows_9.5" while the host
+    read its sshd.exe as 9.5.6.3, and twenty upstream OpenSSH CVEs were
+    reported as Confirmed against it.
+    """
+
+    #: Any one matching a version, product or banner string identifies the build.
+    patterns: Tuple["re.Pattern[str]", ...]
+    #: The product as the remediation names it; None keeps the CPE's name.
+    label: Optional[str]
+    #: Where the fix for this build comes from, appended to the remediation.
+    guidance: str
+    #: CVEs the build's own vendor has published as not affecting it, each with
+    #: the statement and where it was published. Only a vendor statement about
+    #: this build belongs here — never an inference about the code.
+    not_affected: Dict[str, str] = field(default_factory=dict)
+
+    def matches(self, text: str) -> bool:
+        return any(pattern.search(text) for pattern in self.patterns)
+
+
+VENDOR_BUILDS: Tuple[VendorBuild, ...] = (
+    VendorBuild(
+        patterns=(
+            # nmap's version field for this service: "for_Windows_9.5".
+            re.compile(r"^for[_ ]windows[_ ]\d", re.IGNORECASE),
+            # The banner ("SSH-2.0-OpenSSH_for_Windows_9.5") and the product the
+            # authenticated listener reports ("OpenSSH for Windows").
+            re.compile(r"openssh[_ ]for[_ ]windows", re.IGNORECASE),
+        ),
+        label="OpenSSH for Windows",
+        guidance=(
+            "This is Microsoft's build of OpenSSH, which Microsoft services "
+            "through Windows updates and its Win32-OpenSSH releases; a serviced "
+            "build can carry this fix without reporting a later version. Apply "
+            "the latest Windows cumulative update, or the current Win32-OpenSSH "
+            "release for a standalone install, and confirm against Microsoft's "
+            "guidance for this CVE."
+        ),
+        not_affected={
+            # regreSSHion. MSRC's Security Update Guide entry, read 12 Oct 2026.
+            "CVE-2024-6387": (
+                "Microsoft states its OpenSSH for Windows build is not affected: "
+                '"Although Windows contains an OpenSSH component, the vulnerable '
+                'code cannot be exploited or controlled by an adversary", because '
+                "win32-openssh handles the login grace timeout differently "
+                "(https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-6387)"
+            ),
+        },
+    ),
+    VendorBuild(
+        # A distribution names itself in the service string nmap reports —
+        # "8.9p1 Ubuntu 3ubuntu0.10", "9.2p1 Debian 2+deb12u3", Apache's
+        # "(Rocky Linux)" — and patches the package with backported fixes while
+        # it keeps reporting the upstream release. Matched as whole words only:
+        # a package manager's own version ("1:9.6p1-3ubuntu13.5",
+        # "2+deb12u3") never reaches this test as a service string, and the
+        # credentialed path judges those against the distribution's advisories.
+        # RHEL's OpenSSH banner names no distribution, so it is not covered.
+        patterns=(
+            re.compile(
+                r"\b(?:ubuntu|debian|raspbian|red hat|rhel|centos|rocky linux|"
+                r"almalinux|fedora|suse|opensuse|freebsd)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        label=None,
+        guidance=(
+            "The service reports a distribution's build of the product, which the "
+            "distribution patches with backported fixes without changing the "
+            "upstream version it reports. Update the package through the "
+            "system's package manager and check the distribution's security "
+            "tracker for this CVE; a credentialed scan reads the package version "
+            "and settles it."
+        ),
+    ),
+)
+
+
+def vendor_build_for(*texts: Any) -> Optional[VendorBuild]:
+    """The vendor build any of these version/product/banner strings names."""
+    for build in VENDOR_BUILDS:
+        if any(build.matches(_as_str(text)) for text in texts if text):
+            return build
+    return None
+
+
+@dataclass(frozen=True)
+class ObservedCountermeasure:
+    """
+    A countermeasure a network probe sees on the wire, disproving one CVE.
+
+    A version string cannot show a backported fix; an advertised countermeasure
+    is the fix itself, observed on the service that carries it. So this is a
+    disproof, not a downgrade, and the candidate is withheld with the reason.
+    """
+
+    #: The key in a port's observations (``host_observations``).
+    observation: str
+    #: The value whose presence is the countermeasure.
+    marker: str
+    #: Completes "Ruled out: …" in the suppressed-candidates appendix.
+    reason: str
+
+
+OBSERVED_COUNTERMEASURES: Dict[str, ObservedCountermeasure] = {
+    # Terrapin. OpenSSH 9.6 closed the prefix-truncation attack with "strict
+    # KEX", which a server signals by advertising this pseudo-algorithm in its
+    # KEXINIT. On 10.180.6.30 the server advertised it while its banner still
+    # read 9.5, and CVE-2023-48795 was reported as Confirmed.
+    "CVE-2023-48795": ObservedCountermeasure(
+        observation="ssh_kex",
+        marker="kex-strict-s-v00@openssh.com",
+        reason=(
+            "the SSH server advertises strict key exchange "
+            "(kex-strict-s-v00@openssh.com), the fix for this prefix-truncation "
+            "attack, so it implements the countermeasure whatever version its "
+            "banner reports"
+        ),
+    ),
+}
+
+
+def host_observations(
+    host_dict: Dict[str, Any]
+) -> Dict[int, Dict[str, Tuple[str, ...]]]:
+    """What the network probes observed on each port of a host record."""
+    observed: Dict[int, Dict[str, Tuple[str, ...]]] = {}
+    ssh = host_dict.get("ssh_info") if isinstance(host_dict, dict) else None
+    if isinstance(ssh, dict):
+        kex = ssh.get("kex_algos")
+        if isinstance(kex, list) and kex:
+            # ssh_probe handshakes 22/tcp, and records no port of its own.
+            port = _as_int(ssh.get("port")) or 22
+            observed.setdefault(port, {})["ssh_kex"] = tuple(str(k) for k in kex)
+    return observed
+
+
+def observed_countermeasure(
+    finding_dict: Dict[str, Any],
+    service: Optional["ServiceRecord"],
+    observations: Optional[Dict[int, Dict[str, Tuple[str, ...]]]],
+) -> Optional[ObservedCountermeasure]:
+    """The countermeasure observed on this finding's port, if one disproves it."""
+    if not observations:
+        return None
+    cves = extract_cve_list(
+        _first(finding_dict, "cves", "cve", "cve_list", "cve_id") or ""
+    )
+    countermeasure = OBSERVED_COUNTERMEASURES.get(cves[0]) if cves else None
+    if countermeasure is None:
+        return None
+    port = service.port if service else _as_int(finding_dict.get("port"))
+    seen = (observations.get(port) or {}).get(countermeasure.observation) or ()
+    return countermeasure if countermeasure.marker in seen else None
+
+
+def vendor_not_affected(
+    finding_dict: Dict[str, Any], service: Optional["ServiceRecord"]
+) -> str:
+    """The vendor's statement that its build is not affected by this CVE, or ""."""
+    vendor = vendor_build_for(
+        *(
+            (service.product, service.version, service.banner, service.extra)
+            if service
+            else ()
+        ),
+        _first(finding_dict, "detected_version", "installed_version"),
+    )
+    if vendor is None:
+        return ""
+    cves = extract_cve_list(
+        _first(finding_dict, "cves", "cve", "cve_list", "cve_id") or ""
+    )
+    return vendor.not_affected.get(cves[0], "") if cves else ""
+
+
 def version_precision(value: str) -> str:
     """
     Classify how precisely a detected version string pins the real version.
@@ -875,7 +1093,7 @@ def version_precision(value: str) -> str:
     if not value:
         return "exact"
     text = str(value)
-    if _OPEN_ENDED_UP.search(text):
+    if _OPEN_ENDED_UP.search(text) or vendor_build_for(text):
         return "floor"
     if _OPEN_ENDED_DOWN.search(text):
         return "ceiling"
@@ -931,9 +1149,35 @@ def effective_precision(version: str, recorded: str = "") -> str:
     copied between fields, and "9.6.0 or later" only reads as a lower bound
     while the words are still attached to it.
     """
+    # A vendor build is a floor whatever the measuring stage recorded: nmap
+    # records "for_Windows_9.5" as exact, because as a string it is.
+    if vendor_build_for(version):
+        return "floor"
     if recorded in ("exact", "floor", "ceiling"):
         return recorded
     return version_precision(version)
+
+
+def _publishes_version(cpe: Dict[str, Any]) -> bool:
+    """Whether a CPE entry states any version: a bound, or a pinned release."""
+    if any(
+        cpe.get(camel) or cpe.get(snake)
+        for camel, snake in (
+            ("versionStartIncluding", "version_start_including"),
+            ("versionStartExcluding", "version_start_excluding"),
+            ("versionEndIncluding", "version_end_including"),
+            ("versionEndExcluding", "version_end_excluding"),
+        )
+    ):
+        return True
+    uri = _as_str(
+        cpe.get("cpe23Uri")
+        or cpe.get("cpe23_uri")
+        or cpe.get("cpe_uri")
+        or cpe.get("criteria")
+    )
+    parts = uri.split(":")
+    return len(parts) > 5 and parts[5] not in ("*", "-", "")
 
 
 def version_in_cpe_range(
@@ -1576,12 +1820,30 @@ def _classify_platform_finding(
     return DetectionMethod.OS_REPORTED, os_version, fixed_hint, ""
 
 
+def record_platform_scope(
+    finding_dict: Dict[str, Any], cpes: Optional[List[Dict[str, Any]]] = None
+) -> Tuple[str, ...]:
+    """The platforms a candidate's record says it applies to; () for any."""
+    if cpes is None:
+        cpes = _cpe_products(
+            _first(finding_dict, "affected_software", "affected", "cpe_ids", "cpes")
+            or []
+        )
+    configured = finding_dict.get("affected_platforms")
+    return declared_platforms(
+        _first(finding_dict, "description", "desc", "details", "summary"),
+        configured if isinstance(configured, (list, tuple)) else None,
+        [c.get("cpe23Uri") for c in cpes],
+    )
+
+
 def classify_detection(
     finding_dict: Dict[str, Any],
     service: Optional[ServiceRecord],
     affected_software: Any,
     host_services: Optional[List[ServiceRecord]] = None,
     host_os: str = "",
+    observations: Optional[Dict[int, Dict[str, Tuple[str, ...]]]] = None,
 ) -> Tuple[DetectionMethod, str, str, str]:
     """
     Decide how a CVE was tied to this host.
@@ -1656,17 +1918,62 @@ def classify_detection(
     # (`to_phase3_dict` drops `open_ports` because phase 2 already reported
     # them). Every such finding came out Confirmed at QoD 97 on the strength of
     # a package name guessed from a banner.
-    is_credentialed_package = explicit in (
-        "credentialed",
-        "credentialed_package",
-        "package",
+    # The origin is also kept apart from the verdict: the first verification
+    # pass writes its verdict back into ``detection_method``, so a finding it
+    # judged "version_imprecise" or "package_present" no longer read as
+    # credentialed on the second pass and fell into the network path — where a
+    # CSAF finding with no CPE range scored QoD 30 and vanished into the
+    # appendix (10.180.6.30, scan #11, 12 Oct 2026).
+    is_credentialed_package = (
+        explicit
+        in (
+            "credentialed",
+            "credentialed_package",
+            "package",
+        )
+        or _as_str(finding_dict.get("finding_origin")) == "credentialed"
     )
     if is_credentialed_package:
+        # A package matched by name and version is still not affected when the
+        # record is about another platform's build of it. The matcher reads
+        # NVD's "running on" nodes into affected_platforms; the description
+        # and the CPE's target_sw are read here as well, so payloads stored
+        # before the matcher did so are judged the same way.
+        if scope_excludes_host(record_platform_scope(finding_dict, cpes), host_os):
+            return (
+                DetectionMethod.UNVERIFIED,
+                detected_version,
+                fixed_hint,
+                "platform_mismatch",
+            )
         if not detected_version:
             # The package is installed but the audit did not capture a version,
             # so vulnerability cannot be asserted — only that the package which
             # would be affected is present.
             return DetectionMethod.PACKAGE_PRESENT, "", fixed_hint, ""
+
+        # The matcher found the version in range only by reading a release line
+        # ("V19") as its first update; whether the installed update is below the
+        # fix is unknown. It said so rather than confirming.
+        if _as_str(finding_dict.get("installed_version_precision")) == "coarse":
+            return (
+                DetectionMethod.VERSION_IMPRECISE,
+                detected_version,
+                fixed_hint
+                or next(
+                    (
+                        _as_str(
+                            c.get("versionEndExcluding")
+                            or c.get("version_end_excluding")
+                        )
+                        for c in cpes
+                        if c.get("versionEndExcluding")
+                        or c.get("version_end_excluding")
+                    ),
+                    "",
+                ),
+                "",
+            )
 
         disproved = False
         for cpe in cpes:
@@ -1699,6 +2006,23 @@ def classify_detection(
             detected_version,
             fixed_hint,
             "",
+        )
+
+    # A countermeasure seen on the wire outranks any version comparison, and so
+    # does the build's own vendor saying the build is not affected.
+    if observed_countermeasure(finding_dict, service, observations):
+        return (
+            DetectionMethod.UNVERIFIED,
+            detected_version,
+            fixed_hint,
+            "countermeasure_observed",
+        )
+    if vendor_not_affected(finding_dict, service):
+        return (
+            DetectionMethod.UNVERIFIED,
+            detected_version,
+            fixed_hint,
+            "vendor_not_affected",
         )
 
     # Without CPE data nothing can be verified either way. The engine still
@@ -1742,11 +2066,31 @@ def classify_detection(
                 version,
                 candidate.version_precision if version == candidate.version else "",
             )
+            # The service may name the vendor build where the version does not,
+            # e.g. once an authenticated reading has replaced "for_Windows_9.5"
+            # with the file version 9.5.6.3 — which is no more an upstream
+            # release than the banner was.
+            if vendor_build_for(candidate.product, candidate.banner, candidate.extra):
+                precision = "floor"
             verdict = version_in_cpe_range(version, cpe, precision)
-            if verdict is None and version and precision != "exact":
+            if (
+                verdict is None
+                and version
+                and precision != "exact"
+                and _publishes_version(cpe)
+            ):
                 # The fingerprint is a bound, not a value: it lands inside the
                 # published range but cannot rule out a fixed release beyond
                 # the open end. Remember it in case no CPE gives a firm answer.
+                #
+                # Only where the record publishes a version. One that names the
+                # product and nothing else ("openssh:*", "openssh:-") is not
+                # undecided by an imprecise version — no version could decide
+                # it — and stays a product-present candidate, as it is for an
+                # exact one. Without this, seven unversioned OpenSSH records
+                # (a 2008 Red Hat package trojan among them) went from withheld
+                # to reported as soon as OpenSSH for Windows read as a floor
+                # (10.180.6.30, scan #12).
                 imprecise_version = version
                 imprecise_hint = imprecise_hint or _as_str(
                     cpe.get("versionEndExcluding") or cpe.get("version_end_excluding")
@@ -1858,6 +2202,7 @@ def resolve_remediation(
     references: List[str],
     service: Optional[ServiceRecord],
     fixed_version_hint: str = "",
+    detected_version: str = "",
 ) -> Remediation:
     """
     Build remediation guidance from structured data only.
@@ -1878,16 +2223,30 @@ def resolve_remediation(
 
     product_label = ""
     fixed_version = fixed_version_hint
-    boundary_is_exclusive = bool(fixed_version_hint)
+    last_affected = ""
 
-    for cpe in _cpe_products(affected_software):
-        if service and not _cpe_matches_product(cpe, service):
-            continue
+    cpes = [
+        cpe
+        for cpe in _cpe_products(affected_software)
+        if not (service and not _cpe_matches_product(cpe, service))
+    ]
+    # A record often publishes one range per supported branch — PostgreSQL's
+    # run < 14.23, 15.0–15.18, … 18.0–18.4. The boundary that applies is the
+    # one from the range this host's version falls in; taking the first range
+    # listed told an 18.3 server to upgrade to 14.23.
+    if detected_version:
+        containing = [
+            cpe for cpe in cpes if version_in_cpe_range(detected_version, cpe) is True
+        ]
+        if containing:
+            cpes = containing
+
+    for cpe in cpes:
         vendor = _as_str(cpe.get("vendor")).replace("_", " ").title()
         product = _as_str(cpe.get("product")).replace("_", " ").title()
         if product:
             product_label = f"{vendor} {product}".strip()
-        if not fixed_version:
+        if not fixed_version and not last_affected:
             # versionEndExcluding names the first fixed release. When only an
             # inclusive upper bound is published, the last vulnerable release
             # is known instead, so the guidance is worded accordingly.
@@ -1896,36 +2255,48 @@ def resolve_remediation(
             )
             if exclusive:
                 fixed_version = exclusive
-                boundary_is_exclusive = True
             else:
-                inclusive = _as_str(
+                last_affected = _as_str(
                     cpe.get("versionEndIncluding") or cpe.get("version_end_including")
                 )
-                if inclusive:
-                    fixed_version = inclusive
-                    boundary_is_exclusive = False
-        if fixed_version and product_label:
+        if (fixed_version or last_affected) and product_label:
             break
 
     if not product_label and service:
         product_label = service.product or service.service_name
 
-    if fixed_version:
+    # The upstream boundary still says how far the fix had to go, but for a
+    # vendor build the vendor ships it: "Upgrade OpenBSD OpenSSH to 10.4" is not
+    # an action anyone can take on Windows' own OpenSSH.
+    vendor = vendor_build_for(
+        *(
+            (service.product, service.version, service.banner, service.extra)
+            if service
+            else ()
+        ),
+        detected_version,
+    )
+    if vendor and vendor.label:
+        product_label = vendor.label
+
+    if fixed_version or last_affected:
         target = product_label or "the affected component"
-        if boundary_is_exclusive:
+        if fixed_version:
             action = f"Upgrade {target} to version {fixed_version} or later."
         else:
             action = (
-                f"Upgrade {target} to a release later than {fixed_version}; that "
+                f"Upgrade {target} to a release later than {last_affected}; that "
                 f"version is the last one published as affected."
             )
         return Remediation(
             summary=(
                 f"{action} This boundary is taken from the CPE version range "
                 f"published for {cve_id or 'this finding'}."
+                + (f" {vendor.guidance}" if vendor else "")
             ),
             confidence=RemediationConfidence.VERSION_BOUNDARY,
-            fixed_version=fixed_version,
+            fixed_version=fixed_version or None,
+            last_affected_version=last_affected or None,
             product=product_label or None,
         )
 
@@ -2000,9 +2371,17 @@ def _build_evidence(
     (banner, detected version, matched range) and flagged as derived, so it is
     never presented as captured tool output.
     """
-    raw = _as_str(
-        _first(finding_dict, "plugin_output", "evidence", "proof", "output", "detail")
-    )
+    if finding_dict.get("evidence_captured") is False:
+        # Derived on an earlier pass: rebuild it from what is recorded now.
+        raw = _as_str(
+            _first(finding_dict, "plugin_output", "proof", "output", "detail")
+        )
+    else:
+        raw = _as_str(
+            _first(
+                finding_dict, "plugin_output", "evidence", "proof", "output", "detail"
+            )
+        )
     if raw:
         return redact_sensitive_data(raw), True
 
@@ -2038,6 +2417,7 @@ def parse_raw_finding(
     service: Optional[ServiceRecord] = None,
     host_services: Optional[List[ServiceRecord]] = None,
     host_os: str = "",
+    observations: Optional[Dict[int, Dict[str, Tuple[str, ...]]]] = None,
 ) -> StandardizedFinding:
     """Convert one raw vulnerability record into a StandardizedFinding."""
 
@@ -2106,7 +2486,7 @@ def parse_raw_finding(
     )
 
     method, detected_version, fixed_hint, suppression_basis = classify_detection(
-        finding_dict, service, affected_software, host_services, host_os
+        finding_dict, service, affected_software, host_services, host_os, observations
     )
     confidence, _ = DETECTION_SEMANTICS[method]
 
@@ -2135,8 +2515,28 @@ def parse_raw_finding(
             references.append(nvd_url)
 
     remediation = resolve_remediation(
-        finding_dict, primary_cve, affected_software, references, service, fixed_hint
+        finding_dict,
+        primary_cve,
+        affected_software,
+        references,
+        service,
+        fixed_hint,
+        detected_version=detected_version,
     )
+
+    countermeasure = (
+        observed_countermeasure(finding_dict, service, observations)
+        if suppression_basis == "countermeasure_observed"
+        else None
+    )
+
+    applies_to: Tuple[str, ...] = ()
+    host_family = ""
+    if suppression_basis == "platform_mismatch":
+        applies_to = record_platform_scope(finding_dict)
+        host_family = scope_excludes_host(applies_to, host_os)
+        if not host_family:
+            applies_to = ()
 
     evidence, evidence_real = _build_evidence(
         finding_dict, service, detected_version, method, primary_cve
@@ -2195,6 +2595,17 @@ def parse_raw_finding(
         service_product=service.product if service else "",
         detected_version=detected_version,
         suppression_basis=suppression_basis,
+        applies_to_platforms=applies_to,
+        host_platform=host_family,
+        suppression_detail=(
+            countermeasure.reason
+            if countermeasure
+            else (
+                vendor_not_affected(finding_dict, service)
+                if suppression_basis == "vendor_not_affected"
+                else ""
+            )
+        ),
         cvss=cvss,
         severity=severity,
         severity_source=source,
@@ -2495,6 +2906,32 @@ def _extract_credentialed_host(report: Dict[str, Any]) -> Optional[Dict[str, Any
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def upgrade_target(
+    fixed_version: Optional[str], last_affected_version: Optional[str] = None
+) -> str:
+    """
+    The release an upgrade must reach, as a phrase for "Upgrade X to …".
+
+    "8.0.42 or later" when the first fixed release is known; "a release later
+    than 8.0.44" when only the last affected one is. "" when neither is.
+    """
+    if fixed_version:
+        return f"{fixed_version} or later"
+    if last_affected_version:
+        return f"a release later than {last_affected_version}"
+    return ""
+
+
+def boundary_key(version: str, is_last_affected: bool) -> Tuple[Tuple[int, ...], int]:
+    """
+    Order upgrade boundaries by how far they require the upgrade to go.
+
+    A last-affected release outranks a fixed release with the same number:
+    "later than 8.0.44" asks for more than "8.0.44 or later".
+    """
+    return (_comparable_version(version or "") or (), 1 if is_last_affected else 0)
+
+
 @dataclass
 class FindingGroup:
     """
@@ -2510,8 +2947,18 @@ class FindingGroup:
     """
 
     product: str
+    #: The boundary the group's upgrade must reach. A first fixed release,
+    #: unless ``boundary_is_last_affected`` says it is the last vulnerable one.
     fixed_version: str
     findings: List[StandardizedFinding] = field(default_factory=list)
+    boundary_is_last_affected: bool = False
+
+    @property
+    def upgrade_target(self) -> str:
+        """The release to upgrade to, as a phrase ("… or later")."""
+        if self.boundary_is_last_affected:
+            return upgrade_target(None, self.fixed_version)
+        return upgrade_target(self.fixed_version)
 
     @property
     def representative(self) -> StandardizedFinding:
@@ -2574,7 +3021,9 @@ def group_findings_for_report(
         remediation = finding.remediation
         product = (remediation.product or "").strip() if remediation else ""
         fixed = (remediation.fixed_version or "").strip() if remediation else ""
-        if not product or not fixed:
+        last = (remediation.last_affected_version or "").strip() if remediation else ""
+        boundary, is_last = (fixed, False) if fixed else (last, bool(last))
+        if not product or not boundary:
             singles.append(
                 FindingGroup(product="", fixed_version="", findings=[finding])
             )
@@ -2587,13 +3036,19 @@ def group_findings_for_report(
         # cannot disagree about how much work there is.
         key = (finding.host, product.lower())
         entry = grouped.setdefault(
-            key, FindingGroup(product=product, fixed_version=fixed)
+            key,
+            FindingGroup(
+                product=product,
+                fixed_version=boundary,
+                boundary_is_last_affected=is_last,
+            ),
         )
         entry.findings.append(finding)
-        candidate = _comparable_version(fixed)
-        current = _comparable_version(entry.fixed_version)
-        if candidate and (not current or candidate > current):
-            entry.fixed_version = fixed
+        if boundary_key(boundary, is_last) > boundary_key(
+            entry.fixed_version, entry.boundary_is_last_affected
+        ):
+            entry.fixed_version = boundary
+            entry.boundary_is_last_affected = is_last
 
     result: List[FindingGroup] = []
     for entry in grouped.values():
@@ -2629,7 +3084,20 @@ def suppression_reason(finding: StandardizedFinding) -> str:
                 f"({finding.detected_version}) falls outside the vulnerable "
                 f"range published for this record."
             )
+        if (
+            finding.suppression_basis
+            in ("countermeasure_observed", "vendor_not_affected")
+            and finding.suppression_detail
+        ):
+            return f"Ruled out: {finding.suppression_detail}."
         if finding.suppression_basis == "platform_mismatch":
+            if finding.applies_to_platforms and finding.host_platform:
+                return (
+                    f"Ruled out: this record is published for "
+                    f"{describe_scope(finding.applies_to_platforms)} only, and "
+                    f"this host runs "
+                    f"{PLATFORM_LABELS.get(finding.host_platform, finding.host_platform)}."
+                )
             return (
                 "Ruled out: every published configuration for this record is "
                 "scoped to a platform this host is not running."
@@ -2711,6 +3179,7 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
     )
     services = _parse_services(host_dict)
     host_os = _as_str(_first(host_dict, "os_guess", "os_name", "os"))
+    observations = host_observations(host_dict)
 
     candidates = _first(host_dict, "cves", "vulnerabilities", "findings") or []
     if not isinstance(candidates, list):
@@ -2728,6 +3197,13 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
             service=_match_service(candidate, services),
             host_services=services,
             host_os=host_os,
+            observations=observations,
+        )
+
+        is_credentialed_origin = _as_str(
+            _first(candidate, "detection_method", "evidence_source")
+        ).lower() in ("credentialed", "credentialed_package", "package") or (
+            _as_str(candidate.get("finding_origin")) == "credentialed"
         )
 
         if finding.is_reportable:
@@ -2753,12 +3229,30 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
                         "epss_percentile": finding.epss_percentile,
                         "in_kev": finding.in_kev,
                         "kev_due_date": finding.kev_due_date or None,
+                        # A first fixed release only. The last affected one
+                        # travels under its own key: written here as
+                        # fixed_version, the next verification pass read it
+                        # back as a fixed release and advised upgrading to a
+                        # version the CVE names as vulnerable.
                         "fixed_version": getattr(
                             finding.remediation, "fixed_version", ""
                         ),
+                        "last_affected_version": getattr(
+                            finding.remediation, "last_affected_version", None
+                        ),
                         "evidence": finding.evidence,
+                        # Whether that evidence is scanner output or a block
+                        # this module derived. Without it, the next pass found
+                        # derived text under "evidence" and presented it as
+                        # captured output — and kept a "Detected version" line
+                        # an authenticated correction had since superseded.
+                        "evidence_captured": finding.evidence_available,
                     }
                 )
+                # Where the finding came from, which the verdict just written
+                # over detection_method no longer says.
+                if is_credentialed_origin:
+                    raw["finding_origin"] = "credentialed"
                 # An OS-level finding is about the host, not about whatever
                 # port the candidate happened to be generated from. Leaving the
                 # port attached is how a Google Chrome CVE came to be filed
@@ -2920,6 +3414,7 @@ def build_scan_report(
                 service=service,
                 host_services=services,
                 host_os=os_name,
+                observations=host_observations(host_dict),
             )
 
             # Payloads written before verification moved into the scan still

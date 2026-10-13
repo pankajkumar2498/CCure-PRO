@@ -236,7 +236,7 @@ class ScanSchedule(Base):
     #:
     #: Re-resolved and re-validated at every dispatch, never inherited from the
     #: moment the schedule was written: a policy archived in June must stop
-    #: driving scans in July, for the same reason scope and quota are re-checked.
+    #: driving scans in July, for the same reason scan scope is re-checked.
     policy_id = Column(
         String(100),
         ForeignKey("scan_policies.id", ondelete="SET NULL"),

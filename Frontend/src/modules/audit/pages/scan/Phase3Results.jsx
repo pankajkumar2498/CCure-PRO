@@ -28,6 +28,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import ScanStepper from "@audit/components/layout/ScanStepper";
 import CVELink from "@audit/components/common/CVELink";
+import { describeAffected } from "@audit/utils/affectedSoftware";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
 import api from "@shell/api/axiosInstance";
 import { stopScan } from "@audit/api/scans";
@@ -693,37 +694,47 @@ function RiskReport({
                   <p className="p3-cves__label">CVEs</p>
                 )}
                 <ul className="p3-cves">
-                  {(host.cves || []).map((cve, idx) => (
-                    <li key={idx} className="p3-cve">
-                      <div className="p3-cve__head">
-                        <span className="p3-cve__id">
-                          <CVELink cveId={cve.cve_id || "Unknown CVE"} />
-                        </span>
-                        <CcureSeverityBadge severity={cve.severity || "Info"} />
-                      </div>
-                      {cve.cvss_score && (
-                        <p className="p3-cve__line">
-                          CVSS Score:{" "}
-                          <strong>
-                            {Number(cve.cvss_score || cve.cvss || 0).toFixed(1)}
-                          </strong>
-                          /10
-                        </p>
-                      )}
-                      {cve.description && (
-                        <p className="p3-cve__desc">
-                          {cve.description ||
-                            cve.desc ||
-                            "No description available"}
-                        </p>
-                      )}
-                      {cve.affected_software && (
-                        <p className="p3-cve__line">
-                          <strong>Affected:</strong> {cve.affected_software}
-                        </p>
-                      )}
-                    </li>
-                  ))}
+                  {(host.cves || []).map((cve, idx) => {
+                    const affected = describeAffected(cve);
+                    return (
+                      <li key={idx} className="p3-cve">
+                        <div className="p3-cve__head">
+                          <span className="p3-cve__id">
+                            <CVELink cveId={cve.cve_id || "Unknown CVE"} />
+                          </span>
+                          <CcureSeverityBadge
+                            severity={cve.severity || "Info"}
+                          />
+                        </div>
+                        {cve.cvss_score && (
+                          <p className="p3-cve__line">
+                            CVSS Score:{" "}
+                            <strong>
+                              {Number(cve.cvss_score || cve.cvss || 0).toFixed(
+                                1,
+                              )}
+                            </strong>
+                            /10
+                          </p>
+                        )}
+                        {cve.description && (
+                          <p className="p3-cve__desc">
+                            {cve.description ||
+                              cve.desc ||
+                              "No description available"}
+                          </p>
+                        )}
+                        {/* affected_software is a list of CPE records on the
+                          credentialed path; rendered raw, it is an object
+                          child and React refuses the whole report. */}
+                        {affected && (
+                          <p className="p3-cve__line">
+                            <strong>Affected:</strong> {affected}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </article>

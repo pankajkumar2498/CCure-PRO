@@ -55,12 +55,8 @@ def test_views_are_frozen_plain_dataclasses(view):
 def test_organisation_view_carries_no_audit_configuration():
     fields = {f.name for f in dataclasses.fields(api.OrganisationView)}
     for audit_setting in (
-        "max_assets",
-        "max_scans_per_day",
-        "max_concurrent_scans",
         "scan_scope_cidrs",
         "settings",
-        "plan",
     ):
         assert audit_setting not in fields
 

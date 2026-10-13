@@ -5,6 +5,11 @@ adopt_legacy_name(__name__, "routers.admin_orgs")
 import logging
 from typing import Optional
 
+from ccure_platform.administration.rbac_security import (
+    retain_organisation_administrators,
+    record_assignment_denial,
+    step_up,
+)
 from ccure_platform.identity.dependencies import get_current_user
 from ccure_platform.identity.email_utils import (
     email_matches,
@@ -31,9 +36,6 @@ class OrganizationCreateSchema(BaseModel):
 
     name: str = Field(..., min_length=3, max_length=255)
     slug: str = Field(..., min_length=2, max_length=100)
-    plan: str | None = "community"
-    max_assets: int | None = Field(default=500, ge=1)
-    max_users: int | None = Field(default=10, ge=1)
 
     admin_username: str | None = None
     admin_email: EmailStr | None = None
@@ -56,9 +58,6 @@ class OrganizationUpdateSchema(BaseModel):
 
     name: str | None = Field(default=None, min_length=3, max_length=255)
     slug: str | None = Field(default=None, min_length=2, max_length=100)
-    plan: str | None = None
-    max_assets: int | None = Field(default=None, ge=1)
-    max_users: int | None = Field(default=None, ge=1)
 
     @field_validator("name", "slug")
     @classmethod
@@ -90,9 +89,6 @@ def _serialize_org(org: Organization) -> dict:
         "id": str(org.id),
         "name": org.name,
         "slug": org.slug,
-        "plan": org.plan,
-        "max_assets": org.max_assets,
-        "max_users": org.max_users,
         "is_active": org.is_active,
         "created_at": org.created_at,
         "archived_at": org.archived_at,
@@ -130,9 +126,6 @@ def list_organizations(
                 "id": str(o.id),
                 "name": o.name,
                 "slug": o.slug,
-                "plan": o.plan,
-                "max_assets": o.max_assets,
-                "max_users": o.max_users,
                 "is_active": o.is_active,
                 "created_at": o.created_at,
                 "archived_at": o.archived_at,
@@ -150,6 +143,11 @@ def create_organization(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_authorized("platform.organization.create")),
 ):
+    creates_admin = bool(
+        org_data.admin_username and org_data.admin_email and org_data.admin_password
+    )
+    step = step_up(current_user, request, sensitive=creates_admin)
+
     # Check for duplicate slug
     if db.query(Organization).filter(Organization.slug == org_data.slug).first():
         raise HTTPException(
@@ -189,9 +187,6 @@ def create_organization(
             id=gen_org_id(org_data.slug),  # e.g. org_acme_corp
             name=org_data.name,
             slug=org_data.slug,
-            plan=org_data.plan,
-            max_assets=org_data.max_assets,
-            max_users=org_data.max_users,
             is_active=True,
             settings={},
         )
@@ -247,11 +242,14 @@ def create_organization(
                         db, current_user, str(new_admin.id)
                     )
             except GovernanceError as error:
+                record_assignment_denial(current_user, error, str(new_org.id))
                 raise HTTPException(
                     status_code=403,
                     detail="The organisation administrator could not be provisioned: "
                     + ", ".join(sorted({v.code for v in error.violations})),
                 ) from None
+            for event in rbac_events:
+                event.changes["reauth"] = step
             _emit_rbac(db, rbac_events, actor=current_user, request=request)
             log_audit_event(
                 db,
@@ -388,6 +386,8 @@ def change_organization_status(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     if org.is_active != status_data.is_active:
+        if not status_data.is_active:
+            retain_organisation_administrators(db, current_user, str(org.id))
         changes = {"is_active": {"old": org.is_active, "new": status_data.is_active}}
         org.is_active = status_data.is_active
 
@@ -468,6 +468,7 @@ def archive_organization(
     if org.archived_at is not None:
         return {"detail": "Organization is already archived", "archived": False}
 
+    retain_organisation_administrators(db, current_user, str(org.id))
     now = utcnow()
     previous_active = bool(org.is_active)
     org.archived_at = now
@@ -507,7 +508,6 @@ def archive_organization(
         {
             "name": org.name,
             "slug": org.slug,
-            "plan": org.plan,
             "is_active": {"old": previous_active, "new": False},
             "archived_at": {"old": None, "new": now.isoformat()},
             "reason": org.archive_reason,
@@ -636,7 +636,7 @@ def set_scan_scope(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    from ccure_platform.plan.scan_scope import normalise_scope
+    from ccure_platform.organisation_settings.scan_scope import normalise_scope
 
     if payload.cidrs is None:
         new_scope = None

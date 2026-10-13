@@ -29,10 +29,13 @@ def _browser_ok() -> bool:
 
         async def _t():
             from playwright.async_api import async_playwright
+            from core.web.browser_runtime import launch_options
 
             async with async_playwright() as p:
                 b = await p.chromium.launch(
-                    headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
+                    **launch_options(),
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
                 )
                 await b.close()
             return True

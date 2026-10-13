@@ -203,3 +203,45 @@ describe("UserRolesPanel", () => {
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
   });
 });
+
+it("offers platform assignments to an actor with only platform assignment authority", async () => {
+  rbac.getUserAssignments.mockResolvedValue({
+    assignments: [assignment({ scope_type: "platform", scope_org_id: null })],
+  });
+  rbac.listAssignableRoles.mockResolvedValue({
+    roles: [
+      {
+        id: "platform_reader",
+        display_name: "Platform Reader",
+        assignable: true,
+        assignable_scope: "platform",
+      },
+    ],
+  });
+  render(
+    <UserRolesPanel
+      user={target}
+      currentUser={admin(["platform.role.assign_platform"])}
+    />,
+  );
+  expect(await screen.findByLabelText("Assign a role")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Remove Viewer from tess" }),
+  ).toBeInTheDocument();
+});
+
+it("does not let organisation assignment authority remove a platform assignment", async () => {
+  rbac.getUserAssignments.mockResolvedValue({
+    assignments: [assignment({ scope_type: "platform", scope_org_id: null })],
+  });
+  render(
+    <UserRolesPanel
+      user={target}
+      currentUser={admin(["platform.user.assign_role"])}
+    />,
+  );
+  await screen.findByText("Viewer");
+  expect(
+    screen.queryByRole("button", { name: "Remove Viewer from tess" }),
+  ).not.toBeInTheDocument();
+});

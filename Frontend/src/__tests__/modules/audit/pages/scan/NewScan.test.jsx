@@ -19,13 +19,6 @@ vi.mock("@shell/api/user", () => ({
   getPreferences: vi.fn().mockResolvedValue({ theme: "light" }),
 }));
 
-// Mock the quota bar
-vi.mock("@audit/components/scan/ScanQuotaBar", () => ({
-  default: ({ onQuotaChange: _onQuotaChange }) => (
-    <div data-testid="quota-bar" />
-  ),
-}));
-
 // The target input carries no id, name or aria-label, so its placeholder is the
 // only handle a query can reach it by. That placeholder changed from
 // "192.168.1.0/24" to the current value and these four tests kept looking for

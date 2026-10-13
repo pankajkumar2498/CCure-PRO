@@ -90,7 +90,7 @@ const SUMMARY = {
     risk_level: "LOW",
     risk_delta_7d: -2.8,
   },
-  scans: { last_24h: 3, running: 0, queued: 0, quota_used_pct: 0 },
+  scans: { last_24h: 3, running: 0, queued: 0 },
   kev: { open_count: 19 },
 };
 
@@ -409,27 +409,6 @@ describe("P3-1 — dashboard completeness", () => {
     expect(container.querySelectorAll(".sd-cveflags").length).toBe(2);
     expect(screen.getAllByText("Exploit").length).toBe(1);
     expect(screen.queryByText("0.0%")).toBeNull();
-  });
-
-  it("does not invent a daily scan quota", async () => {
-    // This read `quota_limit_24h || 50`, so an installation with no limit
-    // recorded was told its plan allows 50 scans a day.
-    await mount();
-    expect(
-      screen.getAllByText(/No daily scan quota recorded/).length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText(/Plan limit 50\/day/)).toBeNull();
-  });
-
-  it("states the quota as a share when the API records a limit", async () => {
-    routes["/dashboard/summary"] = {
-      ...SUMMARY,
-      scans: { ...SUMMARY.scans, quota_limit_24h: 50, quota_used_pct: 72 },
-    };
-    await mount();
-    expect(
-      screen.getAllByText(/Scan quota: 72% of 50\/day used/).length,
-    ).toBeGreaterThan(0);
   });
 
   it("shows the week's new assets beside the unmanaged count", async () => {

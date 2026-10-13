@@ -10,15 +10,12 @@
    and every colour resolves through a `--ccure-*` token, so both themes get a
    colour chosen for them.
 
-   The file keeps its name: ScanQuotaBar's layout test reads `.ns-card` here to
-   hold the quota bar to the card's width.
    ============================================================================ */
 
 /* ── Setup page frame ─────────────────────────────────────────────────────── */
 /* A CcurePage with the shared header (B.13). The setup form keeps its reading
    width and sits under the title, left-aligned, as every form page does; it
-   used to be a centred hero with its own, larger title. The quota panel and
-   the card are spaced by the page gap, which the header discounts. */
+   used to be a centred hero with its own, larger title. */
 .ns-page {
   --ccure-page-gap: var(--ccure-space-md);
   display: flex;

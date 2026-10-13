@@ -16,12 +16,8 @@ def _auth_headers(user: User) -> dict:
 
 
 def test_org_admin_user_listing_is_tenant_scoped(client, db_session):
-    org_a = Organization(
-        name="Org A", slug="org-a", max_assets=100, max_users=10, is_active=True
-    )
-    org_b = Organization(
-        name="Org B", slug="org-b", max_assets=100, max_users=10, is_active=True
-    )
+    org_a = Organization(name="Org A", slug="org-a", is_active=True)
+    org_b = Organization(name="Org B", slug="org-b", is_active=True)
     db_session.add_all([org_a, org_b])
 
     superadmin_role = system_role(db_session, "platform.superadmin")
@@ -74,12 +70,8 @@ def test_org_admin_user_listing_is_tenant_scoped(client, db_session):
 
 
 def test_superadmin_user_listing_can_see_all_users(client, db_session):
-    org_a = Organization(
-        name="Org SA A", slug="org-sa-a", max_assets=100, max_users=10, is_active=True
-    )
-    org_b = Organization(
-        name="Org SA B", slug="org-sa-b", max_assets=100, max_users=10, is_active=True
-    )
+    org_a = Organization(name="Org SA A", slug="org-sa-a", is_active=True)
+    org_b = Organization(name="Org SA B", slug="org-sa-b", is_active=True)
     db_session.add_all([org_a, org_b])
 
     superadmin_role = system_role(db_session, "platform.superadmin")
@@ -132,15 +124,11 @@ def test_org_admin_audit_logs_are_tenant_scoped(client, db_session):
     org_a = Organization(
         name="Audit Org A",
         slug="audit-org-a",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     org_b = Organization(
         name="Audit Org B",
         slug="audit-org-b",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add_all([org_a, org_b])
@@ -204,15 +192,11 @@ def test_superadmin_audit_logs_can_see_all_tenants(client, db_session):
     org_a = Organization(
         name="Audit SA A",
         slug="audit-sa-a",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     org_b = Organization(
         name="Audit SA B",
         slug="audit-sa-b",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add_all([org_a, org_b])
@@ -270,9 +254,7 @@ def test_superadmin_audit_logs_can_see_all_tenants(client, db_session):
 
 
 def test_access_token_contains_org_and_role_claims(client, db_session):
-    org = Organization(
-        name="Token Org", slug="token-org", max_assets=100, max_users=10, is_active=True
-    )
+    org = Organization(name="Token Org", slug="token-org", is_active=True)
     role = system_role(db_session, "platform.org_admin")
     db_session.add(org)
     db_session.flush()
@@ -305,8 +287,6 @@ def test_superadmin_create_user_requires_explicit_organization(client, db_sessio
     org = Organization(
         name="Create Org",
         slug="create-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)
@@ -352,15 +332,11 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
     org_a = Organization(
         name="Create Org A",
         slug="create-org-a",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     org_b = Organization(
         name="Create Org B",
         slug="create-org-b",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add_all([org_a, org_b])
@@ -404,19 +380,17 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
     assert str(created_user.org_id) == str(org_b.id)
 
 
-def test_org_admin_create_user_is_forced_into_own_organization(client, db_session):
+def test_org_admin_create_user_rejects_an_explicit_foreign_organization(
+    client, db_session
+):
     org_a = Organization(
         name="Forced Org A",
         slug="forced-org-a",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     org_b = Organization(
         name="Forced Org B",
         slug="forced-org-b",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add_all([org_a, org_b])
@@ -452,12 +426,11 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
         },
     )
 
-    assert response.status_code == 200
-    created_user = (
+    assert response.status_code == 403
+    assert (
         db_session.query(User).filter(User.username == "forced-org-user").first()
+        is None
     )
-    assert created_user is not None
-    assert str(created_user.org_id) == str(org_a.id)
 
 
 def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(
@@ -466,8 +439,6 @@ def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(
     org = Organization(
         name="Deleted Scope Org",
         slug="deleted-scope-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)
@@ -534,8 +505,6 @@ def test_soft_delete_restore_and_purge_user_flow(client, db_session):
     org = Organization(
         name="Lifecycle Org",
         slug="lifecycle-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)
@@ -609,8 +578,6 @@ def test_purge_user_preserves_audit_logs_by_nulling_user_reference(client, db_se
     org = Organization(
         name="Purge Audit Org",
         slug="purge-audit-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db_session.add(org)
@@ -667,8 +634,6 @@ def test_deleted_user_cannot_log_in(client, db_session):
     org = Organization(
         name="Deleted Login Org",
         slug="deleted-login-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     role = system_role(db_session, "platform.org_admin")

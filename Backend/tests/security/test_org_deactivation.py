@@ -38,9 +38,6 @@ def setup_org_and_users(db_session):
     org = Organization(
         name="Test Organization",
         slug="test-org",
-        plan="community",
-        max_assets=100,
-        max_users=10,
         is_active=True,
         settings={},
     )

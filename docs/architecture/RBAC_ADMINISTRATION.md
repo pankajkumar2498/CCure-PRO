@@ -1,9 +1,32 @@
 # RBAC-7 — Platform RBAC administration and governance
 
-**Status: built and proven in a disposable database; no deployment, no production
-change.** The governance API and UI exist in the repo; the RBAC tables are still empty in
-production, so until RBAC-8 provisions accounts nobody can use them there (an account with no
-RBAC assignment is told so). The legacy implementation is untouched and remains the rollback.
+**Status: native RBAC is authoritative.** Role assignments and permission grants live in
+`rbac_*` tables; the platform engine is the authorization source. System declarations
+are reconciled at startup and by the operator catalogue command. Custom-role changes
+use the governed administration API. The October 2026 hardening changes are tested in
+an isolated PostgreSQL database; deploying those changes remains a separate operation.
+
+## Approved system-role governance (12 October 2026)
+
+System-role **permission sets remain immutable to every administrator**, including
+platform administrators. This is an explicit governance decision. A reviewed catalogue
+release controls their grants; administrators cannot unlock them through the UI or
+write mappings directly. Startup reconciliation retains its code-owned catalogue policy
+and now records actual changes in the platform audit ledger in the same transaction.
+
+Creation, assignment, replacement and retirement are separate governed operations.
+Role names and keys do not authorize any of them. Existing custom organisation roles
+can be created and edited in place. System labels may be renamed only with the existing
+platform-scoped rename authority. System retirement requires the existing platform
+retirement authority and all continuity, assignment and default-role gates. Replacement
+assignments must pass scope, tenant membership, delegation and self-assignment checks;
+replacement does not itself retire the original role. Retired system roles are not
+resurrected by catalogue sync. Stable IDs, append-only revisions and audit history remain.
+
+Future platform-role creation or a different system-editing policy requires an explicit
+platform governance decision and a governed API; no such new capability is exposed by
+this change. A configured recovery procedure remains the recovery path, rather than a
+role-name bypass. Do not delete/recreate roles or use database edits to escape these gates.
 
 ## What can be administered
 
@@ -13,7 +36,7 @@ RBAC assignment is told so). The legacy implementation is untouched and remains 
 | Permission catalogue              | `GET /platform/rbac/permissions`                                 | the UI is built from it; no key can be typed in                                                                                                                    |
 | Create a custom organisation role | `POST /platform/rbac/roles`                                      | delegable organisation-scope permissions only; delegation ceiling; one organisation; never a system role                                                           |
 | Rename (display name)             | `PATCH /platform/rbac/roles/{id}`                                | a label — changes no authorization; system role needs `platform.role.rename_system`                                                                                |
-| Role permissions                  | `PUT /platform/rbac/roles/{id}/permissions`                      | custom roles only; removal always allowed; adding bounded by the ceiling; nobody adds to a role they hold                                                          |
+| Role permissions                  | `PUT /platform/rbac/roles/{id}/permissions`                      | active custom roles only; current revision required; removal preserves administrator continuity; adding bounded by the ceiling; nobody adds to a role they hold    |
 | Lifecycle                         | `POST …/transition`                                              | `active → retiring → retired`, reactivation within the ceiling; retirement gate: no live assignments, not a default role, no continuity regression; no hard delete |
 | Replacement                       | `POST …/replace`                                                 | create replacement → migrate (governed, all-or-nothing, old assignments revoked as `migrated`) → verify continuity → retire                                        |
 | Assignable roles                  | `GET …/assignable-roles`                                         | every role with `assignable` and the governance `reasons`; plus the actor's delegation summary                                                                     |
@@ -46,7 +69,7 @@ Through the platform audit service; ownership never invented. A role of one orga
 organisation assignment → that organisation's trail; a system/platform role event → the platform
 ledger. Events: `rbac.role.created/renamed/updated/permissions_changed/retiring/retired/
 reactivated/replaced/reassigned/assigned/revoked`, `rbac.platform_role.assigned/revoked`,
-`rbac.escalation.refused` and `rbac.assignment.denied` (written in their own transaction so the
+`rbac.escalation.refused`, `rbac.role.denied` and `rbac.assignment.denied` (written in their own transaction so the
 refusal's rollback cannot erase them), `rbac.reauth.failed`. Each mutation event carries the step-up
 outcome.
 
@@ -57,9 +80,8 @@ Every users / organisations / roles / settings / audit-log route asks for one gr
 `platform.organization.read|create|update|archive|set_scan_scope`, `platform.role.read`,
 `platform.permission.read`, `platform.audit_log.read|export|retention`,
 `audit.asset.import_amt`, `audit.remediation.manage_sla`) through `require_authorized(key)`;
-the legacy rule it replaced is its fallback (the atom for atom-derived keys, so a custom legacy role
-is unaffected; the role-name rule for the superadmin-only ones). No generic settings/admin key was
-created; `settings:update` stays split. The user-directory, organisation-list and audit-log
+native grants and scope are the only authority. A missing assignment or grant is denied.
+No legacy role or permission fallback remains. The user-directory, organisation-list and audit-log
 visibility helpers are cross-organisation reach (`acts_across_organisations`, RBAC-5), not role
 names. `/admin/roles` now returns `assignable` per role, decided by the assignment rules, so the
 form no longer recognises a label.
@@ -73,7 +95,30 @@ or remediation request); it is held by the same roles the legacy `admin`/`supera
 `compliance_officer` name test passed in practice (`superadmin`, `org_admin`). A generic bypass key
 would be broader than the behaviour; none exists.
 
-## Not done here
+## Revision, transaction and tenant hardening
 
-Dual-writing legacy `users.role_id` changes into `rbac_user_roles`, provisioning, the default
-role, bootstrap and removing the legacy implementation and the older-backend fallback are RBAC-8.
+Permission updates require `expected_revision` from the loaded role detail. Missing
+preconditions return 428, stale revisions 409. A shared transaction lock serializes role
+revisions and administrator-removing changes; stale edits cannot overwrite a newer
+permission set. Permission changes, append-only revision records and successful audit
+records share the same transaction. Audit or revision failures roll back grant changes.
+
+Governed denials, including immutable system roles and continuity failures, are recorded
+as `rbac.role.denied`, assignment denial or escalation refusal in a separate transaction.
+Audit failure cannot turn a denied operation into success. Compatibility role assignments
+and initial organisation-admin provisioning use the same step-up and denial audit helpers.
+
+Explicit unauthorized tenant selections are rejected for writes; creation honours body or
+query organisation and rejects conflicting selections. Inactive tenants cannot receive
+new assignments. Account transfers revoke old organisation assignments with preserved
+history, and destination assignments need separate authority. The resolver ignores
+membership-mismatched grants. Account deactivation/deletion and ending a tenancy containing
+platform administrators use the same capability-based continuity protocol.
+
+The catalogue includes every declared implemented key. Ordinary organisation readers
+receive organisation-scoped entries; platform catalogue readers receive all entries.
+Grantability reflects the current actor's delegation ceiling at each scope. Policy Pro
+and Rank declare no implemented permissions here; IR requires separate service verification.
+
+See [current permission inventory](../RBAC_Management_Permissions.md) and
+[hardening verification report](../rbac/RBAC_HARDENING_REPORT.md).

@@ -13,6 +13,8 @@ This crawler handles:
   - Scope enforcement (stay within target domain/path)
 """
 
+from core.web.browser_runtime import launch_options
+
 import asyncio
 import hashlib
 import logging
@@ -251,6 +253,7 @@ class PlaywrightCrawler:
         try:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(
+                    **launch_options(),
                     headless=True,
                     args=[
                         "--no-sandbox",

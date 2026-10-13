@@ -41,8 +41,6 @@ def org(db_session) -> Organization:
     organization = Organization(
         name="NVD Authz Org",
         slug="nvd-authz",
-        max_assets=10,
-        max_users=10,
         is_active=True,
     )
     db_session.add(organization)

@@ -50,8 +50,6 @@ def _downloadable_scan(db_session):
     org = Organization(
         name="Audit Download Org",
         slug="audit-download-org",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     role = fixture_role(db_session, "audit_download_reader")

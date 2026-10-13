@@ -298,6 +298,9 @@ def sync(
     and is recorded as ``system:rbac-sync``). With ``audit`` (the default) the
     events go to the platform ledger: a catalogue sync is owned by no organisation.
     """
+    from ccure_platform.rbac.governance import lock_continuity
+
+    lock_continuity(db)
     sources = tuple(sources)
     actor_label = getattr(actor, "id", None) or SYNC_ACTOR
 

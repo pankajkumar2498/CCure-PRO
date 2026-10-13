@@ -628,9 +628,6 @@ def register(
             id=gen_org_id("self-service"),  # → org_self-service
             name="Self-Service Users",
             slug="self-service",
-            plan="community",
-            max_assets=100,
-            max_users=50,
             is_active=True,
             settings={"description": "Organization for self-registered users"},
         )

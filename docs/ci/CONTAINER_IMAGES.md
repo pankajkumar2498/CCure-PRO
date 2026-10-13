@@ -152,6 +152,77 @@ unnecessary; it was removed a day before it expired, and
 `trivy-frontend.yaml` holds no exceptions now. Drop each upgrade once the
 digest moves to a base that already carries the fix.
 
+### Chromium security minimum (12 Oct 2026)
+
+The RBAC release review subsequently found 148 blocking package findings in Debian
+Chromium/Chromium-common 154 (74 distinct CVEs across the two packages). A later
+signed `trixie-security` index offered `155.0.8059.39-1~deb13u1`, the fixed version
+reported by Trivy and the [Debian tracker](https://security-tracker.debian.org/tracker/CVE-2026-106237).
+The backend install now checks both packages against that minimum with
+`dpkg --compare-versions`. Newer versions remain eligible; an older mirror result
+fails the build. This also invalidates the old install instruction in same-day
+CI caches. The Python base digest, package sources, required browser dependency
+and vulnerability policy are unchanged. See
+[the release report](../rbac/RBAC_RELEASE_READINESS.md) for exact artifact scans,
+targeted tests and pending approvals.
+
+The browser coverage review found Playwright 1.63.0 separately downloaded
+Chromium 153, which is not upgraded by the Debian package fix. The release candidate
+uses Playwright's [supported Chrome Stable channel](https://playwright.dev/python/docs/browsers#google-chrome--microsoft-edge).
+A build-only stage downloads `google-chrome-stable` from Google's authenticated
+APT repository, verifies the active primary key fingerprint published in
+[Google's key documentation](https://www.google.com/linuxrepositories/), and leaves
+GPG out of the runtime. Installation requires Chrome >= `155.0.8059.39-1`.
+The existing Debian package and libraries are retained.
+
+Chrome's runtime package itself requires `wget` and a libcurl implementation;
+these remain installed. The exact published candidate scan adds 40 findings
+relative to the earlier Debian-only artifact, including six High findings with
+no fixed version reported: `CVE-2026-12064`, `CVE-2026-8286`, `CVE-2026-8458`
+and `CVE-2026-8927` in `libcurl3t64-gnutls`, and `CVE-2026-58471` and
+`CVE-2026-58472` in `wget`. The existing security gate passes; no exception was
+added and no required dependency was removed. Security-owner review of this
+additional runtime risk remains required. Do not describe the image as free
+of High/Critical findings.
+
+The 13 October follow-up selects the signed official
+[trixie-backports curl packages](https://packages.debian.org/trixie-backports/libcurl4-gnutls)
+at `8.21.0-2~bpo13+1`, which upstream fixes for the four curl findings above.
+The Dockerfile pins both GnuTLS and OpenSSL implementations plus their four
+HTTP/3 dependencies. The old GnuTLS name becomes a transitional package;
+the fixed OpenSSL package preserves Chrome's legacy dependency alternative.
+The isolated dependency simulation required four upgrades and three additions,
+with no removals and the exact Chrome package retained. The build uses Debian's
+archive keyring, forbids removals and verifies Chrome's version is unchanged;
+it removes the temporary backports source afterwards. No general distribution
+upgrade, new security exception or application dependency change is introduced.
+Update these scoped pins deliberately when fixes become available. The changed
+candidate requires its own Trivy gate, image smoke and executed-browser check;
+the earlier scan does not verify the new image. The two wget findings and the
+existing root/no-sandbox policy remain disclosed and unaccepted for production.
+
+All five production browser launch sites use the shared channel selector. An
+unset channel preserves local Playwright defaults; an unreviewed channel fails.
+The release image explicitly sets `CCURE_BROWSER_CHANNEL=chrome`. The unused
+vulnerable bundled Chromium/headless-shell download is removed from that image:
+no production launch uses it, and retaining it would add avoidable attack surface.
+The Playwright driver and application dependencies remain. Real-browser test
+probes use the same selector, preventing a missing old bundle from hiding tests
+for the new production engine.
+
+Images additionally runs `scripts/ci/check_browser_runtime.py` inside the exact
+backend image, offline and as its default user. It requires the Chrome channel,
+checks the _executed_ browser version against the fix minimum and renders a
+local page. Package scanning is retained; no advisory exemption is added.
+The existing scanner `--no-sandbox` policy is unchanged and still needs explicit
+security-owner review for production crawling.
+
+Manual Images runs retain the exact scanned and smoke-tested images as private
+Actions artifacts for seven days, with image metadata, export SHA256SUMS and the
+full Trivy report. This makes coordinated artifact promotion possible without a
+rebuild. Registry publication and production deployment still require owner
+approval. No release artifact is exported from the ordinary nightly run.
+
 ### Scanner dependency patches (12 Oct 2026)
 
 The backend now builds the existing Nuclei v3.11.1, ffuf v2.3.0 and

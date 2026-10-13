@@ -128,8 +128,6 @@ def other_tenant(db_session):
         id=f"org_xother_{uid}",
         name=f"Export Other {uid}",
         slug=f"export-other-{uid}",
-        max_assets=10,
-        max_users=5,
         is_active=True,
     )
     db_session.add(org)

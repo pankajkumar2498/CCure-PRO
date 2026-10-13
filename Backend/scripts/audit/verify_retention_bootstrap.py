@@ -103,8 +103,6 @@ def _effect_check(db) -> None:
                 id=_PROBE_ORG,
                 name="Retention self-test",
                 slug=f"{_PROBE_ORG}-slug",
-                max_assets=1,
-                max_users=1,
                 is_active=True,
             )
         )

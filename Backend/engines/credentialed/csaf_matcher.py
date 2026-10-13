@@ -57,7 +57,10 @@ import re
 from typing import Any, Iterable
 
 from core.vuln_intel import get_vuln_engine
-from engines.credentialed.vuln_matcher import compare_distro_versions
+from engines.credentialed.vuln_matcher import (
+    compare_distro_versions,
+    version_too_coarse,
+)
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -200,6 +203,15 @@ class CsafProductMatcher:
                     continue
                 emitted.add(key)
 
+                # "V19" against "< 19.0.2" is in range only if the update level
+                # the version does not state is below 2.
+                comparable = _COMPARABLE.match(
+                    str(row["version_constraint"] or "").strip()
+                )
+                coarse = bool(comparable) and version_too_coarse(
+                    version, comparable.group("version")
+                )
+
                 findings.append(
                     {
                         "cve_id": cve_id,
@@ -212,6 +224,7 @@ class CsafProductMatcher:
                         ),
                         "package_name": name,
                         "installed_ver": version,
+                        "installed_version_precision": "coarse" if coarse else "",
                         "fixed_ver": _fixed_from_constraint(row["version_constraint"]),
                         "source": "csaf",
                         "matched_by": f"csaf:{row['provider']}",

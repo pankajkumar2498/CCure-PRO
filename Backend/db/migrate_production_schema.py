@@ -276,9 +276,9 @@ def seed_default_org(conn):
         text(
             """
             INSERT INTO organizations
-                (id, name, slug, plan, max_assets, max_users, is_active, settings, created_at, updated_at)
+                (id, name, slug, is_active, settings, created_at, updated_at)
             VALUES
-                (:id, :name, :slug, 'pro', 10000, 100, true, '{}', NOW(), NOW())
+                (:id, :name, :slug, true, '{}', NOW(), NOW())
             RETURNING id, name
         """
         ),

@@ -153,7 +153,7 @@ export const AuthProvider = ({ children }) => {
     const refreshActiveSession = async () => {
       try {
         await refreshSession();
-        lastSessionRefreshRef.current = Date.now();
+        await syncCurrentUser(true);
       } catch {
         // The axios interceptor owns forced logout when the refresh token is no longer valid.
       }
@@ -176,7 +176,7 @@ export const AuthProvider = ({ children }) => {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [authState]);
+  }, [authState, syncCurrentUser]);
 
   const login = useCallback(async (credentials) => {
     const data = await loginRequest(credentials);

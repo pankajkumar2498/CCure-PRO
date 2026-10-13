@@ -1584,49 +1584,11 @@
             ],
             "title": "Admin Username"
           },
-          "max_assets": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": 500,
-            "title": "Max Assets"
-          },
-          "max_users": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": 10,
-            "title": "Max Users"
-          },
           "name": {
             "maxLength": 255,
             "minLength": 3,
             "title": "Name",
             "type": "string"
-          },
-          "plan": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": "community",
-            "title": "Plan"
           },
           "slug": {
             "maxLength": 100,
@@ -1694,30 +1656,6 @@
         "additionalProperties": false,
         "description": "Update organization metadata.",
         "properties": {
-          "max_assets": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Assets"
-          },
-          "max_users": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Users"
-          },
           "name": {
             "anyOf": [
               {
@@ -1730,17 +1668,6 @@
               }
             ],
             "title": "Name"
-          },
-          "plan": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Plan"
           },
           "slug": {
             "anyOf": [
@@ -2168,6 +2095,19 @@
       "RbacRolePermissionsBody": {
         "additionalProperties": false,
         "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current role revision; required for permission updates (428 if omitted, 409 if stale).",
+            "title": "Expected Revision"
+          },
           "permission_keys": {
             "items": {
               "type": "string"
@@ -16030,7 +15970,7 @@
     },
     "/dashboard/summary": {
       "get": {
-        "description": "8 top metric cards. Data sources:\n  severity counts  → AssetVulnerability JOIN VulnerabilityDefinition WHERE status='open'\n  asset stats      → Asset table aggregates\n  scan counts      → Scan table with 24h rolling window\n  kev count        → VulnerabilityDefinition.source = 'kev' proxy\n                     (no in_kev column exists — use source field instead)\n  quota            → core/quota._limits(plan)",
+        "description": "8 top metric cards. Data sources:\n  severity counts  → AssetVulnerability JOIN VulnerabilityDefinition WHERE status='open'\n  asset stats      → Asset table aggregates\n  scan counts      → Scan table with 24h rolling window\n  kev count        → VulnerabilityDefinition.source = 'kev' proxy\n                     (no in_kev column exists — use source field instead)",
         "operationId": "get_dashboard_summary_dashboard_summary_get",
         "parameters": [
           {
@@ -17958,6 +17898,22 @@
               "title": "Assignment Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
           }
         ],
         "responses": {
@@ -17994,6 +17950,24 @@
     "/platform/rbac/permissions": {
       "get": {
         "operationId": "list_permissions_platform_rbac_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -18002,6 +17976,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -18078,6 +18062,24 @@
       },
       "post": {
         "operationId": "create_role_platform_rbac_roles_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -18516,6 +18518,22 @@
             "schema": {
               "title": "User Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
             }
           }
         ],
@@ -21353,7 +21371,7 @@
     },
     "/scan/host-discovery": {
       "post": {
-        "description": "Host Discovery: Phase 1 (Trigger and Return Immediately).\n\nQuota enforcement runs BEFORE the scan row is created, so rejected\nrequests never produce orphaned DB rows.",
+        "description": "Host Discovery: Phase 1 (Trigger and Return Immediately).\n\nTarget and port validation run before the scan row is created.",
         "operationId": "scan_host_discovery_scan_host_discovery_post",
         "parameters": [
           {
@@ -21502,59 +21520,6 @@
         "summary": "Get Scan Progress",
         "tags": [
           "Progress"
-        ]
-      }
-    },
-    "/scan/quota": {
-      "get": {
-        "description": "Return the organisation's current scan quota status.\n\nResponse::\n\n    {\n      \"plan\": \"community\",\n      \"scans_used_24h\": 3,\n      \"scans_limit_24h\": 5,\n      \"concurrent_running\": 1,\n      \"concurrent_limit\": 1,\n      \"max_ips_per_scan\": 254,\n      \"max_subnet_prefix\": 24,\n      \"quota_exceeded\": false,\n      \"concurrent_exceeded\": false\n    }",
-        "operationId": "get_scan_quota_scan_quota_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "org_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Org Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get Scan Quota",
-        "tags": [
-          "Phase-Selective Scans"
         ]
       }
     },

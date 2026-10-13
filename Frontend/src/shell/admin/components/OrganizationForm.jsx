@@ -2,8 +2,7 @@
  * components/admin/OrganizationForm.jsx — Checkpoint 3C batch 13.
  *
  * The create/edit form OrganizationManagement mounts inside its dialog. Same
- * props, same validation and the same payload as before: name, slug, plan,
- * `max_assets` and `max_users` as numbers, `is_active` only with
+ * props and validation: name, slug, `is_active` only with
  * `showStatus`, and — on create, only when any of its fields is filled — the
  * optional initial-administrator block (`admin_username`, `admin_email`,
  * `admin_full_name`, `admin_password`).
@@ -26,12 +25,6 @@ import {
 } from "../../../design-system";
 import "../styles/organization-form.css";
 
-const organizationPlans = [
-  { value: "community", label: "Community" },
-  { value: "business", label: "Business" },
-  { value: "enterprise", label: "Enterprise" },
-];
-
 export default function OrganizationForm({
   mode,
   organization = {},
@@ -42,12 +35,9 @@ export default function OrganizationForm({
 }) {
   const [name, setName] = useState(organization.name || "");
   const [slug, setSlug] = useState(organization.slug || "");
-  const [plan, setPlan] = useState(organization.plan || "community");
   const [status, setStatus] = useState(
     organization.is_active ?? true ? "active" : "inactive",
   );
-  const [maxAssets, setMaxAssets] = useState(organization.max_assets ?? 500);
-  const [maxUsers, setMaxUsers] = useState(organization.max_users ?? 10);
 
   // Admin User Provisioning (Creation only)
   const [adminUsername, setAdminUsername] = useState("");
@@ -84,10 +74,7 @@ export default function OrganizationForm({
   useEffect(() => {
     setName(organization.name || "");
     setSlug(organization.slug || "");
-    setPlan(organization.plan || "community");
     setStatus(organization.is_active ?? true ? "active" : "inactive");
-    setMaxAssets(organization.max_assets ?? 500);
-    setMaxUsers(organization.max_users ?? 10);
   }, [organization]);
 
   const isAdminProvisioning =
@@ -104,10 +91,8 @@ export default function OrganizationForm({
     () =>
       name.trim().length >= 3 &&
       slug.trim().length >= 2 &&
-      Number(maxAssets) > 0 &&
-      Number(maxUsers) > 0 &&
       (mode === "create" ? isAdminValid : true),
-    [name, slug, maxAssets, maxUsers, mode, isAdminValid],
+    [name, slug, mode, isAdminValid],
   );
 
   const handleSubmit = (event) => {
@@ -115,12 +100,8 @@ export default function OrganizationForm({
     if (!isValid) return;
 
     const payload = {
-      ...organization,
       name: name.trim(),
       slug: slug.trim(),
-      plan,
-      max_assets: Number(maxAssets),
-      max_users: Number(maxUsers),
     };
 
     if (mode === "create" && isAdminProvisioning) {
@@ -145,8 +126,7 @@ export default function OrganizationForm({
           {mode === "edit" ? "Edit organization" : "Add organization"}
         </h3>
         <p className="of-lead">
-          Keep organizational metadata accurate for audit, subscription
-          tracking, and access policies.
+          Keep organizational metadata accurate for audit and access policies.
         </p>
       </div>
 
@@ -175,19 +155,6 @@ export default function OrganizationForm({
           }
         />
 
-        <CcureSelect
-          id="organization-plan"
-          label="Subscription plan"
-          value={plan}
-          onChange={(event) => setPlan(event.target.value)}
-        >
-          {organizationPlans.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </CcureSelect>
-
         {showStatus && (
           <CcureSelect
             id="organization-status"
@@ -199,26 +166,6 @@ export default function OrganizationForm({
             <option value="inactive">Inactive</option>
           </CcureSelect>
         )}
-
-        <div className="of-row">
-          <CcureInput
-            id="organization-max-assets"
-            label="Max assets"
-            type="number"
-            min="1"
-            value={maxAssets}
-            onChange={(event) => setMaxAssets(event.target.value)}
-          />
-
-          <CcureInput
-            id="organization-max-users"
-            label="Max users"
-            type="number"
-            min="1"
-            value={maxUsers}
-            onChange={(event) => setMaxUsers(event.target.value)}
-          />
-        </div>
       </div>
 
       {mode === "create" && (

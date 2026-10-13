@@ -216,8 +216,6 @@ def test_an_owner_from_another_organisation_is_refused(
         id=f"org_{uuid.uuid4().hex[:8]}",
         name=f"Other {uuid.uuid4().hex[:6]}",
         slug=f"other-{uuid.uuid4().hex[:6]}",
-        max_assets=5,
-        max_users=5,
         is_active=True,
     )
     db_session.add(other_org)
@@ -527,8 +525,6 @@ def _foreign_finding(db_session, tag: str, ip: str):
         id=f"org_{uuid.uuid4().hex[:8]}",
         name=f"Other {uuid.uuid4().hex[:6]}",
         slug=f"other-{uuid.uuid4().hex[:6]}",
-        max_assets=5,
-        max_users=5,
         is_active=True,
     )
     db_session.add(other_org)

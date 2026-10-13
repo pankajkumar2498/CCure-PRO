@@ -27,10 +27,9 @@ ceiling, and a test fails on anything outside it):
 * **Accounts** — ``user`` / ``UserView``, ``user_display_names``,
   ``users_holding_permission``.
 * **Tenancy** — ``organisation`` / ``OrganisationView``.
-* **Organisation plan** (step 8.4) — ``scan_limits``, ``scan_scope``,
-  ``remediation_sla_setting`` / ``store_remediation_sla_setting``. Each is one
-  removable plan feature (``ccure_platform/plan/``) with exactly one consumer in
-  each module; ``tests/repo/test_plan_feature_containment.py`` holds that.
+* **Organisation settings** — ``scan_scope``, ``remediation_sla_setting`` /
+  ``store_remediation_sla_setting``. Each has exactly one consumer in Audit;
+  ``tests/repo/test_organisation_settings_containment.py`` holds that.
 
 Two rules every function keeps:
 
@@ -39,7 +38,7 @@ Two rules every function keeps:
 * **Only plain values leave.** A view is a frozen dataclass of strings and
   booleans; no ORM row crosses the boundary from these functions.
 
-``OrganisationView`` carries no plan field. Plan features are separate
+``OrganisationView`` carries identity only. Organisation settings are separate
 functions with separate views so that each can be removed without touching the
 others or the organisation's identity.
 """
@@ -50,13 +49,12 @@ from dataclasses import dataclass
 from typing import Iterable, Union
 
 from ccure_platform.identity.dependencies import get_current_user as current_user
-from ccure_platform.plan.remediation_sla import (
+from ccure_platform.organisation_settings.remediation_sla import (
     RemediationSlaSettingView,
     remediation_sla_setting,
     store_remediation_sla_setting,
 )
-from ccure_platform.plan.scan_limits import ScanLimits, ScanLimitsView, scan_limits
-from ccure_platform.plan.scan_scope import ScanScopeView, scan_scope
+from ccure_platform.organisation_settings.scan_scope import ScanScopeView, scan_scope
 from ccure_platform.identity.dependencies import (
     get_current_user_flexible as current_user_flexible,
 )
@@ -133,10 +131,7 @@ __all__ = (
     "users_holding_permission",
     "OrganisationView",
     "organisation",
-    # organisation plan — one removable feature per group
-    "ScanLimits",
-    "ScanLimitsView",
-    "scan_limits",
+    # organisation settings — one feature per group
     "ScanScopeView",
     "scan_scope",
     "RemediationSlaSettingView",
@@ -166,7 +161,7 @@ class OrganisationView:
     """
     An organisation's identity — never its Audit configuration.
 
-    Quotas, scan scope and the remediation SLA policy are Audit's and are not
+    Scan scope and the remediation SLA policy are separate settings and are not
     here; see the module docstring.
     """
 

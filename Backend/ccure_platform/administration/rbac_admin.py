@@ -21,12 +21,15 @@ from __future__ import annotations
 
 from typing import Literal
 
-from ccure_platform.identity import reauth
+from ccure_platform.administration.rbac_security import (
+    mutation_organisation,
+    step_up as _step_up,
+)
 from ccure_platform.identity.dependencies import get_current_user
 from ccure_platform.rbac import administration as admin
 from ccure_platform.rbac import contract as c
 from ccure_platform.rbac.audit import EventDraft, emit
-from ccure_platform.rbac.governance import GovernanceError
+from ccure_platform.rbac.governance import GovernanceError, lock_continuity
 from ccure_platform.rbac.model import RbacRole, RbacUserRole
 from ccure_platform.rbac.scope import audit_isolated, resolve_active_organisation
 from db.base import get_db
@@ -56,6 +59,11 @@ class RbacRoleUpdateBody(BaseModel):
 class RbacRolePermissionsBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     permission_keys: list[str] = Field(max_length=200)
+    expected_revision: int | None = Field(
+        default=None,
+        ge=1,
+        description="Current role revision; required for permission updates (428 if omitted, 409 if stale).",
+    )
 
 
 class RbacRoleTransitionBody(BaseModel):
@@ -78,10 +86,32 @@ class RbacAssignBody(BaseModel):
 # ── plumbing ──────────────────────────────────────────────────────────────────
 
 
-def _context(db: Session, user: User, org_id: str | None):
-    org = resolve_active_organisation(user, org_id)
+def _context(db: Session, user: User, org_id: str | None, *, mutation=False):
+    if mutation:
+        lock_continuity(db)
+        db.expire_all()
+    org = (mutation_organisation if mutation else resolve_active_organisation)(
+        user, org_id
+    )
     actor = admin.actor_for(db, user)
     if not actor.provisioned:
+        if mutation:
+            recorded = audit_isolated(
+                user,
+                EventDraft(
+                    action="rbac.role.denied",
+                    resource_type="rbac_role",
+                    changes={
+                        "operation": "rbac_management",
+                        "violations": ["no_effective_grants"],
+                    },
+                    org_id=getattr(user, "org_id", None),
+                ),
+            )
+            if not recorded:
+                raise HTTPException(
+                    503, detail="The refused operation could not be audited."
+                )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="RBAC administration needs an RBAC role assignment for this account.",
@@ -104,25 +134,38 @@ def _refuse(
     answer 403 with the reasons."""
     codes = sorted({v.code for v in error.violations})
     escalation = bool(set(codes) & admin.ESCALATION_CODES)
-    if escalation or assignment:
-        audit_isolated(
-            user,
-            EventDraft(
-                action=(
-                    "rbac.escalation.refused"
-                    if escalation
-                    else "rbac.assignment.denied"
-                ),
-                resource_type="rbac_user_role" if assignment else "rbac_role",
-                resource_id=target,
-                changes={"operation": op, "violations": codes},
-                org_id=getattr(user, "org_id", None),
+    recorded = audit_isolated(
+        user,
+        EventDraft(
+            action=(
+                "rbac.escalation.refused"
+                if escalation
+                else "rbac.assignment.denied" if assignment else "rbac.role.denied"
             ),
-        )
+            resource_type="rbac_user_role" if assignment else "rbac_role",
+            resource_id=target,
+            changes={"operation": op, "violations": codes},
+            org_id=getattr(user, "org_id", None),
+        ),
+    )
+    if not recorded:
+        raise HTTPException(503, detail="The refused operation could not be audited.")
     raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
+        status_code=(
+            409
+            if "stale_revision" in codes
+            else 428 if "revision_required" in codes else status.HTTP_403_FORBIDDEN
+        ),
         detail={
-            "code": "governance_refused",
+            "code": (
+                "revision_conflict"
+                if "stale_revision" in codes
+                else (
+                    "revision_required"
+                    if "revision_required" in codes
+                    else "governance_refused"
+                )
+            ),
             "violations": [
                 {"code": v.code, "message": v.message} for v in error.violations
             ],
@@ -142,30 +185,15 @@ def _govern(
         _refuse(user, error, op=op, target=target, assignment=assignment)
 
 
-def _step_up(user: User, request: Request, sensitive: bool) -> str:
-    """The step-up outcome for the audit event; raises for a refused one."""
-    if not sensitive:
-        return "not_required"
-    try:
-        return reauth.check(user, request)
-    except reauth.ReauthFailed:
-        audit_isolated(
-            user,
-            EventDraft(
-                action="rbac.reauth.failed",
-                resource_type="rbac_role",
-                changes={"operation": request.method + " " + request.url.path},
-                org_id=getattr(user, "org_id", None),
-            ),
-        )
-        raise
-
-
 def _finish(db, user, request, drafts, step_up: str):
     for d in drafts:
         d.changes["reauth"] = step_up
-    emit(db, drafts, actor=user, request=request)
-    db.commit()
+    try:
+        emit(db, drafts, actor=user, request=request)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def _role_or_404(db: Session, role_id: str, org: str) -> RbacRole:
@@ -180,11 +208,13 @@ def _role_or_404(db: Session, role_id: str, org: str) -> RbacRole:
 
 @router.get("/permissions")
 def list_permissions(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    _, actor = _context(db, user, None)
-    _need(actor, "platform.permission.read")
-    return {"permissions": admin.list_permissions(db, actor)}
+    org, actor = _context(db, user, org_id)
+    _need(actor, "platform.permission.read", org)
+    return {"permissions": admin.list_permissions(db, actor, org)}
 
 
 @router.get("/roles")
@@ -249,10 +279,13 @@ def get_user_assignments(
 def create_role(
     body: RbacRoleCreateBody,
     request: Request,
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    org, actor = _context(db, user, body.org_id)
+    if body.org_id and org_id and body.org_id != org_id:
+        raise HTTPException(400, detail="Conflicting organisation selections.")
+    org, actor = _context(db, user, body.org_id or org_id, mutation=True)
     step = _step_up(
         user,
         request,
@@ -294,12 +327,13 @@ def update_role(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    org, actor = _context(db, user, org_id)
+    org, actor = _context(db, user, org_id, mutation=True)
     row = _role_or_404(db, role_id, org)
     step = _step_up(
         user,
         request,
-        sensitive=row.kind == "system" or row.assignable_scope == "platform",
+        sensitive=org != str(user.org_id)
+        or admin.is_sensitive_role(db, row, actor.catalogue),
     )
     drafts = _govern(
         db,
@@ -315,6 +349,23 @@ def update_role(
     return admin.role_detail(db, actor, role_id, org)
 
 
+def _set_permissions(db, actor, row, body):
+    from ccure_platform.rbac.governance import Violation
+
+    if body.expected_revision is None:
+        raise GovernanceError(
+            [
+                Violation(
+                    "revision_required",
+                    "Reload this role and submit its current revision before saving permissions.",
+                )
+            ]
+        )
+    return admin.set_role_permissions(
+        db, actor, row, body.permission_keys, expected_revision=body.expected_revision
+    )
+
+
 @router.put("/roles/{role_id}/permissions")
 def set_permissions(
     role_id: str,
@@ -324,19 +375,20 @@ def set_permissions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    org, actor = _context(db, user, org_id)
+    org, actor = _context(db, user, org_id, mutation=True)
     row = _role_or_404(db, role_id, org)
     changed = set(body.permission_keys) ^ set(admin.granted_keys(db, row.id))
     step = _step_up(
         user,
         request,
-        sensitive=admin.is_sensitive_role(db, row, actor.catalogue)
+        sensitive=org != str(user.org_id)
+        or admin.is_sensitive_role(db, row, actor.catalogue)
         or _privileged(actor, changed),
     )
     drafts, delta = _govern(
         db,
         user,
-        lambda: admin.set_role_permissions(db, actor, row, body.permission_keys),
+        lambda: _set_permissions(db, actor, row, body),
         op="set_permissions",
         target=role_id,
         assignment=False,
@@ -356,10 +408,13 @@ def transition_role(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    org, actor = _context(db, user, org_id)
+    org, actor = _context(db, user, org_id, mutation=True)
     row = _role_or_404(db, role_id, org)
     step = _step_up(
-        user, request, sensitive=admin.is_sensitive_role(db, row, actor.catalogue)
+        user,
+        request,
+        sensitive=org != str(user.org_id)
+        or admin.is_sensitive_role(db, row, actor.catalogue),
     )
     drafts = _govern(
         db,
@@ -389,11 +444,15 @@ def replace_role(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    org, actor = _context(db, user, org_id)
+    org, actor = _context(db, user, org_id, mutation=True)
     row = _role_or_404(db, role_id, org)
-    _role_or_404(db, body.to_role_id, org)
+    replacement = _role_or_404(db, body.to_role_id, org)
     step = _step_up(
-        user, request, sensitive=admin.is_sensitive_role(db, row, actor.catalogue)
+        user,
+        request,
+        sensitive=org != str(user.org_id)
+        or admin.is_sensitive_role(db, row, actor.catalogue)
+        or admin.is_sensitive_role(db, replacement, actor.catalogue),
     )
     moved, drafts = _govern(
         db,
@@ -418,10 +477,11 @@ def assign_role(
     user_id: str,
     body: RbacAssignBody,
     request: Request,
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _, actor = _context(db, user, None)
+    _, actor = _context(db, user, org_id, mutation=True)
     row = db.get(RbacRole, body.role_id)
     sensitive = row is not None and admin.is_sensitive_role(db, row, actor.catalogue)
     target_org = db.execute(
@@ -448,10 +508,11 @@ def assign_role(
 def revoke_assignment(
     assignment_id: str,
     request: Request,
+    org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _, actor = _context(db, user, None)
+    _, actor = _context(db, user, org_id, mutation=True)
     a = db.get(RbacUserRole, assignment_id)
     if a is None:
         raise HTTPException(status_code=404, detail="Assignment not found.")
@@ -459,7 +520,8 @@ def revoke_assignment(
     step = _step_up(
         user,
         request,
-        sensitive=row is not None and admin.is_sensitive_role(db, row, actor.catalogue),
+        sensitive=(a.scope_org_id is not None and a.scope_org_id != str(user.org_id))
+        or (row is not None and admin.is_sensitive_role(db, row, actor.catalogue)),
     )
     user_id = a.user_id
     drafts = _govern(

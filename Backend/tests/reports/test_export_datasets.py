@@ -114,8 +114,6 @@ def world(db_session):
             id=org_id,
             name="Export Co",
             slug=f"exp-{uuid.uuid4().hex[:8]}",
-            max_assets=100,
-            max_users=10,
             is_active=True,
             settings={},
         )
@@ -764,8 +762,6 @@ class TestFindingExport:
                 id=other_org,
                 name="Other Co",
                 slug=f"oth-{uuid.uuid4().hex[:8]}",
-                max_assets=10,
-                max_users=10,
                 is_active=True,
                 settings={},
             )

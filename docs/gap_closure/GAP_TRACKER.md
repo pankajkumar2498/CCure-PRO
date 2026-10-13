@@ -304,7 +304,6 @@ dashboard exactly like a manual one, marked with `options.origin = "schedule"`.
 | Scan history           | `routers/scan_history.py`                                       | Nothing added — scheduled scans are `Scan` rows |
 | Credentials            | `compliance_credentials` + `_resolve_stored_credential`         | Referenced by id; worker decrypts               |
 | Target gate            | `validate_scan_targets`, `enforce_org_scan_scope`               | Re-run at every dispatch                        |
-| Quota                  | `core.quota.check_scan_quota`                                   | Re-run at every dispatch                        |
 | RBAC / audit / limiter | `require_permission`, `log_audit_event`, `scan_helpers.limiter` | Unchanged                                       |
 
 The single most useful finding of the inspection: `run_credentialed_scan_task`

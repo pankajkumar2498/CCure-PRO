@@ -1810,6 +1810,16 @@ def _restate_findings_for_corrected_ports(
         if str(finding.get("detected_version") or "").strip() == version:
             continue
         finding["detected_version"] = version
+        # What the previous verification pass derived from the superseded
+        # version goes with it. Left in place, "fixed in 14.23" — the first
+        # branch's boundary, chosen while the version was only "9.6.0 or
+        # later" — was read back as if the feed had published it, and an 18.3
+        # server was told to upgrade to 14.23. Nothing a plugin or feed
+        # supplied is touched: derived evidence is marked as such.
+        finding.pop("fixed_version", None)
+        finding.pop("last_affected_version", None)
+        if finding.get("evidence_captured") is False:
+            finding.pop("evidence", None)
         restated += 1
     return restated
 
@@ -1837,7 +1847,11 @@ def _upgrade_network_fingerprints(
     corrected. Deliberately conservative: only an exact host-side version, and
     only where the two observations agree on what the product is.
     """
-    from scans.finding_normalizer import _name_tokens, version_precision
+    from scans.finding_normalizer import (
+        _name_tokens,
+        vendor_build_for,
+        version_precision,
+    )
 
     by_key: dict[tuple[int, str], dict] = {}
     for listener in listeners or []:
@@ -1877,6 +1891,19 @@ def _upgrade_network_fingerprints(
             continue
 
         net_version = str(record.get("version") or "").strip()
+        # A vendor's build reports a floor, and the host's own reading of it is
+        # the vendor's file or package version — Microsoft's sshd.exe 9.5.6.3,
+        # Ubuntu's 1:8.9p1-3ubuntu0.10 — which no upstream range describes.
+        # Substituting it dropped the marker that says so, and twenty upstream
+        # OpenSSH CVEs came back as Confirmed (10.180.6.30, scan #11).
+        if vendor_build_for(
+            net_version,
+            record.get("product"),
+            record.get("banner"),
+            record.get("extra"),
+            listener.get("product"),
+        ):
+            continue
         if net_version and version_precision(net_version) == "exact":
             continue  # the scan already has a precise value; leave it alone
 
@@ -2291,16 +2318,28 @@ def _apply_credentialed_enrichment(
         # findings, so re-verification cannot rediscover them. Carrying their
         # records forward keeps the methodology appendix able to account for
         # every candidate the scan evaluated.
+        #
+        # The same holds for what the credentialed audit ruled out when it
+        # verified its own findings: only its survivors arrive in new_findings.
+        # Its suppressed list was dropped here, so a vulnerability audit's
+        # appendix never named a single credentialed candidate it withheld —
+        # on 10.180.6.30 (scan #10, 12 Oct 2026) that was 410 Chrome CVEs
+        # published for other platforms, removed without a trace.
         seen = {
             (item.get("identifier"), item.get("host"))
             for item in fields["suppressed_cves"]
         }
-        fields["suppressed_cves"] = fields["suppressed_cves"] + [
-            item
-            for item in prior_suppressed
-            if (item.get("identifier"), item.get("host")) not in seen
-        ]
-        fields["candidates_evaluated"] = prior_evaluated + len(new_findings)
+        carried = []
+        for item in prior_suppressed + list(stored_report.get("suppressed_cves") or []):
+            key = (item.get("identifier"), item.get("host"))
+            if key not in seen:
+                seen.add(key)
+                carried.append(item)
+        fields["suppressed_cves"] = fields["suppressed_cves"] + carried
+        # Everything the audit evaluated, not only what it kept.
+        fields["candidates_evaluated"] = prior_evaluated + int(
+            stored_report.get("candidates_evaluated") or len(new_findings)
+        )
         host.update(fields)
 
         score, level = calculate_risk(
@@ -3608,6 +3647,9 @@ def audit_credentialed_host(
                     "desc": finding["description"],
                     "package": finding["package_name"],
                     "installed_ver": finding["installed_ver"],
+                    "installed_version_precision": finding.get(
+                        "installed_version_precision", ""
+                    ),
                     "fixed_ver": finding["fixed_ver"],
                     "source": finding["source"],
                     "matched_by": finding["matched_by"],
@@ -3673,6 +3715,9 @@ def audit_credentialed_host(
                     "desc": finding["description"],
                     "package": finding["package_name"],
                     "installed_ver": finding["installed_ver"],
+                    "installed_version_precision": finding.get(
+                        "installed_version_precision", ""
+                    ),
                     "fixed_ver": finding["fixed_ver"],
                     "source": finding["source"],
                     "matched_by": finding["matched_by"],
@@ -3758,6 +3803,9 @@ def audit_credentialed_host(
                     "desc": finding["description"],
                     "package": finding["package_name"],
                     "installed_ver": finding["installed_ver"],
+                    "installed_version_precision": finding.get(
+                        "installed_version_precision", ""
+                    ),
                     "fixed_ver": finding["fixed_ver"],
                     "source": finding["source"],
                     "matched_by": finding["matched_by"],

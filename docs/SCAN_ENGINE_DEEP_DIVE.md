@@ -1404,13 +1404,12 @@ scan is not an error, and the history should show what the user actually did.
 | `default_creds`                                | Read-only — no writes                                          |
 | AGGRESSIVE concurrency 50 (vs FAST 256)        | Smaller blast radius on the most thorough profile              |
 
-### Quota enforcement
+### Scan admission
 
-`core/quota.py::check_scan_quota(db, org_id, targets, custom_ports)` runs **before**
-the scan row is created, so a rejected request leaves no orphan. It raises 429 for
-a rolling-24-hour or concurrency breach and 400 for a target subnet larger than the
-plan allows. `_PLAN_LIMITS` maps `plan → (scans_per_day, concurrent, max_prefix,
-max_ips, max_custom_ports)`.
+Targets must be valid and within the organisation's authorised scan scope.
+Custom ports are validated before dispatch, including ports from resolved scan
+policies. The engine's target caps, worker concurrency, timeouts and cancellation
+remain independent operational controls.
 
 ### Asset correlation
 

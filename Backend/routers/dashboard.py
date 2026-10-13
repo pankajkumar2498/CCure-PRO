@@ -9,7 +9,6 @@ All imports verified against actual codebase files:
   - db/base.py          → get_db, utcnow
   - db/models/*.py      → exact model + field names
   - core/vuln_intel.py  → compute_priority(cvss_score, epss_score, in_kev, has_exploit)
-  - core/quota.py       → displayed_scan_limits → (plan, max_day, max_concurrent)
 
 VulnerabilityDefinition NOTE:
   This model has NO epss_score, in_kev, has_exploit, cvss_v3_vector columns.
@@ -77,7 +76,6 @@ def get_dashboard_summary(
       scan counts      → Scan table with 24h rolling window
       kev count        → VulnerabilityDefinition.source = 'kev' proxy
                          (no in_kev column exists — use source field instead)
-      quota            → core/quota._limits(plan)
     """
     org = _resolve_org(user, org_id)
     now = _now()
@@ -216,14 +214,6 @@ def get_dashboard_summary(
         or 0
     )
 
-    # ── Quota ─────────────────────────────────────────────────────────────────
-    # The plan's own figures (core.quota, the seam of the scan-limits plan
-    # feature). The docstring above is the OpenAPI description and still names
-    # the helper this replaced; it is left as it was.
-    from core.quota import displayed_scan_limits
-
-    plan, max_day, max_conc = displayed_scan_limits(db, org)
-
     avg_risk = round(float(ast_row.avg_risk or 0), 1)
     risk_level = (
         "CRITICAL"
@@ -259,11 +249,8 @@ def get_dashboard_summary(
             "last_24h": scans_24h,
             "running": running,
             "queued": queued,
-            "quota_limit_24h": max_day,
-            "quota_used_pct": round(scans_24h / max_day * 100, 1) if max_day else 0,
         },
         "kev": {"open_count": kev_count},
-        "plan": plan,
         "org_id": org,
     }
 

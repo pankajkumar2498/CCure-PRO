@@ -123,10 +123,10 @@ def test_counts_are_the_characterised_ones(policy):
         "public": 18,
         # 252 since Phase 12.1 (GET /platform/modules); 264 since RBAC-7 added the
         # twelve /platform/rbac administration operations.
-        "bearer": 262,
+        "bearer": 261,
         "ticket_or_bearer": 3,
         "websocket": 2,
-        "total": 285,
+        "total": 284,
     }
 
 
@@ -141,7 +141,7 @@ def test_the_public_allowlist_includes_only_recorded_public_routes(policy):
 
 def test_bearer_routes(policy):
     bearer = _entries(policy, "bearer")
-    assert len(bearer) == 262  # Registration policy adds two protected operations.
+    assert len(bearer) == 261
     assert ("GET", "/scans") in bearer and ("POST", "/auth/ticket") in bearer
     assert all(
         e["checker_policy"] == "bearer"

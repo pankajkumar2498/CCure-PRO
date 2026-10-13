@@ -190,10 +190,22 @@ def role_history(db: Session, role_id: str) -> list[dict]:
     ]
 
 
-def list_permissions(db: Session, actor: Actor) -> list[dict]:
+def list_permissions(
+    db: Session, actor: Actor, org_id: str | None = None
+) -> list[dict]:
     """The permission catalogue as the UI needs it — keys, never structure."""
-    if not holds(actor, "platform.permission.read"):
+    if not holds(actor, "platform.permission.read", org_id):
         return []
+    platform_reach = engine.platform_held_keys(
+        actor.principal, actor.grants, actor.catalogue
+    )
+    organisation_reach = engine.held_keys(
+        actor.principal,
+        actor.grants,
+        actor.catalogue,
+        org_id or actor.principal.home_org_id,
+    )
+    global_catalogue = "platform.permission.read" in platform_reach
     rows = db.execute(
         select(RbacPermission).order_by(
             RbacPermission.module, RbacPermission.resource, RbacPermission.action
@@ -201,17 +213,24 @@ def list_permissions(db: Session, actor: Actor) -> list[dict]:
     ).scalars()
     return [
         {
-            "key": r.key,
-            "module": r.module,
-            "resource": r.resource,
-            "action": r.action,
-            "description": r.description,
-            "scope": r.scope_kind,
-            "sensitivity": r.sensitivity,
-            "delegable": bool(r.delegable_to_org_roles),
-            "status": r.status,
+            "key": permission.key,
+            "module": permission.module,
+            "resource": permission.resource,
+            "action": permission.action,
+            "description": permission.description,
+            "scope": permission.scope_kind,
+            "sensitivity": permission.sensitivity,
+            "delegable": bool(permission.delegable_to_org_roles),
+            "status": permission.status,
+            "grantable_to_org_role": permission.status != "retired"
+            and permission.scope_kind == "organization"
+            and permission.delegable_to_org_roles
+            and permission.key in organisation_reach,
+            "grantable_to_platform_role": permission.status != "retired"
+            and permission.key in platform_reach,
         }
-        for r in rows
+        for permission in rows
+        if global_catalogue or permission.scope_kind == "organization"
     ]
 
 
@@ -363,6 +382,8 @@ def create_custom_role(
     """A custom role belonging to ``org_id``, holding only permissions the actor may
     delegate there (``governance.define_custom_org_role``). The key is derived from the
     display name; a clash adds a suffix."""
+    governance.lock_continuity(db)
+    actor = actor_for(db, actor.user)
     base = _slug(display_name)
     slug, n = base, 1
     while db.execute(
@@ -406,6 +427,9 @@ def rename_role(
     changes nothing a principal may do. A custom role needs ``platform.role.update`` in
     its organisation; a system role needs ``platform.role.rename_system``, platform-wide.
     """
+    governance.lock_continuity(db)
+    actor = actor_for(db, actor.user)
+    db.refresh(row)
     problems: list[Violation] = []
     if row.state == "retired":
         problems.append(Violation("role_retired", "a retired role cannot be edited"))
@@ -473,13 +497,21 @@ def rename_role(
 
 
 def set_role_permissions(
-    db: Session, actor: Actor, row: RbacRole, permission_keys
+    db: Session,
+    actor: Actor,
+    row: RbacRole,
+    permission_keys,
+    *,
+    expected_revision: int | None = None,
 ) -> tuple[list[EventDraft], dict]:
     """Make ``row`` hold exactly ``permission_keys``. Custom roles only (a system role's
     permissions change with a catalogue release). Taking away is always allowed; adding
     is checked against the delegation ceiling and the role's scope
     (``governance.check_role_permissions``), and an actor cannot add to a role it holds.
     """
+    governance.lock_continuity(db)
+    db.refresh(row)
+    actor = actor_for(db, actor.user)
     wanted = set(permission_keys)
     current = set(granted_keys(db, row.id))
     added, removed = sorted(wanted - current), sorted(current - wanted)
@@ -505,8 +537,6 @@ def set_role_permissions(
             actor_holds_this_role=held_by_actor,
         )
     )
-    if removed and not added and not problems:
-        pass
     if row.kind != "system" and removed:
         # removing needs the same authority to edit the role
         edit_key = (
@@ -532,27 +562,54 @@ def set_role_permissions(
         )
     if problems:
         raise GovernanceError(problems)
-    for key in removed:
-        db.execute(
-            text(
-                "DELETE FROM rbac_role_permissions WHERE role_id = :r AND permission_key = :k"
-            ),
-            {"r": row.id, "k": key},
+    if expected_revision is not None and row.revision != expected_revision:
+        raise GovernanceError(
+            [
+                Violation(
+                    "stale_revision",
+                    "This role changed since it was loaded. Reload it before saving.",
+                )
+            ]
         )
-    for key in added:
-        db.add(
-            RbacRolePermission(
-                role_id=row.id,
-                permission_key=key,
-                granted_by=actor.principal.principal_id,
+    previous_revision = row.revision
+    before = governance.continuity_report(db).violations
+    with db.begin_nested():
+        for key in removed:
+            db.execute(
+                text(
+                    "DELETE FROM rbac_role_permissions WHERE role_id = :r AND permission_key = :k"
+                ),
+                {"r": row.id, "k": key},
             )
+        for key in added:
+            db.add(
+                RbacRolePermission(
+                    role_id=row.id,
+                    permission_key=key,
+                    granted_by=actor.principal.principal_id,
+                )
+            )
+        db.flush()
+        introduced = governance.continuity_report(db).violations - before
+        if introduced:
+            raise GovernanceError(
+                [
+                    Violation(
+                        "continuity",
+                        "the change would leave: " + ", ".join(sorted(introduced)),
+                    )
+                ]
+            )
+        append_revision(
+            db, row, "permissions_changed", changed_by=actor.principal.principal_id
         )
-    db.flush()
-    append_revision(
-        db, row, "permissions_changed", changed_by=actor.principal.principal_id
-    )
     event = role_event(
-        "rbac.role.permissions_changed", _snap(row), added=added, removed=removed
+        "rbac.role.permissions_changed",
+        _snap(row),
+        added=added,
+        removed=removed,
+        from_revision=previous_revision,
+        to_revision=row.revision,
     )
     return [event], {"added": added, "removed": removed}
 
@@ -570,6 +627,9 @@ def transition(
     ceiling from ``governance.check_role_lifecycle``, the retirement gate (no live
     assignments, not a default role, no continuity regression) from ``transition_role``.
     A replacement, when named, must be an active role of the same scope."""
+    governance.lock_continuity(db)
+    actor = actor_for(db, actor.user)
+    db.refresh(row)
     problems = list(
         governance.check_role_lifecycle(
             actor.principal,
@@ -632,9 +692,13 @@ def assign(
     a platform role platform-wide. Every governance rule applies — organisation
     boundary, scope and permission ceilings, system-role restrictions,
     self-assignment, escalation."""
+    governance.lock_continuity(db)
+    actor = actor_for(db, actor.user)
     row = db.get(RbacRole, role_id)
     user_org = db.execute(
-        text("SELECT org_id FROM users WHERE id = :u AND NOT is_deleted"),
+        text(
+            "SELECT u.org_id FROM users u JOIN organizations o ON o.id = u.org_id WHERE u.id = :u AND NOT u.is_deleted AND o.is_active AND o.archived_at IS NULL"
+        ),
         {"u": user_id},
     ).scalar()
     if row is None or user_org is None:
@@ -694,6 +758,8 @@ def revoke(
     """End an assignment (never delete it). Needs the authority to assign that role;
     refused when it would leave a continuity invariant broken — the last active
     superadmin, or the last account able to assign roles in an organisation."""
+    governance.lock_continuity(db)
+    actor = actor_for(db, actor.user)
     a = db.get(RbacUserRole, assignment_id)
     if a is None or a.revoked_at is not None:
         raise GovernanceError(
@@ -754,10 +820,21 @@ def replace_role(
     (create the new assignment, then end the old with reason ``migrated``), each one
     governed, then verify no continuity invariant broke. The old role is *not* retired
     here — retire it afterwards (the gate now passes). All or nothing."""
+    governance.lock_continuity(db)
+    actor = actor_for(db, actor.user)
     old, new = db.get(RbacRole, from_role_id), db.get(RbacRole, to_role_id)
     if old is None or new is None or old.id == new.id:
         raise GovernanceError(
             [Violation("unknown_role", "two different existing roles are required")]
+        )
+    authority = (
+        c.ASSIGN_PLATFORM_ROLE_KEY
+        if old.assignable_scope == "platform"
+        else c.ASSIGN_ROLE_KEY
+    )
+    if not holds(actor, authority, old.org_id):
+        raise GovernanceError(
+            [Violation("missing_authority", f"the actor does not hold {authority}")]
         )
     if new.state != "active" or new.assignable_scope != old.assignable_scope:
         raise GovernanceError(

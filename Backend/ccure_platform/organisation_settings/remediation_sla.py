@@ -1,5 +1,5 @@
 """
-Remediation SLA setting — a plan feature.
+Remediation SLA — an organisation setting.
 
 The deadlines an organisation has configured for remediating findings. Stored
 under ``organizations.settings["remediation_sla"]``, written through
@@ -13,7 +13,7 @@ Audit module allowed to call this feature. Passing the stored value through
 unchanged is what keeps every edge case that function handles behaving as it
 always has.
 
-Removable: see ``ccure_platform/plan/__init__.py``.
+Stored independently of scan execution.
 """
 
 from __future__ import annotations

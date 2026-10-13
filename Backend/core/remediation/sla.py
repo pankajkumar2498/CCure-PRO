@@ -102,10 +102,10 @@ DEFAULT_SLA_DAYS: Dict[str, int] = {
 #: afterwards.
 DUE_SOON_WINDOW_DAYS = 7
 
-# An organisation's own deadlines are its plan's, and platform-owned since
-# Phase 8.4: they are read and written through ccure_platform.api, by the seam
+# An organisation's own deadlines are platform-owned: they are read and
+# written through ccure_platform.api, by the seam
 # functions below and nowhere else in Audit
-# (tests/repo/test_plan_feature_containment.py). Where they are stored is the
+# (tests/repo/test_organisation_settings_containment.py). Where they are stored is the
 # platform's business. What they *mean* — the severity vocabulary, the
 # defaults above, the KEV rule and the lenient reading below — is Audit's.
 
@@ -170,9 +170,9 @@ def org_sla_setting(db, org_id: Optional[str]):
     The organisation's stored SLA setting, asked of the platform: a
     ``RemediationSlaSettingView``, or None if the organisation does not exist.
 
-    **The Audit seam of the remediation-SLA plan feature (Phase 8.4).** This
+    **The Audit seam of the remediation-SLA setting.** This
     module is the only Audit code that asks the platform for it, so removing
-    the feature means this seam and ``ccure_platform.plan.remediation_sla``.
+    the setting means this seam and ``ccure_platform.organisation_settings.remediation_sla``.
     """
     from ccure_platform import api as platform_api
 

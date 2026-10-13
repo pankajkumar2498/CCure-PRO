@@ -5,8 +5,8 @@
  *
  * A read-only catalogue, deliberately. Configuration checks run inside the
  * credentialed scan — there is no "run" button here, because a second way to
- * start a scan against a named target would need its own scope check, quota
- * check and audit entry, and would produce scan rows that Scan History and the
+ * start a scan against a named target would need its own scope check and
+ * audit entry, and would produce scan rows that Scan History and the
  * reports would have to learn about. The rule validator is a separate page for
  * the same reason: this one issues no POST of any kind, and a test drives every
  * control on it to keep that true.

@@ -131,8 +131,6 @@ def aged_chain(db_session, enabled):
         id=f"org_chainfix_{uid}",
         name="Chained retention fixture",
         slug=f"chained-fixture-{uid}",
-        max_assets=1,
-        max_users=1,
         is_active=True,
     )
     db_session.add(org)

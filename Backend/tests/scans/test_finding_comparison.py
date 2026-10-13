@@ -66,8 +66,6 @@ def world(db_session):
             id=org_id,
             name="Cmp",
             slug=f"cmp-{uuid.uuid4().hex[:8]}",
-            max_assets=100,
-            max_users=10,
             is_active=True,
             settings={},
         )
@@ -435,8 +433,6 @@ class TestComparability:
                 id=other,
                 name="Other",
                 slug=f"o-{uuid.uuid4().hex[:8]}",
-                max_assets=10,
-                max_users=10,
                 is_active=True,
                 settings={},
             )
@@ -463,8 +459,6 @@ class TestIsolationAndScale:
                 id=stranger,
                 name="Stranger",
                 slug=f"s-{uuid.uuid4().hex[:8]}",
-                max_assets=10,
-                max_users=10,
                 is_active=True,
                 settings={},
             )

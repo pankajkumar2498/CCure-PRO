@@ -162,6 +162,26 @@ def test_a_scheduled_scan_runs_under_its_policy(
     assert recorded.custom_ports == "1-1024"
 
 
+def test_invalid_policy_ports_fail_without_creating_or_dispatching_a_scan(
+    db_session, test_org, test_user, network_policy, captured_dispatch
+):
+    from core.scheduling.dispatcher import dispatch_schedule
+    from db.models.scans import Scan
+
+    network_policy.config = {"custom_ports": "22,22"}
+    db_session.commit()
+    schedule = _schedule(db_session, test_org, test_user, policy_id=network_policy.id)
+    before = db_session.query(Scan).count()
+
+    run = dispatch_schedule(db_session, schedule)
+
+    assert run.status == "failed"
+    assert run.scan_id is None
+    assert "duplicate" in run.detail.lower()
+    assert db_session.query(Scan).count() == before
+    assert not captured_dispatch
+
+
 def test_the_policy_wins_over_the_schedules_own_options(
     db_session: Session,
     test_org: Organization,
@@ -304,9 +324,7 @@ def test_a_narrowed_policy_takes_effect_on_the_next_run(
     first = dispatch_schedule(db_session, schedule)
     assert captured_dispatch["custom_ports"] == "1-1024"
 
-    # The first scan has to finish before the next run: the community plan
-    # allows one concurrent scan, so leaving it `running` makes the second
-    # dispatch a quota skip and the test would prove nothing about policies.
+    # Complete the first run before checking the next policy snapshot.
     from db.models.scans import Scan
 
     db_session.query(Scan).filter(Scan.id == first.scan_id).update(

@@ -104,7 +104,6 @@ SENSITIVE_WITHOUT_LIMIT = {
     # matter would break the progress display; a limit loose enough not to
     # would measure nothing.
     "routers.scan_progress.get_scan_progress",
-    "routers.phase_scans.get_scan_quota",
     # One long-lived SSE connection rather than a stream of requests, so a
     # per-request ceiling does not describe it. Bounded by limit_conn in nginx.
     "routers.scan_history.stream_scan_history",

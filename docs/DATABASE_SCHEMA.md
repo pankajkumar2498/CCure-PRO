@@ -136,21 +136,16 @@ Source: `Backend/db/models/rbac.py`.
 
 The tenant boundary. Every user, asset and scan belongs to exactly one.
 
-| Column                 | Type          | Null | Default       | Notes                                                     |
-| ---------------------- | ------------- | ---- | ------------- | --------------------------------------------------------- |
-| `id`                   | `String(100)` | no   | —             | **PK**. `gen_org_id(slug)` → `org_default`                |
-| `name`                 | `String(255)` | no   | —             | **UNIQUE**                                                |
-| `slug`                 | `String(100)` | no   | —             | **UNIQUE**                                                |
-| `plan`                 | `String(50)`  | no   | `'community'` | `community` \| `pro` \| `enterprise` — drives quota tiers |
-| `max_assets`           | `Integer`     | no   | `500`         |                                                           |
-| `max_users`            | `Integer`     | no   | `10`          |                                                           |
-| `max_scans_per_day`    | `Integer`     | yes  | —             | Overrides the plan tier when set                          |
-| `max_concurrent_scans` | `Integer`     | yes  | —             | Overrides the plan tier when set                          |
-| `is_active`            | `Boolean`     | no   | `true`        | **Deactivation blocks login, refresh and every request**  |
-| `settings`             | `JSONB`       | no   | `{}`          | Feature flags — **org_admin-writable**                    |
-| `scan_scope_cidrs`     | `JSONB`       | yes  | —             | Authorised scan targets. **Superadmin-only**              |
-| `created_at`           | `TIMESTAMPTZ` | no   | `utcnow`      |                                                           |
-| `updated_at`           | `TIMESTAMPTZ` | no   | `utcnow`      | `onupdate=utcnow`                                         |
+| Column             | Type          | Null | Default  | Notes                                                    |
+| ------------------ | ------------- | ---- | -------- | -------------------------------------------------------- |
+| `id`               | `String(100)` | no   | —        | **PK**. `gen_org_id(slug)` → `org_default`               |
+| `name`             | `String(255)` | no   | —        | **UNIQUE**                                               |
+| `slug`             | `String(100)` | no   | —        | **UNIQUE**                                               |
+| `is_active`        | `Boolean`     | no   | `true`   | **Deactivation blocks login, refresh and every request** |
+| `settings`         | `JSONB`       | no   | `{}`     | Feature flags — **org_admin-writable**                   |
+| `scan_scope_cidrs` | `JSONB`       | yes  | —        | Authorised scan targets. **Superadmin-only**             |
+| `created_at`       | `TIMESTAMPTZ` | no   | `utcnow` |                                                          |
+| `updated_at`       | `TIMESTAMPTZ` | no   | `utcnow` | `onupdate=utcnow`                                        |
 
 **Relationships:** `users`, `assets`, `scans` — all `cascade="all, delete-orphan"`.
 `web_scans`, `web_findings`, `network_links` attach via `backref`.
@@ -1581,6 +1576,12 @@ holds plaintext.
 
 `Backend/alembic.ini` leaves `sqlalchemy.url` empty — the URL comes from
 `alembic/env.py`, which reads `AppConfig.DATABASE_URL`.
+
+Migration `f6a8c0e2b4d7` (12 October 2026, after `e5a7c9d1f3b2`) removes
+the five retired organisation subscription columns. Existing organisation
+identities, foreign keys, scope, settings and assessment data are preserved.
+Rollback requires a pre-migration backup; the removed values cannot be
+reconstructed by a downgrade.
 
 ### Bootstrap versus upgrade
 

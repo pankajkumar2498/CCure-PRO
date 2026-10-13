@@ -57,7 +57,7 @@ With them went their API clients (`shell/api/admin`, `user`, `notifications`,
 **Stays in Audit** — Security Dashboard, Executive Report, everything under
 Scanning, Vulnerabilities, Remediation, Asset Registry, Services & Ports,
 TLS / Certificates, Network Topology, Security Reports, Risk Trends, AMT
-Integration, the global search, New Scan, the scan-quota footer and the
+Integration, the global search, New Scan and the
 sidebar badges, the help panel, and Audit's own setting ("Scan Defaults").
 
 **Compliance stays in Audit, unchanged.** Which parts belong to Policy Pro is
@@ -110,9 +110,8 @@ that react to _Audit's_ collapsed sidebar (hiding the user card's text) stay in
 
 ## 5. Known items carried forward
 
-- **Organisation form edits plan fields** (subscription plan, max assets, max
-  users). The plan is platform-owned; `max_assets` is one of Audit's quotas. The
-  shared form shows it as before.
+- **Organisation form edits metadata and status**, with optional initial
+  administrator provisioning. Organisation settings have independent APIs.
 - **Notification categories** are fixed in the backend to
   `scan / security / system / admin`. A second product's notifications will
   need categories of its own — a backend change.
@@ -336,8 +335,7 @@ frontend`.
 7. Notification categories are Audit-shaped; a cross-product design is open.
 8. Preferences are not namespaced per product (Audit's scan defaults share the
    platform's preference record).
-9. The organisation plan and quota fields (`max_assets`, `max_scans_per_day`,
-   `max_concurrent_scans`, `scan_scope_cidrs`) are Audit's and still sit with
-   the platform's organisation (Phase 8.4).
+9. Organisation scan scope and remediation SLA are platform-owned settings;
+   see [Organisation settings](ORGANISATION_SETTINGS.md).
 10. AMT Integration is gated on `assets:update` by its route and
     `settings:update` by Audit's sidebar item.

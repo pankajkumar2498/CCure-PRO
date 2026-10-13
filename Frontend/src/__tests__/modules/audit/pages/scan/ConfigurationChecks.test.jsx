@@ -9,7 +9,7 @@ import { assertUx4gAdapters } from "../../../../helpers/assertUx4gAdapters";
  * This page is a READ-ONLY catalogue and must stay one. Its own header says
  * why: configuration checks run inside the credentialed scan, on the session
  * the collectors already opened, and a second way to start one against a named
- * target would need its own scope check, quota check and audit entry.
+ * target would need its own scope check and audit entry.
  *
  * So the load-bearing assertion here is a negative: **no mutation, ever**.
  *

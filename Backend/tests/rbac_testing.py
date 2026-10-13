@@ -84,8 +84,6 @@ def make_org(db: Session, tag: str | None = None):
         id=f"org_{tag}",
         name=f"RBAC Test Org {tag}",
         slug=f"rbac-test-{tag}",
-        max_assets=100,
-        max_users=10,
         is_active=True,
     )
     db.add(org)

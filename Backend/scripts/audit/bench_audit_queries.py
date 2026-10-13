@@ -214,8 +214,6 @@ def seed(engine, rows: int) -> None:
                         id=org_id,
                         name=f"Bench Org {org_id}",
                         slug=f"bench-{org_id}",
-                        max_assets=1000,
-                        max_users=100,
                         is_active=True,
                     )
                 )

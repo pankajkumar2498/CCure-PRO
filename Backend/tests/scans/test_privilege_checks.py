@@ -371,6 +371,19 @@ class TestProbeConstruction:
         assert "notmatch ' '" in body
         assert "SystemRoot" in body
 
+    def test_the_unquoted_path_probe_finds_an_upper_case_extension(self):
+        r"""
+        Regression, found on 10.180.6.30.
+
+        ``c:\oraclexe\app\oracle\product\11.2.0\server\bin\ORACLE.EXE XE``
+        has no space in its executable path; " XE" is an argument. A
+        case-sensitive search for ".exe" missed ".EXE", kept the argument in
+        the path and reported OracleServiceXE as hijackable.
+        """
+        body = WINDOWS_PROBES["unquoted_service_path"]
+        assert "IndexOf('.exe', [System.StringComparison]::OrdinalIgnoreCase)" in body
+        assert "IndexOf('.exe')" not in body
+
     def test_the_service_acl_probe_ignores_virtual_service_accounts(self):
         r"""
         Regression, found by real-target validation.

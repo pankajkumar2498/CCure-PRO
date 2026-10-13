@@ -79,9 +79,10 @@ from scans.finding_normalizer import (
     RemediationConfidence,
     ScanFindings,
     StandardizedFinding,
-    _comparable_version,
+    boundary_key,
     build_scan_report,
     group_findings_for_report,
+    upgrade_target,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -867,7 +868,11 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
         # performs a single upgrade. The group therefore tracks the highest
         # boundary any of its findings requires.
         product = (remediation.product or "").strip()
-        if product and remediation.fixed_version:
+        # The boundary an upgrade must reach: a first fixed release, or — when
+        # only an inclusive bound is published — the last affected one.
+        boundary = remediation.fixed_version or remediation.last_affected_version
+        is_last = not remediation.fixed_version and bool(boundary)
+        if product and boundary:
             key: Any = product.lower()
         else:
             key = remediation.summary.strip()
@@ -879,12 +884,14 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
                 "product": product,
                 "confidence": remediation.confidence,
                 "patch_url": remediation.patch_url,
-                "fixed_version": remediation.fixed_version,
+                "fixed_version": boundary,
+                "boundary_is_last_affected": is_last,
                 "findings": [],
                 "hosts": set(),
                 "max_rank": 0,
                 "max_severity": "Unscored",
                 "kev": False,
+                "kev_confirmed": False,
                 "max_epss": 0.0,
             },
         )
@@ -895,15 +902,18 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
             entry["max_severity"] = finding.severity
         if finding.in_kev:
             entry["kev"] = True
+            if not _unconfirmed(finding):
+                entry["kev_confirmed"] = True
         if finding.epss_score and finding.epss_score > entry["max_epss"]:
             entry["max_epss"] = finding.epss_score
 
         # Keep the highest boundary seen; that is the one upgrade that
         # satisfies every finding in the group.
-        candidate = _comparable_version(remediation.fixed_version or "")
-        current = _comparable_version(entry.get("fixed_version") or "")
-        if candidate and (current is None or candidate > current):
-            entry["fixed_version"] = remediation.fixed_version
+        if boundary and boundary_key(boundary, is_last) > boundary_key(
+            entry.get("fixed_version") or "", entry["boundary_is_last_affected"]
+        ):
+            entry["fixed_version"] = boundary
+            entry["boundary_is_last_affected"] = is_last
 
     # Restate each grouped action in terms of the upgrade rather than the CVE
     # that happened to be seen first, and name what the upgrade clears.
@@ -914,8 +924,13 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
             shown = ", ".join(cves[:8])
             if len(cves) > 8:
                 shown += f", and {len(cves) - 8} more"
+            target = (
+                upgrade_target(None, entry["fixed_version"])
+                if entry["boundary_is_last_affected"]
+                else upgrade_target(entry["fixed_version"])
+            )
             entry["action"] = (
-                f"Upgrade {entry['product']} to {entry['fixed_version']} or later. "
+                f"Upgrade {entry['product']} to {target}. "
                 f"This single upgrade clears all {count} findings recorded against "
                 f"this component: {shown}. Version boundaries are taken from the "
                 f"CPE ranges published for those CVEs."
@@ -924,6 +939,7 @@ def _remediation_plan(findings: ScanFindings) -> List[Dict[str, Any]]:
     plan = list(groups.values())
     plan.sort(
         key=lambda e: (
+            e["kev_confirmed"],
             e["kev"],
             e["max_rank"],
             len(e["findings"]),
@@ -967,6 +983,22 @@ def _cvss_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
     return _p("<br/>".join(parts), styles["body"], escape=False)
 
 
+def _unconfirmed(finding: StandardizedFinding) -> bool:
+    """
+    Whether the scan could not confirm this finding applies to the host.
+
+    A known-exploited CVE is shown even when unconfirmed — omitting one that is
+    being exploited costs more than one line to verify — but it must say so.
+    The executive table listed an nginx CVE whose version was never detected
+    (10.180.6.30, 12 Oct 2026) exactly like a confirmed one.
+    """
+    return finding.confidence != Confidence.CONFIRMED
+
+
+#: Appended wherever an unconfirmed known-exploited finding is listed.
+UNCONFIRMED_KEV_NOTE = "not confirmed on this host — verify the version first"
+
+
 def _threat_intel_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
     bits: List[str] = []
     if finding.in_kev:
@@ -977,6 +1009,7 @@ def _threat_intel_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
         )
         bits.append(
             f"<font color='#B91C1C'><b>CISA KEV — actively exploited</b></font>{due}"
+            + (f"; <i>{UNCONFIRMED_KEV_NOTE}</i>" if _unconfirmed(finding) else "")
         )
     if finding.epss_score is not None:
         # The percentile is a rank, not a probability. Rendering it as
@@ -1302,7 +1335,7 @@ def _finding_group_card(group, styles: dict) -> List[Any]:
             _boxed(
                 _p(
                     f"<b>Remediation:</b><br/>Upgrade {escape_for_reportlab(group.product)} "
-                    f"to {escape_for_reportlab(group.fixed_version)} or later. This single "
+                    f"to {escape_for_reportlab(group.upgrade_target)}. This single "
                     f"action resolves all {len(group.findings)} findings listed above.",
                     styles["body"],
                     escape=False,
@@ -2521,11 +2554,19 @@ class ScanReportGenerator:
                 f"High or Critical."
             )
             if kev:
+                unconfirmed_kev = sum(1 for f in kev if _unconfirmed(f))
                 posture += (
                     f" <font color='#B91C1C'><b>{len(kev)} finding(s) appear in the "
                     f"CISA Known Exploited Vulnerabilities catalog and should be "
                     f"treated as the immediate priority.</b></font>"
                 )
+                if unconfirmed_kev:
+                    posture += (
+                        f" {unconfirmed_kev} of them could not be confirmed on "
+                        f"this host; verify "
+                        f"{'its version' if unconfirmed_kev == 1 else 'their versions'} "
+                        f"first."
+                    )
 
         story.append(_boxed(_p(posture, styles["body"], escape=False), BG_ALT, BORDER))
         story.append(Spacer(1, 4 * mm))
@@ -2596,11 +2637,22 @@ class ScanReportGenerator:
                 ids = ", ".join(
                     sorted({f.primary_cve for f in kev_findings if f.primary_cve})[:6]
                 )
+                unconfirmed_ids = sorted(
+                    {f.primary_cve for f in kev_findings if _unconfirmed(f)}
+                    - {None, ""}
+                )
                 lines.append(
                     f"<b>{len(kev_findings)}</b> finding(s) appear in the CISA "
                     f"Known Exploited Vulnerabilities catalog and are being "
                     f"exploited in the wild: {escape_for_reportlab(ids)}. "
                     f"Treat these as the first call on remediation capacity."
+                    + (
+                        f" Not confirmed on this host: "
+                        f"{escape_for_reportlab(', '.join(unconfirmed_ids))} — "
+                        f"verify the version before acting."
+                        if unconfirmed_ids
+                        else ""
+                    )
                 )
             if likely:
                 top = likely[0]
@@ -2711,11 +2763,14 @@ class ScanReportGenerator:
                 ]
             ]
             for finding in kev[:20]:
+                name = escape_for_reportlab(finding.plugin_name)
+                if _unconfirmed(finding):
+                    name += f"<br/><i>{finding.confidence.value}: {UNCONFIRMED_KEV_NOTE}</i>"
                 rows.append(
                     [
                         _p(finding.primary_cve, styles["body"]),
                         _p(finding.host, styles["body"]),
-                        _p(finding.plugin_name, styles["body"]),
+                        _p(name, styles["body"], escape=False),
                         _severity_badge(finding.severity, styles),
                         _p(finding.kev_due_date or "Not specified", styles["body"]),
                     ]
@@ -2750,8 +2805,10 @@ class ScanReportGenerator:
             ]
             for index, entry in enumerate(plan[:12], start=1):
                 action = entry["action"]
-                if entry["kev"]:
+                if entry["kev_confirmed"]:
                     action = "[Actively exploited] " + action
+                elif entry["kev"]:
+                    action = "[Exploited elsewhere — unconfirmed here] " + action
                 rows.append(
                     [
                         _p(str(index), styles["body"]),

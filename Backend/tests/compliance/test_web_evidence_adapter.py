@@ -96,8 +96,6 @@ def _other_org(db) -> Organization:
         id=f"org_{uid}",
         name=f"F3 Other {uid}",
         slug=f"f3-other-{uid}",
-        max_assets=10,
-        max_users=10,
         is_active=True,
     )
     db.add(org)

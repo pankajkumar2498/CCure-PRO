@@ -6,7 +6,7 @@ import { everything } from "../../../../fixtures/authorization";
  * regression gate; the failing set is the migration specification.
  *
  * ── The contract ───────────────────────────────────────────────────────────
- * Reads on mount:  GET /dashboard/summary → GET /scan/quota (then every 30 s);
+ * Reads on mount:  GET /dashboard/summary (then every 30 s);
  *                  GET /admin/organizations/ (superadmin only);
  * Writes:          none from the shell itself.
  * Storage:         localStorage activeOrgId, sidebarCollapsed;
@@ -140,14 +140,8 @@ const ORG_ADMIN = personaFrom(ORG_ADMIN_RAW);
 const VIEWER = personaFrom(VIEWER_RAW);
 
 const SUMMARY = {
-  scans: { running: 2, last_24h: 7, quota_limit_24h: 50 },
+  scans: { running: 2, last_24h: 7 },
   severity: { critical: 4 },
-};
-const QUOTA = {
-  scans_limit_24h: 50,
-  concurrent_limit: 5,
-  scans_used_24h: 7,
-  concurrent_running: 2,
 };
 const ORGS = {
   organizations: [
@@ -160,8 +154,6 @@ function wire() {
   axiosInstance.get.mockImplementation((url) => {
     if (url === "/dashboard/summary")
       return Promise.resolve({ status: 200, data: SUMMARY });
-    if (url === "/scan/quota")
-      return Promise.resolve({ status: 200, data: QUOTA });
     return Promise.reject(new Error("unexpected GET " + url));
   });
   listOrganizations.mockResolvedValue(ORGS);
@@ -177,7 +169,7 @@ const renderShell = async (props = {}) => {
     { wrapper: MemoryRouter },
   );
   await waitFor(() =>
-    expect(axiosInstance.get).toHaveBeenCalledWith("/scan/quota"),
+    expect(axiosInstance.get).toHaveBeenCalledWith("/dashboard/summary"),
   );
   return utils;
 };
@@ -219,10 +211,10 @@ afterEach(() => {
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 describe("AppLayout — reads on mount", () => {
-  it("reads the dashboard summary then the quota, and renders the page inside .page-main", async () => {
+  it("reads the dashboard summary and renders the page inside .page-main", async () => {
     await renderShell();
     const urls = axiosInstance.get.mock.calls.map((c) => c[0]);
-    expect(urls).toEqual(["/dashboard/summary", "/scan/quota"]);
+    expect(urls).toEqual(["/dashboard/summary"]);
     expect(screen.getByTestId("page").closest(".page-main")).not.toBeNull();
     expect(axiosInstance.post).not.toHaveBeenCalled();
     expect(axiosInstance.patch).not.toHaveBeenCalled();
@@ -230,7 +222,7 @@ describe("AppLayout — reads on mount", () => {
     expect(axiosInstance.delete).not.toHaveBeenCalled();
   });
 
-  it("re-reads summary and quota every 30 seconds", async () => {
+  it("re-reads summary every 30 seconds", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     await renderShell();
     expect(
@@ -242,33 +234,6 @@ describe("AppLayout — reads on mount", () => {
     expect(
       axiosInstance.get.mock.calls.filter((c) => c[0] === "/dashboard/summary"),
     ).toHaveLength(2);
-    expect(
-      axiosInstance.get.mock.calls.filter((c) => c[0] === "/scan/quota"),
-    ).toHaveLength(2);
-  });
-
-  it("shows quota and concurrency from the quota endpoint, ∞ for an uncapped plan", async () => {
-    await renderShell();
-    expect(screen.getByText("7/50")).toBeInTheDocument();
-    expect(screen.getByText("2/5")).toBeInTheDocument();
-  });
-
-  it("renders ∞ when the plan has no limit", async () => {
-    axiosInstance.get.mockImplementation((url) => {
-      if (url === "/dashboard/summary")
-        return Promise.resolve({
-          status: 200,
-          data: { scans: { running: 0, last_24h: 3 } },
-        });
-      if (url === "/scan/quota")
-        return Promise.resolve({
-          status: 200,
-          data: { scans_limit_24h: null, concurrent_limit: null },
-        });
-      return Promise.reject(new Error("x"));
-    });
-    await renderShell();
-    expect(screen.getByText("3/∞")).toBeInTheDocument();
   });
 
   it("shows running-scan and critical badges from the summary", async () => {
@@ -726,10 +691,9 @@ describe("AppLayout — accessibility and design-system expectations (migration 
     const { container } = await renderShell();
     await screen.findByText("CDAC RTSG Bangalore");
     const styled = [...container.querySelectorAll("[style]")].filter(
-      /* Allowance: the quota meters' fill width is the value itself. */
       (el) =>
         !el.closest(".page-main") &&
-        !el.matches("[data-allow-inline], .quota-bar-fill, .cc-progress__bar"),
+        !el.matches("[data-allow-inline], .cc-progress__bar"),
     );
     expect(styled).toHaveLength(0);
   });

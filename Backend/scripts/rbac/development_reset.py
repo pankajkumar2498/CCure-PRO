@@ -31,7 +31,9 @@ from scripts.rbac.development_artifacts import (
 MANIFEST = (
     Path(__file__).resolve().parents[2] / "data/rbac/development_reset_manifest.json"
 )
-HEADS = {"e5a7c9d1f3b2", "policy_pro_0001", "rank_0001"}
+# Explicitly reviewed after f6a8c0e2b4d7 removed only organisation subscription
+# columns. Never derive this allowlist from the current migration tree.
+HEADS = {"f6a8c0e2b4d7", "policy_pro_0001", "rank_0001"}
 SERVICES = ("ccure-api", "ccure-worker", "ccure-web-worker", "ccure-beat")
 NATIVE = (
     "rbac_roles",
@@ -260,6 +262,15 @@ def preserved(conn, manifest):
     return {"tables": result, "infrastructure": infrastructure(conn, manifest)}
 
 
+def require_reviewed_migration_heads(conn):
+    """Read-only, exact-set gate; new migrations require an ownership review."""
+    require(
+        set(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
+        == HEADS,
+        "migration heads do not match",
+    )
+
+
 def inventory(conn, manifest):
     tables = set(inspect(conn).get_table_names(schema="public"))
     import yaml
@@ -296,11 +307,7 @@ def inventory(conn, manifest):
         "users.role_id still exists",
     )
     require(set(NATIVE) <= tables, "native RBAC schema is incomplete")
-    require(
-        set(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
-        == HEADS,
-        "migration heads do not match",
-    )
+    require_reviewed_migration_heads(conn)
     require(
         not conn.execute(
             text(

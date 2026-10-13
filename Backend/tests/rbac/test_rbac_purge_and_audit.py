@@ -355,8 +355,9 @@ def test_an_unknown_assignment_scope_is_refused():
 
 
 def test_the_platform_ledger_is_append_only(rbac_db):
-    log_platform_event(rbac_db, "rbac.role.created", system_actor="system:test")
-    row = rbac_db.query(PlatformAuditEvent).one()
+    event = log_platform_event(rbac_db, "rbac.role.created", system_actor="system:test")
+    # Durable records from other operations may already exist in this ledger.
+    row = rbac_db.query(PlatformAuditEvent).filter_by(id=event.id).one()
     with pytest.raises(DBAPIError, match="append-only"):
         with rbac_db.begin_nested():
             row.action = "tampered"
@@ -390,13 +391,13 @@ def test_the_platform_ledger_keeps_actor_attribution_honest(rbac_db):
 
 
 def test_platform_events_are_redacted_like_tenant_events(rbac_db):
-    log_platform_event(
+    event = log_platform_event(
         rbac_db,
         "rbac.role.created",
         system_actor="system:test",
         changes={"password": "hunter2", "role_key": "platform.viewer"},
     )
-    row = rbac_db.query(PlatformAuditEvent).one()
+    row = rbac_db.query(PlatformAuditEvent).filter_by(id=event.id).one()
     assert (
         row.changes["password"] != "hunter2"
         and row.changes["role_key"] == "platform.viewer"

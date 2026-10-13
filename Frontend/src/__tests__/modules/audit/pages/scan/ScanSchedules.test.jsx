@@ -379,7 +379,7 @@ describe("ScanSchedules — row actions", () => {
           trigger: "manual",
           status: "skipped",
           scan_id: null,
-          detail: "quota exhausted",
+          detail: "previous run still active",
         },
       ],
     });
@@ -399,7 +399,7 @@ describe("ScanSchedules — row actions", () => {
       "/history?scan=41",
     );
     expect(screen.getByText("no scan was created")).toBeInTheDocument();
-    expect(screen.getByText("quota exhausted")).toBeInTheDocument();
+    expect(screen.getByText("previous run still active")).toBeInTheDocument();
     expect(screen.getByText("SKIPPED")).toBeInTheDocument();
   });
 

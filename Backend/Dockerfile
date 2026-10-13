@@ -101,6 +101,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends /tmp/google-chr
     && rm /tmp/google-chrome-stable.deb \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Debian stable's curl 8.14.1 still carries CVE-2026-12064, CVE-2026-8286,
+# CVE-2026-8458 and CVE-2026-8927. Select only the signed official backports
+# needed for curl 8.21.0; do not upgrade the distribution or remove packages.
+# The new GnuTLS package alone no longer satisfies Chrome's legacy dependency,
+# so install the fixed OpenSSL implementation too and retain Chrome unchanged.
+RUN printf '%s\n' \
+    'Types: deb' \
+    'URIs: https://deb.debian.org/debian' \
+    'Suites: trixie-backports' \
+    'Components: main' \
+    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+    > /etc/apt/sources.list.d/curl-backports.sources \
+    && chrome_version=$(dpkg-query -W -f='${Version}' google-chrome-stable) \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends --no-remove \
+       libcurl3t64-gnutls=8.21.0-2~bpo13+1 \
+       libcurl4-gnutls=8.21.0-2~bpo13+1 \
+       libcurl4t64=8.21.0-2~bpo13+1 \
+       libnghttp3-9=1.15.0-1~bpo13+1 \
+       libngtcp2-16=1.22.1-1~bpo13+1 \
+       libngtcp2-crypto-gnutls8=1.22.1-1~bpo13+1 \
+       libngtcp2-crypto-ossl0=1.22.1-1~bpo13+1 \
+    && test "$chrome_version" = "$(dpkg-query -W -f='${Version}' google-chrome-stable)" \
+    && rm /etc/apt/sources.list.d/curl-backports.sources \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # ── Dependency Stage ───────────────────────────────────────────────────────
 FROM browser-runtime AS builder
 

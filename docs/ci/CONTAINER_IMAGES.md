@@ -185,6 +185,22 @@ added and no required dependency was removed. Security-owner review of this
 additional runtime risk remains required. Do not describe the image as free
 of High/Critical findings.
 
+The 13 October follow-up selects the signed official
+[trixie-backports curl packages](https://packages.debian.org/trixie-backports/libcurl4-gnutls)
+at `8.21.0-2~bpo13+1`, which upstream fixes for the four curl findings above.
+The Dockerfile pins both GnuTLS and OpenSSL implementations plus their four
+HTTP/3 dependencies. The old GnuTLS name becomes a transitional package;
+the fixed OpenSSL package preserves Chrome's legacy dependency alternative.
+The isolated dependency simulation required four upgrades and three additions,
+with no removals and the exact Chrome package retained. The build uses Debian's
+archive keyring, forbids removals and verifies Chrome's version is unchanged;
+it removes the temporary backports source afterwards. No general distribution
+upgrade, new security exception or application dependency change is introduced.
+Update these scoped pins deliberately when fixes become available. The changed
+candidate requires its own Trivy gate, image smoke and executed-browser check;
+the earlier scan does not verify the new image. The two wget findings and the
+existing root/no-sandbox policy remain disclosed and unaccepted for production.
+
 All five production browser launch sites use the shared channel selector. An
 unset channel preserves local Playwright defaults; an unreviewed channel fails.
 The release image explicitly sets `CCURE_BROWSER_CHANNEL=chrome`. The unused

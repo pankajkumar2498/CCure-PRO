@@ -307,6 +307,7 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
     org_name = organisation_name(db, scan)
 
     policy = policy_context(scan)
+    policy = _scoped_policy(policy, _text(getattr(scan, "pipeline_mode", "")))
 
     return {
         "scan_id": str(getattr(scan, "id", "") or ""),
@@ -322,6 +323,47 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
         "policy": policy,
         "exported_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+#: Policy settings that only a vulnerability or configuration assessment reads.
+_CHECK_SETTINGS = (
+    "Benchmarks",
+    "Benchmark profile",
+    "Platform scope",
+    "Check families",
+    "Assessment sections",
+    "Built-in checks",
+    "Severity threshold",
+    "Check exclusions",
+    "Tag exclusions",
+    "Intrusive probes",
+    "Credential required",
+)
+_NO_CHECKS = "Not applicable — this scan type runs no checks"
+
+
+def _scoped_policy(policy: Mapping[str, Any], pipeline_mode: str) -> Dict[str, Any]:
+    """
+    The policy snapshot with settings this scan type never used marked so.
+
+    A Basic Network Scan's export said "Benchmarks: Every framework installed
+    for this organisation" and "Built-in checks: Included" — true of the
+    snapshot's defaults and false of a scan that ran no checks at all.
+    """
+    scoped = dict(policy or {})
+    summary = scoped.get("summary")
+    if not isinstance(summary, Mapping) or pipeline_mode not in ("basic", "asset"):
+        return scoped
+    summary = dict(summary)
+    for key in _CHECK_SETTINGS:
+        if key in summary:
+            summary[key] = _NO_CHECKS
+    if pipeline_mode == "basic":
+        for key in ("Port selection", "Port exclusions"):
+            if key in summary:
+                summary[key] = "Not applicable — host discovery scans no ports"
+    scoped["summary"] = summary
+    return scoped
 
 
 def scan_context_rows(context: Mapping[str, Any]) -> List[List[str]]:
@@ -347,9 +389,18 @@ def scan_context_rows(context: Mapping[str, Any]) -> List[List[str]]:
                 ["Policy Version", _text(policy.get("version_number"))],
                 ["Policy Source", _text(policy.get("source"))],
                 ["Configuration ID", _text(policy.get("fingerprint"))],
-                ["Policy Summary", _text(policy.get("summary"))],
             ]
         )
+        # One row per setting. The whole mapping used to be written into one
+        # cell as a Python dict repr — "{'Policy': 'None (scan …" — which no
+        # reader or spreadsheet formula can use.
+        summary = policy.get("summary")
+        if isinstance(summary, Mapping):
+            rows.extend(
+                [f"Policy: {key}", _text(value)] for key, value in summary.items()
+            )
+        elif summary:
+            rows.append(["Policy Summary", _text(summary)])
     else:
         # Said in words rather than left blank. A scan that predates GAP-12 has
         # no recorded configuration, and an empty Configuration ID cell would
@@ -731,12 +782,55 @@ def comparison_export_rows(comparison: Any) -> List[List[str]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _scan_hosts(db: Session, scan: Any) -> List[Dict[str, Any]]:
+    """
+    The scan's host records, from the most complete phase it stored.
+
+    Every phase row keeps its hosts in ``summary._phase_data``; a later phase
+    carries everything an earlier one found plus its own results, so the
+    highest phase with hosts is the scan's inventory.
+    """
+    from db.models.scans import ScanPhase
+
+    phases = (
+        db.query(ScanPhase)
+        .filter(ScanPhase.scan_id == str(getattr(scan, "id", "") or ""))
+        .order_by(ScanPhase.phase_order.desc())
+        .all()
+    )
+    for phase in phases:
+        data = (
+            (phase.summary or {}).get("_phase_data")
+            if isinstance(phase.summary, dict)
+            else None
+        )
+        if isinstance(data, list) and data:
+            return [h for h in data if isinstance(h, dict)]
+    return []
+
+
+def host_export_rows(db: Session, scan: Any) -> List[List[str]]:
+    """
+    One row per host the scan recorded — the same row the host CSV writes.
+
+    A Basic Network Scan or Asset Discovery workbook used to carry a summary
+    and three empty sheets: the hosts, MAC addresses, operating systems and
+    open services the scan had just discovered appeared nowhere in it.
+    """
+    from reporting.csv_generator import _host_inventory_row
+
+    ports_scanned = (_text(getattr(scan, "pipeline_mode", "")) or "basic") != "basic"
+    # Cells are made safe by the writers (xlsx_generator.sanitize_cell), as
+    # for every other dataset here.
+    return [_host_inventory_row(host, ports_scanned) for host in _scan_hosts(db, scan)]
+
+
 def export_payload(
     db: Session,
     scan: Any,
     *,
     comparison: Any = None,
-    datasets: Sequence[str] = ("compliance", "findings", "comparison"),
+    datasets: Sequence[str] = ("hosts", "compliance", "findings", "comparison"),
     **filters: Any,
 ) -> Dict[str, Any]:
     """
@@ -750,6 +844,16 @@ def export_payload(
     """
     context = scan_context(db, scan)
     payload: Dict[str, Any] = {"scan": context, "datasets": {}}
+
+    if "hosts" in datasets:
+        from reporting.csv_generator import HOST_INVENTORY_HEADERS
+
+        rows = host_export_rows(db, scan)
+        payload["datasets"]["hosts"] = {
+            "columns": list(HOST_INVENTORY_HEADERS),
+            "rows": rows,
+            "row_count": len(rows),
+        }
 
     if "compliance" in datasets:
         rows = compliance_verdict_rows(
@@ -860,7 +964,7 @@ def workbook_sheets(
     summary_rows = scan_context_rows(context)
     summary_rows.append(["", ""])
     summary_rows.append(["Dataset", "Rows exported"])
-    for key in ("compliance", "findings", "comparison"):
+    for key in ("hosts", "compliance", "findings", "comparison"):
         data = datasets.get(key)
         if data is not None:
             summary_rows.append([key.capitalize(), str(data.get("row_count", 0))])
@@ -903,6 +1007,9 @@ def workbook_sheets(
     sheets: List[Tuple[str, Sequence[str], List[List[str]]]] = [
         ("Summary", SCAN_CONTEXT_COLUMNS, summary_rows)
     ]
+    hosts = datasets.get("hosts")
+    if hosts is not None:
+        sheets.append(("Hosts", hosts.get("columns") or [], hosts.get("rows") or []))
     if compliance is not None:
         sheets.append(
             (

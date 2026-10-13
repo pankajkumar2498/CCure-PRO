@@ -64,7 +64,7 @@ EXPORT_FORMATS = ("xlsx", "csv", "json")
 
 #: Which datasets the export endpoint can assemble. ``all`` is the workbook an
 #: auditor wants; the individual names are for a pipeline that wants one table.
-EXPORT_DATASETS = ("all", "compliance", "findings", "comparison")
+EXPORT_DATASETS = ("all", "hosts", "compliance", "findings", "comparison")
 
 #: Read by scripts/measure_export_coverage.py. A route that is deleted loses
 #: its coverage credit rather than continuing to be claimed by a hand-kept list.
@@ -759,7 +759,7 @@ def export_scan_dataset(
     ),
     dataset: str = Query(
         "all",
-        description="all, compliance, findings or comparison.",
+        description="all, hosts, compliance, findings or comparison.",
     ),
     asset_id: str | None = Query(None),
     host: str | None = Query(None),
@@ -838,9 +838,9 @@ def export_scan_dataset(
         raise HTTPException(
             status_code=400,
             detail=(
-                "A CSV holds one table. Name a dataset — compliance, findings "
-                "or comparison — or ask for xlsx, which carries all three as "
-                "separate worksheets."
+                "A CSV holds one table. Name a dataset — hosts, compliance, "
+                "findings or comparison — or ask for xlsx, which carries them "
+                "all as separate worksheets."
             ),
         )
 
@@ -857,7 +857,7 @@ def export_scan_dataset(
         )
 
     datasets = (
-        ("compliance", "findings", "comparison")
+        ("hosts", "compliance", "findings", "comparison")
         if requested_dataset == "all"
         else (requested_dataset,)
     )

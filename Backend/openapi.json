@@ -19547,13 +19547,13 @@
             }
           },
           {
-            "description": "all, compliance, findings or comparison.",
+            "description": "all, hosts, compliance, findings or comparison.",
             "in": "query",
             "name": "dataset",
             "required": false,
             "schema": {
               "default": "all",
-              "description": "all, compliance, findings or comparison.",
+              "description": "all, hosts, compliance, findings or comparison.",
               "title": "Dataset",
               "type": "string"
             }

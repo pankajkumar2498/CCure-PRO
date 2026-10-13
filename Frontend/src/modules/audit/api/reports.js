@@ -66,7 +66,12 @@ export const EXPORT_DATASETS = [
   {
     value: "all",
     label: "Everything",
-    hint: "Compliance verdicts, findings and the comparison.",
+    hint: "Hosts, compliance verdicts, findings and the comparison.",
+  },
+  {
+    value: "hosts",
+    label: "Hosts",
+    hint: "One row per discovered host: identity, operating system and open ports.",
   },
   {
     value: "compliance",

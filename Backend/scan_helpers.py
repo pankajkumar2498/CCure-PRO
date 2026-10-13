@@ -309,7 +309,10 @@ def resolve_report_context(
             .first()
         )
     if scan_row:
+        # Both halves of the report's "Scan reference": a scan number alone is
+        # a row counter (two organisations both have a scan 1).
         context["scan_no"] = scan_row.scan_no
+        context["scan_id"] = str(scan_row.id)
         summary_blob = phase1_summary_from_scan(scan_row)
 
     # Target priority: request targets > scan row target/original_targets > host list

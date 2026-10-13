@@ -1336,6 +1336,7 @@ def run_host_discovery_task(
         context = resolve_report_context(
             db,
             user_id,
+            scan_id=scan_id,
             hosts=result.get("data", []),
             requested_targets=targets,
             requested_scan_type=scan_type,
@@ -5013,6 +5014,10 @@ def run_credentialed_scan_task(
             )
 
         orch = _new_orchestrator()
+        # The scan row exists by now; the report names it ("Scan reference").
+        report_result.setdefault("metadata", {}).update(
+            {"scan_no": getattr(scan, "scan_no", None), "scan_id": str(scan.id)}
+        )
         report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
         scan.report_executive_path = report_paths.get("executive_pdf")
         scan.report_technical_path = report_paths.get("technical_pdf")

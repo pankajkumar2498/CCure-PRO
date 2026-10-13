@@ -300,6 +300,17 @@ def update_scan_phase(
         if scan.status != "unreachable":
             scan.status = "complete"
         scan.completed_at = utcnow()
+        # A finished scan's duration is the time it took. The rolling sum above
+        # adds each phase's own "scan_duration", and the audit phase reports
+        # only its port re-check — so a credentialed audit that ran for 3m55s
+        # was listed as 2m17s while its report said 3.9 minutes.
+        if scan.started_at:
+            started = scan.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=scan.completed_at.tzinfo)
+            scan.duration_seconds = max(
+                (scan.completed_at - started).total_seconds(), 0.0
+            )
     else:
         # Do not revert a terminal scan status (complete, unreachable, failed, cancelled) back to running
         if scan.status not in ("complete", "unreachable", "failed", "cancelled"):

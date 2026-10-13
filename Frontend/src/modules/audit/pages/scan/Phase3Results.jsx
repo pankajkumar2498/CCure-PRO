@@ -24,12 +24,13 @@
  * written against the page before migration.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import ScanStepper from "@audit/components/layout/ScanStepper";
 import CVELink from "@audit/components/common/CVELink";
 import { describeAffected } from "@audit/utils/affectedSoftware";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
+import { scanViewState } from "@audit/utils/scanViewState";
 import api from "@shell/api/axiosInstance";
 import { stopScan } from "@audit/api/scans";
 import { useAuth } from "@shell/auth/AuthContext";
@@ -45,6 +46,7 @@ import {
   CcurePage,
   CcurePageHeader,
   CcureIcon,
+  CcureLoader,
 } from "../../../../design-system";
 import "../../styles/phase3-results.css";
 
@@ -833,6 +835,7 @@ export default function Phase3Results() {
     saveStatus,
     setSaveStatus,
     abortRef,
+    loadScanForViewing,
   } = useScan();
 
   // Track whether the auto-pipeline has been triggered
@@ -860,12 +863,70 @@ export default function Phase3Results() {
     location.state?.vulnerabilityProfile || "recommended";
   const requestedStartPhase = location.state?.startPhase;
 
-  // Redirect if no hosts exist
+  /* ── Results viewer (`/scan/:scanId/phase3`) ──────────────────────────────── */
+  // The live pipeline reaches this page at `/scan/vulnerability-audit`, with no
+  // id. An id in the URL means a scan is being *viewed* — from Scan History, a
+  // link or a refresh — and the scan record is the only source of truth: this
+  // page used to show whichever scan the session last held, render a finished
+  // audit as "Running Port Scan…", and keep the code path that re-dispatches a
+  // phase one guard away. A viewed scan is loaded, followed while it runs, and
+  // never re-dispatched.
+  const { scanId: routeScanId } = useParams();
+  const viewOnly = Boolean(routeScanId);
+  const [viewLoading, setViewLoading] = useState(viewOnly);
+  const [viewError, setViewError] = useState("");
+
   useEffect(() => {
+    if (!viewOnly) return undefined;
+    let cancelled = false;
+    let timer = null;
+    setViewLoading(true);
+    setViewError("");
+
+    const load = async () => {
+      try {
+        const { data } = await api.get(`/scans/${routeScanId}`);
+        if (cancelled) return;
+        const view = scanViewState(data);
+        if (!view.phase1Hosts.length) {
+          if (view.terminal) {
+            setViewError(
+              data?.failure_reason || "This scan has no results to display.",
+            );
+            setViewLoading(false);
+          } else {
+            timer = setTimeout(load, 5000);
+          }
+          return;
+        }
+        loadScanForViewing(view);
+        setViewLoading(false);
+        // A scan still running is followed until the backend says it is done.
+        if (!view.terminal) timer = setTimeout(load, 5000);
+      } catch (err) {
+        if (cancelled) return;
+        setViewError(
+          err?.response?.data?.detail || "Could not load this scan's results.",
+        );
+        setViewLoading(false);
+      }
+    };
+    load();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [viewOnly, routeScanId, loadScanForViewing]);
+
+  // Redirect if no hosts exist — the live flow only. A viewed scan reports
+  // what it has, or why it has nothing.
+  useEffect(() => {
+    if (viewOnly) return;
     if (!safePhase1Hosts.length) {
       navigate("/scan", { replace: true });
     }
-  }, [safePhase1Hosts.length, navigate]);
+  }, [viewOnly, safePhase1Hosts.length, navigate]);
 
   // Sync from context when results change externally
   useEffect(() => {
@@ -886,12 +947,18 @@ export default function Phase3Results() {
   const autoStartRef = useRef(null);
   useEffect(() => {
     const snap = autoStartRef.current;
+    // A viewed scan is never (re)started from this page.
+    if (snap.viewOnly) return;
     if (
       pipelineStarted.current ||
       !safePhase1Hosts.length ||
       !activeDiscoveryHosts.length ||
       snap.pipelineState === PIPELINE_STATES.REPORT_READY ||
-      snap.pipelineState === PIPELINE_STATES.COMPLETE
+      snap.pipelineState === PIPELINE_STATES.COMPLETE ||
+      // An ended pipeline restarts only through the explicit Retry/Restart
+      // buttons, never because the page was mounted again.
+      snap.pipelineState === PIPELINE_STATES.ERROR ||
+      snap.pipelineState === PIPELINE_STATES.CANCELLED
     )
       return;
 
@@ -1123,6 +1190,7 @@ export default function Phase3Results() {
   // effect above, but declared after it, so filling the ref any earlier would
   // read the `const` in its temporal dead zone.
   autoStartRef.current = {
+    viewOnly,
     pipelineState,
     phase3AuditResults,
     auditQueueHosts,
@@ -1176,6 +1244,28 @@ export default function Phase3Results() {
   };
 
   /* ── Guard ──────────────────────────────────────────────────────────────── */
+  if (viewOnly && (viewLoading || viewError)) {
+    return (
+      <AppLayout pageTitle="Vulnerability Audit">
+        <CcurePage className="p3-page">
+          <CcurePageHeader title="Vulnerability Audit" />
+          {viewLoading ? (
+            <CcureLoader label="Loading scan results…" />
+          ) : (
+            <>
+              <CcureAlert variant="danger">{viewError}</CcureAlert>
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/history")}
+              >
+                <Glyph>←</Glyph> Back to Scan History
+              </CcureButton>
+            </>
+          )}
+        </CcurePage>
+      </AppLayout>
+    );
+  }
   if (!safePhase1Hosts.length) return null;
 
   /* ── Derived state ──────────────────────────────────────────────────────── */
@@ -1239,7 +1329,7 @@ export default function Phase3Results() {
               )}
               <CcureButton
                 variant="secondary"
-                onClick={() => navigate("/scan")}
+                onClick={() => navigate(viewOnly ? "/history" : "/scan")}
               >
                 <Glyph>←</Glyph> Back
               </CcureButton>
@@ -1295,14 +1385,19 @@ export default function Phase3Results() {
             >
               {pipelineError.message}
             </CcureAlert>
-            <div className="p3-actions">
-              <CcureButton onClick={handleRetry}>
-                <CcureIcon name="refresh-cw" /> Retry from {failedPhaseLabel}
-              </CcureButton>
-              <CcureButton variant="secondary" onClick={handleRestart}>
-                <CcureIcon name="rotate-ccw" /> Restart Full Pipeline
-              </CcureButton>
-            </div>
+            {/* Retrying re-dispatches phases against this scan id. That is
+                the live pipeline's recovery path, never an action on a
+                scan opened from history. */}
+            {!viewOnly && (
+              <div className="p3-actions">
+                <CcureButton onClick={handleRetry}>
+                  <CcureIcon name="refresh-cw" /> Retry from {failedPhaseLabel}
+                </CcureButton>
+                <CcureButton variant="secondary" onClick={handleRestart}>
+                  <CcureIcon name="rotate-ccw" /> Restart Full Pipeline
+                </CcureButton>
+              </div>
+            )}
           </div>
         )}
 
@@ -1313,9 +1408,11 @@ export default function Phase3Results() {
               The pipeline was stopped by user request.
             </CcureAlert>
             <div className="p3-actions">
-              <CcureButton onClick={handleRestart}>
-                <CcureIcon name="rotate-ccw" /> Restart Pipeline
-              </CcureButton>
+              {!viewOnly && (
+                <CcureButton onClick={handleRestart}>
+                  <CcureIcon name="rotate-ccw" /> Restart Pipeline
+                </CcureButton>
+              )}
               <CcureButton
                 variant="secondary"
                 onClick={() => navigate("/scan")}

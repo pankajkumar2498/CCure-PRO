@@ -33,6 +33,10 @@ import AppLayout from "@audit/components/layout/AppLayout";
 import ScanStepper from "@audit/components/layout/ScanStepper";
 import ExportPanel from "@audit/components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
+import {
+  isTerminalScanStatus,
+  scanViewState,
+} from "@audit/utils/scanViewState";
 import { isPhaseEnabled, getNextPhase } from "@audit/config/scanConfig";
 import api from "@shell/api/axiosInstance";
 import {
@@ -148,12 +152,7 @@ export default function Phase1Results() {
     setExcludePorts,
     excludeIps,
     setExcludeIps,
-    setScanId,
-    setScanNo,
-    setTarget,
-    setPipelineMode,
-    setPhase1Hosts,
-    setPhase1Summary,
+    loadScanForViewing,
   } = useScan();
 
   // ── Hydration from the URL ────────────────────────────────────────────────
@@ -164,7 +163,14 @@ export default function Phase1Results() {
   const { scanId: routeScanId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedScanId = routeScanId || searchParams.get("scan_id") || null;
-  const needsHydration = !!requestedScanId && requestedScanId !== scanId;
+  // An id in the route means the scan is being viewed, so it is always loaded
+  // from the backend — even when the session already holds that id, because
+  // the session also holds a pipeline state this page may have written while
+  // the scan was live.
+  const isViewer = Boolean(routeScanId);
+  const needsHydration =
+    isViewer || (!!requestedScanId && requestedScanId !== scanId);
+  const [viewedStatus, setViewedStatus] = useState(null);
   const [hydrating, setHydrating] = useState(needsHydration);
   const [hydrateError, setHydrateError] = useState("");
 
@@ -190,12 +196,10 @@ export default function Phase1Results() {
           );
           return;
         }
-        setScanId(data.id);
-        setScanNo(data.scan_no ?? null);
-        setTarget(data.target || "");
-        setPipelineMode(data.pipeline_mode || "basic");
-        setPhase1Hosts(hosts);
-        setPhase1Summary(phase1.summary || data.summary || null);
+        // Every phase and the pipeline state come from the scan record, so a
+        // finished scan can never be shown as running.
+        loadScanForViewing(scanViewState(data));
+        setViewedStatus(data.status || null);
       } catch (err) {
         if (cancelled) return;
         setHydrateError(
@@ -209,21 +213,15 @@ export default function Phase1Results() {
     return () => {
       cancelled = true;
     };
-  }, [
-    needsHydration,
-    requestedScanId,
-    setScanId,
-    setScanNo,
-    setTarget,
-    setPipelineMode,
-    setPhase1Hosts,
-    setPhase1Summary,
-  ]);
+  }, [needsHydration, requestedScanId, loadScanForViewing]);
 
   const [filter, setFilter] = useState("active");
   // For asset pipeline: poll once to know if Phase 2 is already done
   const [phase2Done, setPhase2Done] = useState(phase2Results.length > 0);
   const [phase2Polling, setPhase2Polling] = useState(false);
+  useEffect(() => {
+    if (phase2Results.length > 0) setPhase2Done(true);
+  }, [phase2Results.length]);
   const [selected, setSelected] = useState(
     () =>
       new Set(phase1Hosts.filter((h) => h.is_active).map((h) => h.ip_address)),
@@ -460,6 +458,18 @@ export default function Phase1Results() {
   }, [excludePorts]);
 
   const hasPhase2 = isPhaseEnabled(pipelineMode, 2);
+  // A scan loaded for viewing that the backend says has finished; the live
+  // pipeline's effects below must not touch it. One exception: an interactive
+  // scan ends after Phase 1 by design and is continued by hand from this page,
+  // so a completed one with no port-scan results yet stays resumable.
+  const viewedEnded = isViewer && isTerminalScanStatus(viewedStatus);
+  const resumableInteractive =
+    viewedEnded &&
+    viewedStatus === "complete" &&
+    executionMode === "interactive" &&
+    hasPhase2 &&
+    !phase2Done;
+  const viewedTerminal = viewedEnded && !resumableInteractive;
   const showCheckboxes =
     executionMode === "interactive" && pipelineMode !== "basic";
 
@@ -573,6 +583,10 @@ export default function Phase1Results() {
 
   // ── Stepper: configure active step state ──
   useEffect(() => {
+    // A finished scan's state came from the backend; never overwrite it with
+    // a live-pipeline guess (this is what made a completed audit read as
+    // "Port Scan Scanning…").
+    if (hydrating || viewedTerminal) return;
     if (hasPhase2) {
       if (phase2Done) {
         setPipelineState(
@@ -591,6 +605,8 @@ export default function Phase1Results() {
       setPipelineState(PIPELINE_STATES.PORT_SCAN);
     }
   }, [
+    hydrating,
+    viewedTerminal,
     hasPhase2,
     phase2Done,
     phase1Hosts.length,
@@ -602,6 +618,8 @@ export default function Phase1Results() {
   // ── For pipelines with phase 2: poll the scan until Phase 2 is complete ──────────
   useEffect(() => {
     if (
+      hydrating ||
+      viewedTerminal ||
       !hasPhase2 ||
       phase2Done ||
       !scanId ||
@@ -650,6 +668,8 @@ export default function Phase1Results() {
       stopped = true;
     };
   }, [
+    hydrating,
+    viewedTerminal,
     hasPhase2,
     phase2Done,
     scanId,
@@ -861,12 +881,28 @@ export default function Phase1Results() {
               </p>
               <CcureButton
                 as={Link}
-                to="/scan/asset-discovery"
+                to={
+                  isViewer && scanId
+                    ? `/scan/${scanId}/phase2`
+                    : "/scan/asset-discovery"
+                }
                 variant="primary"
                 size="sm"
               >
                 View Port Scan Results <span aria-hidden="true">→</span>
               </CcureButton>
+            </CcureAlert>
+          ) : viewedTerminal ? (
+            <CcureAlert
+              variant="info"
+              title="No port scan results"
+              className="p1-alert"
+            >
+              This scan finished without port-scan results
+              {viewedStatus && viewedStatus !== "complete"
+                ? ` (status: ${viewedStatus})`
+                : ""}
+              .
             </CcureAlert>
           ) : executionMode === "interactive" ? (
             <CcureCard

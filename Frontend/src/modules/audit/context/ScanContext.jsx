@@ -249,6 +249,44 @@ export function ScanProvider({ children }) {
     setPipelineStateRaw(PIPELINE_STATES.PAUSED);
   }, []);
 
+  // Load a scan record for *viewing*: every phase at once, with the pipeline
+  // state its real status implies (see utils/scanViewState.js, which builds
+  // `view`). The phase pages used to hydrate only their own phase and leave
+  // the rest — and the pipeline state — from whatever scan was open before,
+  // so a finished Vulnerability Audit rendered as "Running Port Scan…".
+  // Built from stable primitives, like cancelPipeline, so pages can list it
+  // as an effect dependency.
+  const loadScanForViewing = useCallback((view) => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    const put = (key, setter, value) => {
+      ssSet(key, value);
+      setter(value);
+    };
+    put("cc_scanId", setScanIdRaw, view.scanId);
+    put("cc_scanNo", setScanNoRaw, view.scanNo);
+    put("cc_target", setTargetRaw, view.target);
+    put("cc_pipelineMode", setPipelineModeRaw, view.pipelineMode);
+    put("cc_phase1Hosts", setPhase1HostsRaw, view.phase1Hosts);
+    put("cc_phase1Summary", setPhase1SummaryRaw, view.phase1Summary);
+    put("cc_phase2Results", setPhase2ResultsRaw, view.phase2Results);
+    put("cc_phase2Summary", setPhase2SummaryRaw, view.phase2Summary);
+    // The audit queue is a live-pipeline input. A viewed scan has none, and a
+    // stale one is what tells the Phase 3 page to start an audit.
+    put("cc_phase3Results", setPhase3ResultsRaw, []);
+    put(
+      "cc_phase3AuditResults",
+      setPhase3AuditResultsRaw,
+      view.phase3AuditResults,
+    );
+    put("cc_phase3Summary", setPhase3SummaryRaw, view.phase3Summary);
+    put(PIPELINE_STATE_KEY, setPipelineStateRaw, view.pipelineState);
+    put("cc_pipelineError", setPipelineErrorRaw, view.pipelineError);
+    put("cc_pipelinePhaseTimings", setPipelinePhaseTimingsRaw, {});
+  }, []);
+
   const resetScan = () => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -347,6 +385,7 @@ export function ScanProvider({ children }) {
         abortRef,
         cancelPipeline,
         pausePipeline,
+        loadScanForViewing,
         resetScan,
       }}
     >

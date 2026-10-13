@@ -28,6 +28,7 @@ import AppLayout from "@audit/components/layout/AppLayout";
 import ScanStepper from "@audit/components/layout/ScanStepper";
 import ExportPanel from "@audit/components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
+import { scanViewState } from "@audit/utils/scanViewState";
 import { isPhaseEnabled, getNextPhase } from "@audit/config/scanConfig";
 import api from "@shell/api/axiosInstance";
 import {
@@ -376,12 +377,9 @@ export default function Phase2Results() {
     setPhase2Summary,
     setPhase3Results,
     setPipelineState,
+    pipelineState,
     executionMode,
-    setScanId,
-    setScanNo,
-    setTarget,
-    setPipelineMode,
-    setPhase1Hosts,
+    loadScanForViewing,
   } = useScan();
 
   // Load the scan named in the URL when it is not the one already in context.
@@ -392,7 +390,11 @@ export default function Phase2Results() {
   const { scanId: routeScanId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedScanId = routeScanId || searchParams.get("scan_id") || null;
-  const needsHydration = !!requestedScanId && requestedScanId !== scanId;
+  // An id in the route means the scan is being viewed: always load it, and
+  // never hand it on to the live Phase 3 page (see the auto-redirect below).
+  const isViewer = Boolean(routeScanId);
+  const needsHydration =
+    isViewer || (!!requestedScanId && requestedScanId !== scanId);
   const [hydrating, setHydrating] = useState(needsHydration);
   const [hydrateError, setHydrateError] = useState("");
 
@@ -425,7 +427,6 @@ export default function Phase2Results() {
       try {
         const { data } = await api.get(`/scans/${requestedScanId}`);
         if (cancelled) return;
-        const phase1 = data?.results?.phase1 || {};
         const phase2 = data?.results?.phase2 || {};
         const hosts2 = phase2.data || [];
         if (!hosts2.length) {
@@ -435,13 +436,11 @@ export default function Phase2Results() {
           );
           return;
         }
-        setScanId(data.id);
-        setScanNo(data.scan_no ?? null);
-        setTarget(data.target || "");
-        setPipelineMode(data.pipeline_mode || "asset");
-        setPhase1Hosts(phase1.data || phase1.hosts || hosts2);
-        setPhase2Results(hosts2);
-        setPhase2Summary(phase2.summary || null);
+        const view = scanViewState(data);
+        if (!view.phase1Hosts.length) view.phase1Hosts = hosts2;
+        // A scan with port-scan results and no recorded mode is an asset scan.
+        if (!data?.pipeline_mode) view.pipelineMode = "asset";
+        loadScanForViewing(view);
         setResults(hosts2);
         setSummary(phase2.summary || null);
         setPhase2Running(false);
@@ -458,17 +457,7 @@ export default function Phase2Results() {
     return () => {
       cancelled = true;
     };
-  }, [
-    needsHydration,
-    requestedScanId,
-    setScanId,
-    setScanNo,
-    setTarget,
-    setPipelineMode,
-    setPhase1Hosts,
-    setPhase2Results,
-    setPhase2Summary,
-  ]);
+  }, [needsHydration, requestedScanId, loadScanForViewing]);
 
   const [selected, setSelected] = useState(() => new Set());
   const selectionInitialized = useRef(false);
@@ -500,8 +489,18 @@ export default function Phase2Results() {
     }
   }, [results]);
 
-  // Auto-redirect in Automatic mode to Phase 3 if enabled
+  // Auto-redirect in Automatic mode to Phase 3 if enabled — the live pipeline
+  // only. A viewed scan, or one whose pipeline has already ended, is never
+  // handed to the live Phase 3 page with an audit queue: that page dispatches
+  // the audit it is given.
+  const pipelineEnded = [
+    PIPELINE_STATES.REPORT_READY,
+    PIPELINE_STATES.COMPLETE,
+    PIPELINE_STATES.ERROR,
+    PIPELINE_STATES.CANCELLED,
+  ].includes(pipelineState);
   useEffect(() => {
+    if (isViewer || pipelineEnded) return;
     if (
       hasResults &&
       executionMode === "automatic" &&
@@ -514,6 +513,8 @@ export default function Phase2Results() {
       navigate("/scan/vulnerability-audit");
     }
   }, [
+    isViewer,
+    pipelineEnded,
     hasResults,
     executionMode,
     pipelineMode,
@@ -1158,7 +1159,11 @@ export default function Phase2Results() {
                                 <CcureBadge
                                   variant="info"
                                   mono
-                                  title={`Netmask: ${a.netmask}`}
+                                  title={
+                                    a.netmask
+                                      ? `Netmask: ${a.netmask}`
+                                      : "Netmask not reported by the agent"
+                                  }
                                 >
                                   {textValue(a.address)}/{textValue(a.netmask)}
                                 </CcureBadge>

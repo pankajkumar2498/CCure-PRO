@@ -397,15 +397,11 @@ describe("Phase2Results — contract", () => {
         await new Promise((r) => setTimeout(r, 30));
       });
 
-      // Twice, and pinned as found. The load effect lists the scan context's
-      // setters, which are new functions on every provider render; the page's
-      // own pipeline-state update re-renders the provider before the first
-      // response arrives, so the effect is cancelled and re-run. The first
-      // response is discarded. Measured in the browser too (batch 18 §7).
-      expect(api.get.mock.calls).toEqual([
-        ["/scans/scan-88"],
-        ["/scans/scan-88"],
-      ]);
+      // Once. The load effect used to list the scan context's setters, which
+      // are new functions on every provider render, so it was cancelled and
+      // re-run and fetched twice (batch 18 §7). It now depends on
+      // loadScanForViewing, which is stable.
+      expect(api.get.mock.calls).toEqual([["/scans/scan-88"]]);
       expect(stored("cc_scanId")).toBe("scan-88");
       expect(stored("cc_scanNo")).toBe(1088);
       expect(stored("cc_target")).toBe("10.9.0.0/24");

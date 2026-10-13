@@ -138,6 +138,10 @@ class VulnMatcher:
         #: Counted separately so they neither inflate the coverage gap nor
         #: disappear from the report without a trace.
         self._packages_components: int = 0
+        #: Advisory rows matched by package name that carry no version range at
+        #: all. They establish nothing about the installed version, so they are
+        #: counted here instead of being reported as findings.
+        self._osv_rows_without_range: int = 0
 
     def coverage(self) -> dict:
         """
@@ -168,6 +172,7 @@ class VulnMatcher:
             "packages_cpe_resolved": self._packages_cpe_resolved,
             "packages_toolchain_components": self._packages_components,
             "packages_assessable_software": real,
+            "osv_advisories_without_range": self._osv_rows_without_range,
             "advisory_source": (
                 self._osv_ecosystems[0] if self._osv_ecosystems else None
             ),
@@ -229,6 +234,8 @@ class VulnMatcher:
         # Publisher per package: the vendor half of a CPE identity, and the
         # signal that decides whether a product-name match can be trusted.
         self._package_vendors = {}
+        # Source package per binary, where the collector read it (dpkg).
+        self._package_sources = {}
         for pkg in packages:
             name = (pkg.get("name") or "").strip()
             version = (pkg.get("version") or "").strip()
@@ -237,6 +244,9 @@ class VulnMatcher:
                 self._package_vendors[name] = (
                     pkg.get("vendor") or pkg.get("publisher") or ""
                 ).strip()
+                source = (pkg.get("source") or "").strip().lower()
+                if source:
+                    self._package_sources[name] = source
 
         if not package_data:
             return []
@@ -744,6 +754,22 @@ class VulnMatcher:
 
         return findings
 
+    def _osv_names_for(self, pkg_name: str) -> list[str]:
+        """
+        The OSV package names an installed package can be matched under.
+
+        Distribution advisories name the *source* package. Where the collector
+        read it, that is the only name used: guessing it from the binary name
+        by stripping ``python3-``/``lib`` is right for libwine (source wine)
+        and wrong for python3-git (GitPython, source python-git), which drew
+        Git's advisories — 48 findings on one Ubuntu desktop, two of them
+        Critical. The heuristics remain for packages with no recorded source.
+        """
+        source = getattr(self, "_package_sources", {}).get(pkg_name)
+        if source:
+            return [source]
+        return normalize_package_names(pkg_name)
+
     def _batch_query_osv(
         self, conn, package_names: list[str], package_data: dict[str, str]
     ) -> list[CredentialedCVE]:
@@ -752,7 +778,7 @@ class VulnMatcher:
 
         normalized_names = set()
         for pkg_name in package_names:
-            normalized_names.update(normalize_package_names(pkg_name))
+            normalized_names.update(self._osv_names_for(pkg_name))
 
         name_params = {
             f"osv_{i}": name.lower() for i, name in enumerate(normalized_names)
@@ -828,7 +854,7 @@ class VulnMatcher:
                 osv_pkg_name = str(row.get("package_name") or "").lower()
 
                 for pkg_name, installed_ver in package_data.items():
-                    candidates = normalize_package_names(pkg_name)
+                    candidates = self._osv_names_for(pkg_name)
                     if any(cand == osv_pkg_name for cand in candidates if cand):
                         if installed_ver and not self._installed_version_matches_osv(
                             installed_ver, row
@@ -1256,6 +1282,16 @@ class VulnMatcher:
         """
         introduced = str(row.get("introduced") or "").strip()
         fixed = str(row.get("fixed") or "").strip()
+
+        # No range stored at all — not "introduced 0, no fix", which is how a
+        # distribution says "affected, no fix released", but no boundary of any
+        # kind. That asserts nothing about this version. It was read as
+        # affected, and a withdrawn advisory whose ranges were gone
+        # (UBUNTU-CVE-2024-3094) became a Critical, Confirmed xz backdoor on a
+        # host running the safe rollback build.
+        if not introduced and not fixed:
+            self._osv_rows_without_range += 1
+            return False
 
         if introduced and introduced not in {"0", "*"}:
             order = compare_distro_versions(installed_version, introduced)

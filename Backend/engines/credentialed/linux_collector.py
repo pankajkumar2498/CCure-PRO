@@ -106,6 +106,13 @@ COMMANDS: dict[str, str] = {
     "dmi_serial": 'ser=$(sudo -n dmidecode -s system-serial-number 2>/dev/null || cat /sys/class/dmi/id/product_serial 2>/dev/null); case "$ser" in ""|[Nn]one|[Tt]o\\ [Bb]e\\ [Ff]illed*|[Dd]efault*|[Nn]ot\\ [Ss]pecified) cat /etc/machine-id 2>/dev/null;; *) echo "$ser";; esac',
     "uptime": "uptime -p 2>/dev/null || uptime 2>/dev/null",
     "packages_deb": "dpkg -l 2>/dev/null",
+    # The source package each binary was built from. Debian and Ubuntu publish
+    # advisories against *source* packages, so this is the name OSV matching
+    # needs: guessing it by stripping "python3-" bound python3-git (GitPython,
+    # source python-git) to Git's advisories. Read-only, like dpkg -l.
+    "packages_deb_source": (
+        "dpkg-query -W -f='${binary:Package}\\t${source:Package}\\n' 2>/dev/null"
+    ),
     # The epoch is part of an RPM version and dominates every other component.
     #
     # Omitting it made every package whose advisories carry one compare wrong.
@@ -324,6 +331,8 @@ class LinuxCollector:
         deb_raw = self._run("packages_deb")
         if deb_raw:
             packages = _parse_dpkg_output(deb_raw)
+            if packages:
+                _attach_dpkg_sources(packages, self._run("packages_deb_source"))
 
         # Fall back to RPM
         if not packages:
@@ -717,6 +726,27 @@ def _parse_dpkg_output(raw: str) -> list[dict[str, str]]:
                 }
             )
     return packages
+
+
+def _attach_dpkg_sources(packages: list[dict[str, str]], raw: str) -> None:
+    """
+    Record each package's source package from ``dpkg-query`` output.
+
+    Lines are ``binary[:arch]<TAB>source``. A package the query did not cover
+    keeps no ``source`` key — absence means "not known", and the matcher falls
+    back to its name heuristics for it rather than assuming binary == source.
+    """
+    sources: dict[str, str] = {}
+    for line in (raw or "").splitlines():
+        binary, sep, source = line.partition("\t")
+        binary = binary.strip().split(":")[0]
+        source = source.strip()
+        if sep and binary and source:
+            sources[binary] = source
+    for pkg in packages:
+        source = sources.get(pkg.get("name", ""))
+        if source:
+            pkg["source"] = source
 
 
 def _parse_rpm_output(raw: str) -> list[dict[str, str]]:

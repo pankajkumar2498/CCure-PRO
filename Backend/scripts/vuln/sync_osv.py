@@ -558,15 +558,49 @@ def _flush(conn, osv_rows, affected_rows, range_rows, alias_rows) -> None:
     conn.commit()
 
 
+def _purge_withdrawn(conn, osv_ids: list[str]) -> int:
+    """
+    Remove withdrawn advisories that an earlier sync stored.
+
+    ``extract`` skips a withdrawn record, which is right for a new one and
+    wrong for one already in the tables: skipping left its ``osv_affected`` and
+    alias rows in place, its ranges gone, and the matcher read "no range" as
+    affected. UBUNTU-CVE-2024-3094 (withdrawn 18 Jul 2025) was reported as a
+    Critical, Confirmed xz backdoor on an Ubuntu 24.04 host running the safe
+    rollback build; 4,175 withdrawn Ubuntu/Debian advisories were still stored
+    with 14,908 affected rows (13 Oct 2026). The child tables cascade.
+    """
+    if not osv_ids:
+        return 0
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM osv WHERE id = ANY(%s)", (osv_ids,))
+        removed = cur.rowcount or 0
+    conn.commit()
+    return removed
+
+
 def sync_ecosystem(conn, archive: Path, ecosystem: str, include_git: bool) -> dict:
     """Load one ecosystem archive into the database. Returns per-table counts."""
-    counts = {"records": 0, "skipped": 0, "affected": 0, "ranges": 0, "aliases": 0}
+    counts = {
+        "records": 0,
+        "skipped": 0,
+        "affected": 0,
+        "ranges": 0,
+        "aliases": 0,
+        "withdrawn_removed": 0,
+    }
     osv_rows: list = []
     affected_rows: list = []
     range_rows: list = []
     alias_rows: list = []
+    withdrawn: list[str] = []
 
     for record in iter_records(archive):
+        if record.get("withdrawn") and record.get("id"):
+            withdrawn.append(str(record["id"]).strip())
+            if len(withdrawn) >= _BATCH:
+                counts["withdrawn_removed"] += _purge_withdrawn(conn, withdrawn)
+                withdrawn = []
         osv_row, affected, ranges, aliases = extract(record, include_git)
         if osv_row is None:
             counts["skipped"] += 1
@@ -589,6 +623,7 @@ def sync_ecosystem(conn, archive: Path, ecosystem: str, include_git: bool) -> di
 
     if osv_rows:
         _flush(conn, osv_rows, affected_rows, range_rows, alias_rows)
+    counts["withdrawn_removed"] += _purge_withdrawn(conn, withdrawn)
 
     return counts
 
@@ -661,7 +696,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     conn = _connect()
     try:
         ensure_schema(conn)
-        totals = {"records": 0, "skipped": 0, "affected": 0, "ranges": 0, "aliases": 0}
+        totals = {
+            "records": 0,
+            "skipped": 0,
+            "affected": 0,
+            "ranges": 0,
+            "aliases": 0,
+            "withdrawn_removed": 0,
+        }
 
         for ecosystem in wanted:
             archive = download_archive(session, ecosystem, args.staging_dir, args.force)
@@ -672,13 +714,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             elapsed = (datetime.now(timezone.utc) - started).total_seconds()
             log.info(
                 "%s: %s advisories, %s affected, %s ranges, %s aliases "
-                "(%s withdrawn/unusable skipped) in %.1fs",
+                "(%s withdrawn/unusable skipped, %s previously stored withdrawn "
+                "advisories removed) in %.1fs",
                 ecosystem,
                 f"{counts['records']:,}",
                 f"{counts['affected']:,}",
                 f"{counts['ranges']:,}",
                 f"{counts['aliases']:,}",
                 f"{counts['skipped']:,}",
+                f"{counts['withdrawn_removed']:,}",
                 elapsed,
             )
             for key in totals:

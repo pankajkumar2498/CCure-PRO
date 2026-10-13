@@ -45,6 +45,35 @@ QUERY_TIMEOUT = 30  # Query timeout in seconds
 #: This sits well above that, so the cap is a safety valve rather than a
 #: silent filter — and reaching it is logged with the product named.
 PER_IDENTITY_ROW_CAP = 25000
+#: Ceiling on the OSV advisory rows one host's inventory may pull back. It was
+#: ``LIMIT 5000`` and nothing noticed reaching it: an Ubuntu 24.04 desktop
+#: (2,699 packages) matches 17,676 rows, so 12,676 were dropped without a word
+#: — whichever ranked lowest by KEV, EPSS and CVSS. This sits an order of
+#: magnitude above that, and reaching it is recorded as an incomplete lookup
+#: in the result, not merely logged.
+OSV_ROW_CAP = 200_000
+
+#: A binary package built for one kernel ABI: linux-image-6.8.0-146-generic,
+#: linux-headers-6.8.0-58, linux-modules-extra-6.8.0-142-generic,
+#: linux-hwe-6.8-headers-6.8.0-58. Meta packages (linux-image-generic) and
+#: kernel-independent ones (linux-firmware, linux-libc-dev) carry no ABI.
+_KERNEL_ABI_PACKAGE = re.compile(
+    r"^linux-[a-z0-9.-]*?-(\d+\.\d+\.\d+-\d+)(?:-[a-z0-9]+)*$"
+)
+_KERNEL_ABI = re.compile(r"^(\d+\.\d+\.\d+-\d+)")
+
+
+def kernel_abi(release: str) -> str:
+    """``6.8.0-146`` from ``uname -r``'s ``6.8.0-146-generic``; "" if unknown."""
+    match = _KERNEL_ABI.match(str(release or "").strip())
+    return match.group(1) if match else ""
+
+
+def package_kernel_abi(name: str) -> str:
+    """The kernel ABI a binary package was built for, or "" if it has none."""
+    match = _KERNEL_ABI_PACKAGE.match(str(name or "").strip().lower())
+    return match.group(1) if match else ""
+
 
 BEST_CVSS_LATERAL = """
 LEFT JOIN LATERAL (
@@ -142,6 +171,24 @@ class VulnMatcher:
         #: all. They establish nothing about the installed version, so they are
         #: counted here instead of being reported as findings.
         self._osv_rows_without_range: int = 0
+        #: Feed lookups that failed. A failed query returns no rows, which is
+        #: byte-identical to an inventory with nothing to report, so the failure
+        #: travels with the result instead of staying in the worker log.
+        self._lookup_failures: list[str] = []
+        #: Packages built for a kernel other than the running one, by ABI.
+        self._inactive_kernel_packages: dict[str, str] = {}
+        self._running_kernel: str = ""
+
+    @property
+    def lookup_failures(self) -> list[str]:
+        return list(self._lookup_failures)
+
+    def _lookup_failed(self, stage: str, exc: Exception) -> None:
+        log.warning("%s failed: %s", stage, exc)
+        detail = str(getattr(exc, "orig", None) or exc).strip().splitlines()
+        self._lookup_failures.append(
+            f"{stage}: {detail[0][:200] if detail else type(exc).__name__}"
+        )
 
     def coverage(self) -> dict:
         """
@@ -166,6 +213,15 @@ class VulnMatcher:
         )
         real = max(self._packages_seen - self._packages_components, 0)
         real_assessable = real if self._osv_ecosystems else self._packages_cpe_resolved
+        inactive = len(self._inactive_kernel_packages)
+        if self._osv_ecosystems:
+            # Collected, deliberately not assessed: see match_packages.
+            assessable = max(assessable - inactive, 0)
+            real_assessable = max(real_assessable - inactive, 0)
+        if self._lookup_failures:
+            # Collected is not assessed: nothing here was checked against the
+            # feed it failed to reach.
+            assessable = real_assessable = 0
         return {
             "packages_collected": self._packages_seen,
             "packages_assessable": assessable,
@@ -173,6 +229,10 @@ class VulnMatcher:
             "packages_toolchain_components": self._packages_components,
             "packages_assessable_software": real,
             "osv_advisories_without_range": self._osv_rows_without_range,
+            "lookup_failures": list(self._lookup_failures),
+            "running_kernel": self._running_kernel or None,
+            "packages_inactive_kernel": inactive,
+            "inactive_kernels": sorted(set(self._inactive_kernel_packages.values())),
             "advisory_source": (
                 self._osv_ecosystems[0] if self._osv_ecosystems else None
             ),
@@ -192,6 +252,7 @@ class VulnMatcher:
         packages: list[dict[str, str]],
         os_id: str = "",
         os_version_id: str = "",
+        running_kernel: str = "",
     ) -> list[CredentialedCVE]:
         """
         Match installed packages against the vulnerability database.
@@ -201,6 +262,16 @@ class VulnMatcher:
         published for that exact release — without them a 24.04 host was matched
         against 14.04, Debian and Mageia advisories whose fixed versions mean
         nothing here.
+
+        ``running_kernel`` is ``uname -r``. A package built for another kernel
+        ABI is left out of matching and counted in ``coverage()`` instead: on
+        10.180.6.45 (13 Oct 2026, running 6.8.0-146) 3,391 kernel CVEs were
+        reported against linux-headers-6.8.0-58 — header files of a kernel
+        whose image was no longer installed — and the running kernel's own
+        unfixed CVEs were filed under 6.8.0-142, which sorts first. Kernel
+        advisories describe the kernel that runs; a kernel that is installed
+        but not running is named as not assessed, never as clean. With no
+        running kernel recorded, every package is matched as before.
         """
         if not packages:
             return []
@@ -234,8 +305,10 @@ class VulnMatcher:
         # Publisher per package: the vendor half of a CPE identity, and the
         # signal that decides whether a product-name match can be trusted.
         self._package_vendors = {}
-        # Source package per binary, where the collector read it (dpkg).
+        # Source package per binary, where the collector read it (dpkg), and
+        # the source's own version, which is what an advisory's range is in.
         self._package_sources = {}
+        self._package_source_versions = {}
         for pkg in packages:
             name = (pkg.get("name") or "").strip()
             version = (pkg.get("version") or "").strip()
@@ -247,9 +320,34 @@ class VulnMatcher:
                 source = (pkg.get("source") or "").strip().lower()
                 if source:
                     self._package_sources[name] = source
+                    source_version = (pkg.get("source_version") or "").strip()
+                    if source_version:
+                        self._package_source_versions[name] = source_version
 
         if not package_data:
             return []
+        # The inventory's size, whether or not a lookup succeeds. It used to be
+        # set only after the first feed query, so a failed query reported
+        # "0 packages collected" for a host that had 2,699.
+        self._packages_seen = len(package_data)
+
+        self._running_kernel = kernel_abi(running_kernel)
+        self._inactive_kernel_packages = {}
+        if self._running_kernel:
+            for name in list(package_data):
+                abi = package_kernel_abi(name)
+                source = self._package_sources.get(name, "linux")
+                if abi and abi != self._running_kernel and source.startswith("linux"):
+                    self._inactive_kernel_packages[name] = abi
+                    del package_data[name]
+            if self._inactive_kernel_packages:
+                log.info(
+                    "Not assessing %d package(s) built for kernel(s) %s; "
+                    "running kernel is %s",
+                    len(self._inactive_kernel_packages),
+                    ", ".join(sorted(set(self._inactive_kernel_packages.values()))),
+                    self._running_kernel,
+                )
 
         log.info(f"Matching {len(package_data)} unique packages against vuln database")
         start_time = time.time()
@@ -304,7 +402,7 @@ class VulnMatcher:
                         best_by_cve[finding.cve_id] = finding
 
         except SQLAlchemyError as exc:
-            log.warning("Batch vulnerability query failed: %s", exc)
+            self._lookup_failed("Batch vulnerability query", exc)
 
         findings = list(best_by_cve.values())
         findings.sort(
@@ -459,7 +557,6 @@ class VulnMatcher:
         # (Windows, or a distribution with no ecosystem mapping) the CPE path is
         # the only one available and unresolved really does mean unassessed,
         # which is worth stating plainly.
-        self._packages_seen = len(packages)
         self._packages_cpe_resolved = len(resolved)
         if self._osv_ecosystems:
             log.info(
@@ -750,7 +847,7 @@ class VulnMatcher:
                         break  # Only match first compatible package
 
         except SQLAlchemyError as exc:
-            log.warning("Batch CPE query failed: %s", exc)
+            self._lookup_failed("Batch CPE query", exc)
 
         return findings
 
@@ -769,6 +866,27 @@ class VulnMatcher:
         if source:
             return [source]
         return normalize_package_names(pkg_name)
+
+    def _osv_version_for(self, pkg_name: str, installed_ver: str) -> str:
+        """
+        The version an OSV range is compared against for this package.
+
+        A distribution advisory's ranges are in its *source* package's version
+        space, and a binary's version need not be: telnet 0.17+2.5-3ubuntu4.2
+        is built from inetutils 2:2.5-3ubuntu4.2, so against the fix
+        2:2.5-3ubuntu4.1 the binary's version — no epoch — compared older and
+        the host was reported vulnerable to a flaw it is patched for. Measured
+        on one Ubuntu 24.04 desktop (13 Oct 2026): 53 such findings, most of
+        them aspnetcore-runtime-8.0 read against dotnet8's 8.0.131-8.0.31
+        numbering. Where the collector read the source version, it is the one
+        compared, and the one reported beside the fixed version.
+        """
+        if pkg_name in getattr(self, "_package_sources", {}):
+            return (
+                getattr(self, "_package_source_versions", {}).get(pkg_name)
+                or installed_ver
+            )
+        return installed_ver
 
     def _batch_query_osv(
         self, conn, package_names: list[str], package_data: dict[str, str]
@@ -839,80 +957,102 @@ class VulnMatcher:
                        OR ranges.ecosystem = aff.ecosystem)
             WHERE LOWER(aff.package_name) IN ({name_placeholders})
               AND aff.ecosystem LIKE ANY (ARRAY[{eco_placeholders}])
+            -- The trailing keys make the order total. Without them a CVE that
+            -- two source packages share (xorg-server and xwayland) went to
+            -- whichever row PostgreSQL returned first, so two scans of an
+            -- unchanged host could file it under different packages — and
+            -- the package is part of a finding's identity.
             ORDER BY
                 (kev.cve_id IS NOT NULL) DESC,
                 COALESCE(epss.epss_score, 0) DESC,
-                COALESCE(best_cvss.base_score, 0) DESC
-            LIMIT 5000
+                COALESCE(best_cvss.base_score, 0) DESC,
+                oa.cve_id,
+                LOWER(aff.package_name),
+                aff.ecosystem,
+                ranges.introduced NULLS FIRST,
+                ranges.fixed NULLS FIRST
+            LIMIT {OSV_ROW_CAP + 1}
         """
         )
 
         try:
             rows = conn.execute(query, {**name_params, **eco_params}).mappings().all()
+            if len(rows) > OSV_ROW_CAP:
+                rows = rows[:OSV_ROW_CAP]
+                self._lookup_failures.append(
+                    f"Batch OSV query: more than {OSV_ROW_CAP:,} advisory rows "
+                    f"matched this inventory; the remainder were not assessed"
+                )
+                log.warning("OSV advisory rows reached the cap of %d", OSV_ROW_CAP)
+
+            # The installed packages each advisory name can reach, in inventory
+            # order. Scanning every package for every row was rows × packages:
+            # once the row limit was lifted an Ubuntu desktop took 42 s here.
+            packages_by_osv_name: dict[str, list[str]] = {}
+            for pkg_name in package_data:
+                for cand in dict.fromkeys(self._osv_names_for(pkg_name)):
+                    if cand:
+                        packages_by_osv_name.setdefault(cand, []).append(pkg_name)
 
             for row in rows:
                 osv_pkg_name = str(row.get("package_name") or "").lower()
 
-                for pkg_name, installed_ver in package_data.items():
-                    candidates = self._osv_names_for(pkg_name)
-                    if any(cand == osv_pkg_name for cand in candidates if cand):
-                        if installed_ver and not self._installed_version_matches_osv(
-                            installed_ver, row
-                        ):
-                            continue
+                for pkg_name in packages_by_osv_name.get(osv_pkg_name, ()):
+                    binary_ver = package_data[pkg_name]
+                    installed_ver = self._osv_version_for(pkg_name, binary_ver)
+                    if installed_ver and not self._installed_version_matches_osv(
+                        installed_ver, row
+                    ):
+                        continue
 
-                        record = merge_alias_fields(
-                            {
-                                "cve_id": row.get("cve_id"),
-                                "description": row.get("description"),
-                                "cvss_score": row.get("cvss_score") or 0.0,
-                                "severity": row.get("cvss_severity"),
-                                "epss_score": row.get("epss_score") or 0.0,
-                                "epss_percentile": row.get("epss_percentile") or 0.0,
-                                "in_kev": bool(row.get("in_kev")),
-                                "kev_due_date": row.get("kev_due_date"),
-                                "has_exploit": bool(row.get("has_exploit")),
-                                "exploit_sources": list(
-                                    row.get("exploit_sources") or []
-                                ),
-                                "cvss_version": row.get("cvss_version"),
-                                "cvss_vector": row.get("cvss_vector"),
-                            }
-                        )
+                    record = merge_alias_fields(
+                        {
+                            "cve_id": row.get("cve_id"),
+                            "description": row.get("description"),
+                            "cvss_score": row.get("cvss_score") or 0.0,
+                            "severity": row.get("cvss_severity"),
+                            "epss_score": row.get("epss_score") or 0.0,
+                            "epss_percentile": row.get("epss_percentile") or 0.0,
+                            "in_kev": bool(row.get("in_kev")),
+                            "kev_due_date": row.get("kev_due_date"),
+                            "has_exploit": bool(row.get("has_exploit")),
+                            "exploit_sources": list(row.get("exploit_sources") or []),
+                            "cvss_version": row.get("cvss_version"),
+                            "cvss_vector": row.get("cvss_vector"),
+                        }
+                    )
 
-                        findings.append(
-                            CredentialedCVE(
-                                cve_id=record["cve_id"],
-                                severity=record["severity"],
-                                cvss_score=record["cvss_score"],
-                                description=record["description"],
-                                package_name=pkg_name,
-                                installed_ver=installed_ver,
-                                fixed_ver=str(row.get("fixed") or ""),
-                                source="osv_match",
-                                epss_score=float(record.get("epss_score", 0.0) or 0.0),
-                                epss_percentile=float(
-                                    record.get("epss_percentile", 0.0) or 0.0
-                                ),
-                                in_kev=bool(record.get("in_kev")),
-                                kev_due_date=str(record.get("kev_due_date") or ""),
-                                has_exploit=bool(record.get("has_exploit")),
-                                exploit_sources=list(
-                                    record.get("exploit_sources") or []
-                                ),
-                                priority_score=float(
-                                    record.get("priority_score", 0.0) or 0.0
-                                ),
-                                priority_level=record.get("priority_level", "P4"),
-                                matched_by=f"osv:{row.get('ecosystem') or 'unknown'}",
-                                cvss_version=str(record.get("cvss_version") or ""),
-                                cvss_vector=str(record.get("cvss_vector") or ""),
-                            )
+                    findings.append(
+                        CredentialedCVE(
+                            cve_id=record["cve_id"],
+                            severity=record["severity"],
+                            cvss_score=record["cvss_score"],
+                            description=record["description"],
+                            package_name=pkg_name,
+                            installed_ver=installed_ver,
+                            fixed_ver=str(row.get("fixed") or ""),
+                            source="osv_match",
+                            epss_score=float(record.get("epss_score", 0.0) or 0.0),
+                            epss_percentile=float(
+                                record.get("epss_percentile", 0.0) or 0.0
+                            ),
+                            in_kev=bool(record.get("in_kev")),
+                            kev_due_date=str(record.get("kev_due_date") or ""),
+                            has_exploit=bool(record.get("has_exploit")),
+                            exploit_sources=list(record.get("exploit_sources") or []),
+                            priority_score=float(
+                                record.get("priority_score", 0.0) or 0.0
+                            ),
+                            priority_level=record.get("priority_level", "P4"),
+                            matched_by=f"osv:{row.get('ecosystem') or 'unknown'}",
+                            cvss_version=str(record.get("cvss_version") or ""),
+                            cvss_vector=str(record.get("cvss_vector") or ""),
                         )
-                        break
+                    )
+                    break
 
         except SQLAlchemyError as exc:
-            log.warning("Batch OSV query failed: %s", exc)
+            self._lookup_failed("Batch OSV query", exc)
 
         return findings
 

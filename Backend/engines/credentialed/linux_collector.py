@@ -109,9 +109,14 @@ COMMANDS: dict[str, str] = {
     # The source package each binary was built from. Debian and Ubuntu publish
     # advisories against *source* packages, so this is the name OSV matching
     # needs: guessing it by stripping "python3-" bound python3-git (GitPython,
-    # source python-git) to Git's advisories. Read-only, like dpkg -l.
+    # source python-git) to Git's advisories. The source *version* too: an
+    # advisory's fixed version is in the source's numbering, which a binary's
+    # need not share (telnet 0.17+2.5-3ubuntu4.2 is inetutils 2:2.5-3ubuntu4.2).
+    # Read-only, like dpkg -l.
     "packages_deb_source": (
-        "dpkg-query -W -f='${binary:Package}\\t${source:Package}\\n' 2>/dev/null"
+        "dpkg-query -W "
+        "-f='${binary:Package}\\t${source:Package}\\t${source:Version}\\n' "
+        "2>/dev/null"
     ),
     # The epoch is part of an RPM version and dominates every other component.
     #
@@ -730,23 +735,30 @@ def _parse_dpkg_output(raw: str) -> list[dict[str, str]]:
 
 def _attach_dpkg_sources(packages: list[dict[str, str]], raw: str) -> None:
     """
-    Record each package's source package from ``dpkg-query`` output.
+    Record each package's source package and version from ``dpkg-query``.
 
-    Lines are ``binary[:arch]<TAB>source``. A package the query did not cover
-    keeps no ``source`` key — absence means "not known", and the matcher falls
-    back to its name heuristics for it rather than assuming binary == source.
+    Lines are ``binary[:arch]<TAB>source[<TAB>source version]``. A package the
+    query did not cover keeps no ``source`` key — absence means "not known",
+    and the matcher falls back to its name heuristics for it rather than
+    assuming binary == source. Likewise an absent ``source_version``: the
+    matcher then compares the binary's own version, as it always did.
     """
-    sources: dict[str, str] = {}
+    sources: dict[str, tuple[str, str]] = {}
     for line in (raw or "").splitlines():
-        binary, sep, source = line.partition("\t")
-        binary = binary.strip().split(":")[0]
-        source = source.strip()
-        if sep and binary and source:
-            sources[binary] = source
+        fields = [field.strip() for field in line.split("\t")]
+        if len(fields) < 2:
+            continue
+        binary = fields[0].split(":")[0]
+        source = fields[1]
+        version = fields[2] if len(fields) > 2 else ""
+        if binary and source:
+            sources[binary] = (source, version)
     for pkg in packages:
-        source = sources.get(pkg.get("name", ""))
+        source, version = sources.get(pkg.get("name", ""), ("", ""))
         if source:
             pkg["source"] = source
+            if version:
+                pkg["source_version"] = version
 
 
 def _parse_rpm_output(raw: str) -> list[dict[str, str]]:

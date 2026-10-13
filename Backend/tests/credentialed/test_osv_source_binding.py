@@ -93,6 +93,100 @@ def test_without_a_source_the_name_heuristics_still_apply():
     assert "libwine" in names and "wine" in names
 
 
+# ── an advisory's range is in the source's version space ─────────────────────
+#
+# Binding by source (above) made a second defect reachable: the range was
+# compared against the *binary's* version. telnet 0.17+2.5-3ubuntu4.2 is built
+# from inetutils 2:2.5-3ubuntu4.2; without the epoch it compared older than the
+# fix 2:2.5-3ubuntu4.1, so the patched host was reported vulnerable. 53 such
+# findings on 10.180.6.45, most of them aspnetcore-runtime-8.0 (source dotnet8,
+# numbered 8.0.131-8.0.31-…).
+
+TELNET = {"name": "telnet", "version": "0.17+2.5-3ubuntu4.2"}
+
+
+def test_the_source_version_is_recorded():
+    packages = [dict(TELNET), {"name": "git", "version": "1:2.43.0-1ubuntu7.3"}]
+    _attach_dpkg_sources(packages, "telnet\tinetutils\t2:2.5-3ubuntu4.2\ngit\tgit\n")
+    telnet, git = packages
+    assert telnet["source"] == "inetutils"
+    assert telnet["source_version"] == "2:2.5-3ubuntu4.2"
+    # An older collector line with no version: the source, and nothing invented.
+    assert git["source"] == "git" and "source_version" not in git
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class _OsvConn:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def execute(self, _query, _params):
+        return _Rows(self._rows)
+
+
+def _osv_row(fixed):
+    return {
+        "cve_id": "CVE-2026-24061",
+        "description": "inetutils telnetd",
+        "cvss_score": 9.8,
+        "cvss_severity": "CRITICAL",
+        "ecosystem": "Ubuntu:24.04:LTS",
+        "package_name": "inetutils",
+        "introduced": "0",
+        "fixed": fixed,
+    }
+
+
+def _telnet_matcher(source_version):
+    matcher = _matcher({"telnet": "inetutils"})
+    matcher._package_source_versions = (
+        {"telnet": source_version} if source_version else {}
+    )
+    matcher._osv_ecosystems = ["Ubuntu:24.04:LTS"]
+    return matcher
+
+
+def test_a_patched_package_is_not_reported_against_its_sources_fix():
+    matcher = _telnet_matcher("2:2.5-3ubuntu4.2")
+    found = matcher._batch_query_osv(
+        _OsvConn([_osv_row("2:2.5-3ubuntu4.1")]),
+        ["telnet"],
+        {"telnet": TELNET["version"]},
+    )
+    assert found == []
+
+
+def test_an_unpatched_package_is_reported_in_the_sources_numbering():
+    matcher = _telnet_matcher("2:2.5-3ubuntu4.2")
+    (finding,) = matcher._batch_query_osv(
+        _OsvConn([_osv_row("2:2.5-3ubuntu4.3")]),
+        ["telnet"],
+        {"telnet": TELNET["version"]},
+    )
+    assert finding.package_name == "telnet"
+    # Installed and fixed in one numbering, so the pair can be read.
+    assert finding.installed_ver == "2:2.5-3ubuntu4.2"
+    assert finding.fixed_ver == "2:2.5-3ubuntu4.3"
+
+
+def test_without_a_source_version_the_binary_version_is_compared():
+    matcher = _telnet_matcher(None)
+    assert matcher._osv_version_for("telnet", "0.17+2.5-3ubuntu4.2") == (
+        "0.17+2.5-3ubuntu4.2"
+    )
+    assert _matcher()._osv_version_for("git", "1:2.43.0") == "1:2.43.0"
+
+
 # ── a row with no range establishes nothing ─────────────────────────────────
 
 

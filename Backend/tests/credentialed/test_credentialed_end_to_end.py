@@ -51,10 +51,18 @@ class _FakeMatcher:
     #: matched against every distribution in the database.
     last_os_id: str = ""
     last_os_version_id: str = ""
+    last_running_kernel: str = ""
 
-    def match_packages(self, packages, os_id: str = "", os_version_id: str = ""):
+    def match_packages(
+        self,
+        packages,
+        os_id: str = "",
+        os_version_id: str = "",
+        running_kernel: str = "",
+    ):
         type(self).last_os_id = os_id
         type(self).last_os_version_id = os_version_id
+        type(self).last_running_kernel = running_kernel
         self._seen = len(packages)
         return list(packages)
 
@@ -133,6 +141,15 @@ def test_audit_states_its_coverage_and_settles_loopback_alone(fake_scanner):
     assert by_port["5432"]["bind_scope"] == bind_scope("127.0.0.1:5432")
     assert by_port["22"]["exposure"] == "undetermined"
     assert report["exposure_summary"]["listeners_host_only"] == 1
+
+
+def test_the_running_kernel_reaches_the_matcher(fake_scanner):
+    # Kernel advisories are matched against the kernel that runs; without
+    # uname -r the matcher cannot tell it from the others installed beside it.
+    fake_scanner.audit_credentialed_host(
+        ip="10.0.0.5", username="root", password="pw", os_type_req="linux"
+    )
+    assert _FakeMatcher.last_running_kernel == "5.15.0-91-generic"
 
 
 def test_audit_with_a_port_scan_reports_real_exposure(fake_scanner):

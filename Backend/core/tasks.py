@@ -3581,7 +3581,14 @@ def audit_credentialed_host(
     _os_ver = str(
         system_data.get("os_version_id") or _nested.get("os_version_id") or ""
     )
-    raw_findings = matcher.match_packages(packages, os_id=_os_id, os_version_id=_os_ver)
+    # uname -r: kernel advisories are matched against the kernel that runs, and
+    # packages built for any other installed kernel are counted, not matched.
+    _kernel = str(
+        system_data.get("kernel_version") or _nested.get("kernel_version") or ""
+    )
+    raw_findings = matcher.match_packages(
+        packages, os_id=_os_id, os_version_id=_os_ver, running_kernel=_kernel
+    )
     # How much of the inventory was actually assessable travels with the result.
     # On a Windows host only the packages carrying a recognised CPE identity can
     # be evaluated at all — 13 of 192 on the host audited during testing — and a
@@ -3876,6 +3883,29 @@ def audit_credentialed_host(
                     f"installed software inventory could not be collected, so "
                     f"no package was assessed against the vulnerability feed. "
                     f"This host is unassessed, not clean. {detail}"
+                ),
+                "package": "",
+            }
+        )
+    elif (system_data.get("package_coverage") or {}).get("lookup_failures"):
+        # The inventory was collected and the feed could not be asked about it.
+        # The matcher returns nothing when its query fails, so without this an
+        # Ubuntu host with 2,699 packages reported no package vulnerabilities
+        # at all (13 Oct 2026). Same shape as the inventory finding above.
+        failures = system_data["package_coverage"]["lookup_failures"]
+        cve_list.append(
+            {
+                "cve_id": "MISC-CREDENTIALED-PACKAGES-NOT-ASSESSED",
+                "detection_method": "active_check",
+                "severity": "Medium",
+                "title": "Credentialed audit incomplete — vulnerability feed lookup failed",
+                "description": (
+                    f"The credentialed session to {ip} succeeded and "
+                    f"{len(packages)} installed packages were collected, but "
+                    f"looking them up in the vulnerability feed failed, so no "
+                    f"package was assessed. Package vulnerabilities would not "
+                    f"appear in this report. This host is unassessed, not "
+                    f"clean. {'; '.join(failures)}"
                 ),
                 "package": "",
             }

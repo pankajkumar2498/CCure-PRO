@@ -97,8 +97,31 @@ export default function PackageCoverageSection({ coverage }) {
     );
   }
 
+  // A feed lookup that failed leaves the figures below at zero, which on its
+  // own reads as "nothing was vulnerable". Say what actually happened.
+  const lookupFailures = Array.isArray(coverage.lookup_failures)
+    ? coverage.lookup_failures
+    : [];
+
   return (
     <div className="pc-root">
+      {lookupFailures.length > 0 && (
+        <CcureAlert
+          variant="warning"
+          live={false}
+          title="Vulnerability feed lookup failed"
+        >
+          The software inventory was collected but could not be checked against
+          the vulnerability feed, so no package on this host was assessed. Its
+          package vulnerabilities are missing from this result, not absent from
+          the host.
+          <ul>
+            {lookupFailures.map((failure) => (
+              <li key={failure}>{failure}</li>
+            ))}
+          </ul>
+        </CcureAlert>
+      )}
       <p className="pc-note">
         Coverage bounds every vulnerability conclusion drawn from the software
         inventory. A package the matcher could not assess cannot produce a
@@ -134,6 +157,24 @@ export default function PackageCoverageSection({ coverage }) {
           </div>
         ))}
       </dl>
+
+      {coverage.packages_inactive_kernel > 0 && (
+        <CcureAlert
+          variant="info"
+          live={false}
+          title="Installed kernels that are not running — not assessed"
+        >
+          {Number(coverage.packages_inactive_kernel).toLocaleString()} package
+          {coverage.packages_inactive_kernel === 1 ? "" : "s"} belong to kernel
+          {(coverage.inactive_kernels || []).length === 1 ? " " : "s "}
+          {(coverage.inactive_kernels || []).join(", ") || "not recorded"},
+          while the host runs{" "}
+          {coverage.running_kernel || "a kernel that was not recorded"}. Kernel
+          advisories were matched against the running kernel only, so these
+          packages were not assessed. That is not the same as clean: remove the
+          unused kernels, or rescan after booting into one.
+        </CcureAlert>
+      )}
 
       <p className="pc-source">
         Advisory source:{" "}

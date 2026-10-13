@@ -149,6 +149,22 @@ def _record_port(host: dict, incoming: dict) -> None:
     ports.append(incoming)
 
 
+def fingerprint_os_confidence(accuracy: float) -> str:
+    """
+    Confidence for an OS named only by an Nmap TCP/IP fingerprint.
+
+    Nmap's ``accuracy`` scores how well the packets matched a fingerprint, not
+    how likely the name is to be right, and the fingerprint database cannot
+    tell close releases apart: a Windows 11 host (build 26300) was reported as
+    "Microsoft Windows 10 1703" at accuracy >= 90, shown as High and stored at
+    90%. A fingerprint therefore tops out at Medium. High is for a host that
+    states its own identity — SNMP sysDescr, an authenticated session.
+    """
+    if accuracy >= 90:
+        return "Medium"
+    return "Low"
+
+
 class PortEngine:
     """
     Phase 2 port scanning engine.
@@ -508,11 +524,8 @@ class PortEngine:
         best_os = nmap_result.best_os
         if best_os and best_os.accuracy >= 75:
             host["os_guess"] = best_os.name
-            host["os_confidence"] = (
-                "High"
-                if best_os.accuracy >= 90
-                else "Medium" if best_os.accuracy >= 75 else "Low"
-            )
+            host["os_confidence"] = fingerprint_os_confidence(best_os.accuracy)
+            host.setdefault("os_evidence", "nmap_fingerprint")
             if best_os.cpe:
                 host.setdefault("os_cpe", best_os.cpe)
 

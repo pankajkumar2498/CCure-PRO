@@ -38,7 +38,11 @@ from core.risk import infer_os_from_host
 from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
 
 # ── Existing engine imports (unchanged) ───────────────────────────────────────
-from engines.port.port_engine import PortEngine, _record_port
+from engines.port.port_engine import (
+    PortEngine,
+    _record_port,
+    fingerprint_os_confidence,
+)
 from engines.vulnerability.vulnerability_engine import VulnerabilityEngine
 from scans.finding_normalizer import version_precision
 
@@ -1021,9 +1025,10 @@ class ScanOrchestrator:
                         host.setdefault("os_guess_nmap", best_os.name)
                     else:
                         host["os_guess"] = best_os.name
-                        host["os_confidence"] = (
-                            "High" if best_os.accuracy >= 90 else "Medium"
+                        host["os_confidence"] = fingerprint_os_confidence(
+                            best_os.accuracy
                         )
+                        host.setdefault("os_evidence", "nmap_fingerprint")
             except Exception as exc:
                 log.debug("_nmap_pre_enrich(%s) error: %s", ip, exc)
 

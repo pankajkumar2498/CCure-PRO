@@ -47,3 +47,23 @@ def test_the_final_phase_records_wall_clock_duration(db_session, test_org, test_
     assert scan.status == "complete"
     # About four minutes of wall clock, not 11.3 + 46.0 seconds of phases.
     assert 230 <= scan.duration_seconds <= 260
+
+
+def test_stored_hosts_say_unknown_with_null_not_n_a():
+    """The asset path's "N/A" placeholders reached the UI's MAC column."""
+    from scans.db_helpers import _phase_summary_payload
+
+    payload = _phase_summary_payload(
+        {"phase": 1},
+        [
+            {
+                "ip_address": "10.180.6.45",
+                "mac_address": "N/A",
+                "vendor": "N/A",
+                "hostname": "h",
+            }
+        ],
+    )
+    host = payload["_phase_data"][0]
+    assert host["mac_address"] is None and host["vendor"] is None
+    assert host["hostname"] == "h"

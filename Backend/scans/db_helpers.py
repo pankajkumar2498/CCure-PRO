@@ -43,8 +43,26 @@ def _sanitize_jsonb_value(value: Any) -> Any:
     return sanitize_for_db(value)
 
 
+#: Host fields the discovery engines fill with the literal "N/A" when nothing
+#: was learned. The engines test for that string internally; what is stored —
+#: and so served to the UI, which showed "N/A" as if it were a MAC address —
+#: says "unknown" the way the rest of the payload does, with null.
+_PLACEHOLDER_FIELDS = ("mac_address", "mac", "vendor", "scan_method", "method")
+
+
+def _without_placeholders(host: Any) -> Any:
+    if not isinstance(host, dict):
+        return host
+    cleaned = dict(host)
+    for key in _PLACEHOLDER_FIELDS:
+        if cleaned.get(key) == "N/A":
+            cleaned[key] = None
+    return cleaned
+
+
 def _phase_summary_payload(summary: dict, hosts_data: list) -> dict:
-    return _sanitize_jsonb_value({**(summary or {}), "_phase_data": hosts_data or []})
+    hosts = [_without_placeholders(h) for h in (hosts_data or [])]
+    return _sanitize_jsonb_value({**(summary or {}), "_phase_data": hosts})
 
 
 def _public_phase_summary(summary: Any) -> dict:

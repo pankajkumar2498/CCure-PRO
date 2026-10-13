@@ -1594,6 +1594,17 @@ def run_asset_discovery_task(
                 for k in ("total_hosts", "active_hosts", "inactive_hosts"):
                     if p1_sum.get(k) is not None:
                         result["summary"][k] = p1_sum[k]
+                # How the hosts were found, for the report's methodology
+                # appendix. It printed "Discovery profile: Not recorded" while
+                # the stored summary said FAST+BALANCED_FALLBACK, because the
+                # report was rendered before that value was merged in.
+                for k in (
+                    "discovery_profile",
+                    "discovery_intensity",
+                    "discovery_scan_method",
+                ):
+                    if p1_sum.get(k) and not result["summary"].get(k):
+                        result["summary"][k] = p1_sum[k]
 
         report_paths = {}
         if is_final:

@@ -458,6 +458,7 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
             _OID_SYS_NAME,
             _OID_SYS_OBJ_ID,
             _extract_integer,
+            _extract_mac,
             _extract_oid_value,
             _extract_string,
             _snmp_get_raw,
@@ -526,10 +527,11 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
         if ifn_data:
             snmp_info["if_count"] = _extract_integer(ifn_data) or 0
 
+        # dot1dBaseBridgeAddress is a MacAddress. Searching the datagram for an
+        # OctetString tag found the community string, so every SNMP agent was
+        # reported as a bridge.
         bridge_data = _snmp_get_raw(ip, "public", _OID_BRIDGE_ADDR, timeout=1.0)
-        if bridge_data:
-            idx = bridge_data.rfind(b"\x04")
-            snmp_info["bridge_mib"] = idx != -1 and len(bridge_data) > idx + 2
+        snmp_info["bridge_mib"] = bool(bridge_data and _extract_mac(bridge_data))
 
         result["snmp_info"] = snmp_info
 

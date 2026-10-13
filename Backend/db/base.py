@@ -29,10 +29,14 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 TIMESTAMPTZ = DateTime(timezone=True)
 
 from config import AppConfig
+from db.fork_safety import release_pool_after_fork
 
 # ─── Engine ───────────────────────────────────────────────────────────────────
 
-engine = create_engine(AppConfig.DATABASE_URL, **AppConfig.DATABASE_ENGINE_KWARGS)
+# A Celery prefork child must never inherit this pool: see db/fork_safety.py.
+engine = release_pool_after_fork(
+    create_engine(AppConfig.DATABASE_URL, **AppConfig.DATABASE_ENGINE_KWARGS)
+)
 
 # ─── Enable pg_trgm extension for fast text search ───────────────────────────
 

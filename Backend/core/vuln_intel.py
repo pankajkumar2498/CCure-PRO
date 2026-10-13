@@ -13,6 +13,7 @@ from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
 from config import AppConfig
+from db.fork_safety import release_pool_after_fork
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -236,14 +237,19 @@ def _json_safe(value: Any) -> Any:
 
 @lru_cache(maxsize=1)
 def get_vuln_engine() -> Engine:
-    return create_engine(
-        AppConfig.VULN_DB_URL,
-        pool_pre_ping=True,
-        pool_recycle=3600,
-        pool_size=5,
-        max_overflow=5,
-        echo=False,
-        connect_args={"connect_timeout": 2},
+    # The worker's parent process connects this engine at import (core/utils.py
+    # probes it), so without the fork guard every Celery child shares one
+    # socket to vuln_intel — see db/fork_safety.py.
+    return release_pool_after_fork(
+        create_engine(
+            AppConfig.VULN_DB_URL,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            pool_size=5,
+            max_overflow=5,
+            echo=False,
+            connect_args={"connect_timeout": 2},
+        )
     )
 
 

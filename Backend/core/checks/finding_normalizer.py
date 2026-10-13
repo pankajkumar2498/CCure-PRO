@@ -1247,6 +1247,19 @@ def version_in_cpe_range(
                 comparison = _version_compare(detected, pinned)
                 if comparison is None:
                     return None
+                # A CPE pinned to a pre-release (``linux_kernel:6.8:rc1``)
+                # names that pre-release, not the release that followed it.
+                # Comparing the version field alone reported CVE-2024-1086 —
+                # affected through 6.7.3 and in 6.8-rc1 only — against a host
+                # running 6.8.0. Other update values (OpenSSH's ``p1``) keep
+                # the version-only comparison.
+                update = parts[6].lower() if len(parts) > 6 else ""
+                if (
+                    comparison == 0
+                    and _PRE_RELEASE_UPDATE.match(update)
+                    and update not in re.sub(r"[^a-z0-9]", "", detected.lower())
+                ):
+                    return False
                 if precision == "exact":
                     return comparison == 0
                 # An open-ended fingerprint cannot establish *equality*: a CVE
@@ -1266,6 +1279,10 @@ def version_in_cpe_range(
                 return None
 
     return None
+
+
+#: CPE ``update`` values that mark a pre-release of the pinned version.
+_PRE_RELEASE_UPDATE = re.compile(r"^(rc|alpha|beta|pre|preview|dev|a|b)\d*$")
 
 
 def _cpe_from_uri(uri: str) -> Dict[str, str]:
@@ -1746,6 +1763,70 @@ def _os_version_from(host_os: str) -> str:
     return match.group(1) if match else ""
 
 
+#: Platform products whose versions are kernel releases.
+_KERNEL_PRODUCTS = frozenset({"linux_kernel"})
+
+#: Platform products whose versions are distribution *releases* (20.04, 9.4,
+#: 12), never kernel versions.
+_DISTRIBUTION_PRODUCTS = frozenset(
+    {
+        "ubuntu_linux",
+        "debian_linux",
+        "enterprise_linux",
+        "enterprise_linux_server",
+        "enterprise_linux_desktop",
+        "enterprise_linux_workstation",
+        "fedora",
+        "centos",
+        "rocky_linux",
+        "almalinux",
+        "opensuse",
+        "leap",
+        "suse_linux_enterprise_server",
+        "linux_enterprise_server",
+    }
+)
+
+_LINUX_FAMILY = re.compile(
+    r"\b(?:linux|ubuntu|debian|red\s+hat|rhel|centos|rocky|almalinux|fedora|"
+    r"suse|sles|opensuse|alpine|amazon\s+linux|oracle\s+linux)\b",
+    re.IGNORECASE,
+)
+_KERNEL_VERSION = re.compile(r"kernel\s+v?(\d+(?:\.\d+){1,3})", re.IGNORECASE)
+_LINUX_VERSION = re.compile(r"\blinux\s+(\d+\.\d+(?:\.\d+)?)", re.IGNORECASE)
+_DISTRIBUTION_RELEASE = re.compile(
+    r"(?:ubuntu|debian(?:\s+gnu/linux)?|red\s+hat\s+enterprise\s+linux|rhel|"
+    r"centos(?:\s+stream)?|rocky\s+linux|almalinux|fedora(?:\s+linux)?|"
+    r"opensuse(?:\s+leap)?|suse\s+linux\s+enterprise\s+server|sles)"
+    r"\s+(\d+(?:\.\d+){0,2})",
+    re.IGNORECASE,
+)
+
+
+def _platform_version_for(product: str, host_os: str, os_version: str) -> str:
+    """
+    The host version a platform CPE's range is written in, or "" if unknown.
+
+    A kernel range is in kernel versions and a distribution range is in
+    release numbers. Comparing whichever number the OS text happened to carry
+    first read "Ubuntu Linux (kernel 6.8.0-146-generic)" as Ubuntu 6.8.0, so
+    CVE-2021-3493 — ``ubuntu_linux`` before 20.10 — was in range on a 24.04
+    host. A version the scan never established is "" and the CPE cannot be
+    evaluated, which is neither a match nor a disproof.
+    """
+    text = _as_str(host_os)
+    name = (product or "").lower()
+    if name in _DISTRIBUTION_PRODUCTS:
+        release = _DISTRIBUTION_RELEASE.search(
+            re.sub(r"\(kernel[^)]*\)", "", text, flags=re.IGNORECASE)
+        )
+        return release.group(1) if release else ""
+    if name in _KERNEL_PRODUCTS:
+        match = _KERNEL_VERSION.search(text) or _LINUX_VERSION.search(text)
+        return match.group(1) if match else ""
+    return os_version
+
+
 def _classify_platform_finding(
     platform_cpes: List[Dict[str, Any]], host_os: str, fixed_hint: str
 ) -> Tuple[DetectionMethod, str, str, str]:
@@ -1770,6 +1851,8 @@ def _classify_platform_finding(
     os_version = _os_version_from(os_text)
     named_this_os = False
     any_in_range = False
+    evaluated = False
+    reported_version = ""
 
     for cpe in platform_cpes:
         product = _as_str(cpe.get("product")) or ""
@@ -1780,26 +1863,48 @@ def _classify_platform_finding(
             parts = uri.split(":")
             product = parts[4] if len(parts) > 4 else ""
         tokens = [t for t in _name_tokens(product) if t not in ("linux",)]
-        # "linux_kernel" against a Windows host names a different platform.
-        if tokens and not any(t in os_tokens for t in tokens):
+        # "linux_kernel" against a Windows host names a different platform —
+        # but every Linux distribution runs it, and a host identified only as
+        # "Ubuntu 24.04.5 LTS" was told the record was "scoped to a platform
+        # this host is not running".
+        runs_this_kernel = product.lower() in _KERNEL_PRODUCTS and _LINUX_FAMILY.search(
+            os_text
+        )
+        if tokens and not runs_this_kernel and not any(t in os_tokens for t in tokens):
             continue
         named_this_os = True
 
-        if os_version and version_in_cpe_range(os_version, cpe) is True:
+        version = _platform_version_for(product, os_text, os_version)
+        if not version:
+            continue
+        verdict = version_in_cpe_range(version, cpe)
+        if verdict is None:
+            continue
+        evaluated = True
+        reported_version = reported_version or version
+        if verdict is True:
             any_in_range = True
+            reported_version = version
 
     if not named_this_os:
         return DetectionMethod.UNVERIFIED, "", fixed_hint, "platform_mismatch"
 
-    if os_version and not any_in_range:
+    if evaluated and not any_in_range:
         # Disproof is safe in this direction: a kernel newer than every
         # published range is genuinely not affected.
         return (
             DetectionMethod.UNVERIFIED,
-            os_version,
+            reported_version,
             fixed_hint,
             "version_outside_range",
         )
+
+    if not any_in_range:
+        # The host runs the named platform but the scan never established the
+        # kind of version its ranges are written in — a distribution release
+        # for ``ubuntu_linux``, a kernel version for ``linux_kernel``. That is
+        # no evidence of exposure, so it is not reported as any.
+        return DetectionMethod.UNVERIFIED, "", fixed_hint, "os_version_unknown"
 
     # In range — but that is not a confirmation, and must never be reported as
     # one.
@@ -1817,7 +1922,7 @@ def _classify_platform_finding(
     # recorded as suppressed candidates with that reason — which is where an
     # unauthenticated scanner should leave them. A credentialed scan resolves
     # them properly from the package manager.
-    return DetectionMethod.OS_REPORTED, os_version, fixed_hint, ""
+    return DetectionMethod.OS_REPORTED, reported_version, fixed_hint, ""
 
 
 def record_platform_scope(
@@ -2362,6 +2467,7 @@ def _build_evidence(
     detected_version: str,
     method: DetectionMethod,
     cve_id: str,
+    host_os: str = "",
 ) -> Tuple[str, bool]:
     """
     Return ``(evidence_text, is_real_scanner_output)``.
@@ -2384,6 +2490,24 @@ def _build_evidence(
         )
     if raw:
         return redact_sensitive_data(raw), True
+
+    if method == DetectionMethod.OS_REPORTED:
+        # An operating-system finding is about the host. Describing it through
+        # the service the candidate was generated from presented the kernel
+        # version as OpenSSH's: "22/tcp ssh · Product OpenSSH · Detected
+        # version 6.8.0".
+        lines = ["Scope             : host (operating system)"]
+        if _as_str(host_os):
+            lines.append(f"Operating system  : {_as_str(host_os)}")
+        lines.append(
+            f"Detected version  : {detected_version or 'not determined by this scan'}"
+        )
+        lines.append(
+            "Basis             : the version the host reports, against the "
+            "upstream range; distribution backports are not visible without "
+            "credentials"
+        )
+        return "\n".join(lines), False
 
     if method == DetectionMethod.UNVERIFIED or service is None:
         return "", False
@@ -2539,7 +2663,7 @@ def parse_raw_finding(
             applies_to = ()
 
     evidence, evidence_real = _build_evidence(
-        finding_dict, service, detected_version, method, primary_cve
+        finding_dict, service, detected_version, method, primary_cve, host_os
     )
 
     title = _as_str(_first(finding_dict, "title", "plugin_name", "name"))
@@ -3101,6 +3225,19 @@ def suppression_reason(finding: StandardizedFinding) -> str:
             return (
                 "Ruled out: every published configuration for this record is "
                 "scoped to a platform this host is not running."
+            )
+        # Neither of these is a ruling-out: nothing was established either way.
+        if finding.suppression_basis == "os_version_unknown":
+            return (
+                "Not assessed: the host runs the platform this record names, but "
+                "the scan did not establish the kind of version its ranges are "
+                "written in (a distribution release or a kernel version). A "
+                "credentialed scan reads it from the host."
+            )
+        if finding.suppression_basis == "os_unknown":
+            return (
+                "Not assessed: the scan could not identify the host's operating "
+                "system, so an operating-system record cannot be tested."
             )
         return (
             "Ruled out: the host's enumerated services do not include the "

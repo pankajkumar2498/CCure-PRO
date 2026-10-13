@@ -496,3 +496,26 @@ describe("ScanComparison — API failures", () => {
     );
   });
 });
+
+describe("Back to results", () => {
+  // It always opened the credentialed results page, whatever the scan was.
+  it("returns each scan kind to its own page", async () => {
+    const { resultsPathFor } = await import("@audit/pages/scan/ScanComparison");
+    expect(resultsPathFor({ scan_type: "credentialed" }, "s1")).toBe(
+      "/scan/credentialed/results?scan_id=s1",
+    );
+    expect(
+      resultsPathFor(
+        { scan_type: "adaptive", pipeline_mode: "vulnerability_audit" },
+        "s2",
+      ),
+    ).toBe("/scan/s2/phase3");
+    expect(resultsPathFor({ pipeline_mode: "asset" }, "s3")).toBe(
+      "/scan/s3/phase2",
+    );
+    expect(resultsPathFor({ pipeline_mode: "basic" }, "s4")).toBe(
+      "/scan/s4/phase1",
+    );
+    expect(resultsPathFor(null, "s5")).toBe("/scan/s5/phase1");
+  });
+});

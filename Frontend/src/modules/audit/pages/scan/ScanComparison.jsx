@@ -137,6 +137,23 @@ function ScopePanel({ title, scope }) {
   );
 }
 
+/**
+ * Where "Back to results" goes: the page that shows this scan.
+ *
+ * It always went to the credentialed results page, so comparing a
+ * vulnerability audit sent the reader to a page built for another scan
+ * kind — which, for a pipeline audit with credentials, read its absent
+ * fields as "0 CVEs" (scan #17, 13 Oct 2026).
+ */
+const FINAL_PHASE = { basic: 1, asset: 2, vulnerability_audit: 3 };
+export function resultsPathFor(scan, scanId) {
+  if (scan?.scan_type === "credentialed") {
+    return `/scan/credentialed/results?scan_id=${encodeURIComponent(scanId)}`;
+  }
+  const phase = FINAL_PHASE[scan?.pipeline_mode] ?? 1;
+  return `/scan/${encodeURIComponent(scanId)}/phase${phase}`;
+}
+
 export default function ScanComparison() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -310,9 +327,7 @@ export default function ScanComparison() {
             <div className="sc-header__actions">
               <CcureButton
                 variant="secondary"
-                onClick={() =>
-                  navigate(`/scan/credentialed/results?scan_id=${scanId}`)
-                }
+                onClick={() => navigate(resultsPathFor(scan, scanId))}
               >
                 Back to results
               </CcureButton>

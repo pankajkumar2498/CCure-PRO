@@ -688,6 +688,14 @@ export default function CredentialedResults() {
     inventory_complete = true,
   } = view;
 
+  // Absent is not zero. The vulnerability-audit pipeline stores a host's
+  // posture without its package list or the per-item security lists, and the
+  // defaults above would render each as "0 found" / "No" — a clean answer to a
+  // question this record never asked. Each such field checks it was recorded.
+  const recorded = (key) => Object.prototype.hasOwnProperty.call(view, key);
+  const NOT_RECORDED = "Not recorded for this scan";
+  const inventoryStored = recorded("packages");
+
   /* Items this transport could not collect. Derived once: the page renders
      them as their own section and the reader needs them before the sections
      that would have shown the data. */
@@ -1486,12 +1494,20 @@ export default function CredentialedResults() {
         {/* The whole inventory, not only the packages that matched a CVE. */}
         <Section
           icon={<CcureIcon name="package" />}
-          title={`Installed Software (${Number(packages_enumerated ?? packages.length).toLocaleString()})`}
+          title={
+            inventoryStored
+              ? `Installed Software (${Number(packages_enumerated ?? packages.length).toLocaleString()})`
+              : recorded("package_count")
+                ? `Installed Software (${Number(package_count).toLocaleString()} enumerated, not stored)`
+                : "Installed Software"
+          }
         >
           <PackageInventorySection
             packages={packages}
             cves={cves}
             packagesEnumerated={packages_enumerated}
+            stored={inventoryStored}
+            enumeratedCount={recorded("package_count") ? package_count : null}
           />
         </Section>
 
@@ -1555,7 +1571,9 @@ export default function CredentialedResults() {
             <KV
               k="NOPASSWD Sudo"
               v={
-                sudo_nopasswd ? (
+                !recorded("sudo_nopasswd") ? (
+                  NOT_RECORDED
+                ) : sudo_nopasswd ? (
                   <>
                     <CcureIcon name="alert-triangle" /> YES — any command
                     without password
@@ -1568,26 +1586,38 @@ export default function CredentialedResults() {
             />
             <KV
               k="SUID Binaries"
-              v={`${suid_binaries.length} found`}
+              v={
+                recorded("suid_binaries")
+                  ? `${suid_binaries.length} found`
+                  : NOT_RECORDED
+              }
               warn={suid_binaries.length > 15}
             />
             <KV
               k="World-Writable Dirs"
-              v={`${world_writable_dirs.length} found`}
+              v={
+                recorded("world_writable_dirs")
+                  ? `${world_writable_dirs.length} found`
+                  : NOT_RECORDED
+              }
               warn={world_writable_dirs.length > 0}
             />
             <KV
               k="Failed Logins"
               v={
-                <>
-                  {failed_login_count}
-                  {brute_force_warning && (
-                    <>
-                      {" "}
-                      <CcureIcon name="alert-triangle" /> possible brute force
-                    </>
-                  )}
-                </>
+                !recorded("failed_login_count") ? (
+                  NOT_RECORDED
+                ) : (
+                  <>
+                    {failed_login_count}
+                    {brute_force_warning && (
+                      <>
+                        {" "}
+                        <CcureIcon name="alert-triangle" /> possible brute force
+                      </>
+                    )}
+                  </>
+                )
               }
               danger={brute_force_warning}
             />

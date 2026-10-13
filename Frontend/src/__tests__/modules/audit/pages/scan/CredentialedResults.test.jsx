@@ -1283,12 +1283,23 @@ describe("CredentialedResults — contract", () => {
 
     it("keeps the security audit closed when there is nothing to flag", async () => {
       await loaded(
-        withState({ ...WINDOWS, security_issues: [], sudo_nopasswd: false }),
+        withState({
+          ...WINDOWS,
+          security_issues: [],
+          sudo_nopasswd: false,
+          // The Windows collector records this one; the fixture had left it
+          // out and the page's default stood in for it.
+          failed_login_count: 0,
+        }),
       );
       expect(kv("NOPASSWD Sudo")).toEqual([]);
       await open(/Security Audit/);
       expect(kv("NOPASSWD Sudo")).toEqual(["No"]);
-      expect(kv("SUID Binaries")).toEqual(["0 found"]);
+      /* Updated 13 Oct 2026, and the change is the point. A Windows report
+         carries no `suid_binaries` — the collector never looks for them — and
+         the cell read "0 found" from the destructuring default, a clean answer
+         to a question the scan never asked. Absent is now said to be absent. */
+      expect(kv("SUID Binaries")).toEqual(["Not recorded for this scan"]);
       expect(kv("Failed Logins")).toEqual(["0"]);
     });
 

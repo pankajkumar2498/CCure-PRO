@@ -33,6 +33,10 @@ export default function PackageInventorySection({
   packages,
   cves,
   packagesEnumerated = null,
+  // False when the scan record keeps no package list at all — the
+  // vulnerability-audit pipeline stores a count, not the inventory.
+  stored = true,
+  enumeratedCount = null,
 }) {
   const [search, setSearch] = useState("");
   const [onlyVulnerable, setOnlyVulnerable] = useState(false);
@@ -85,6 +89,19 @@ export default function PackageInventorySection({
     resetKey: `${needle}|${onlyVulnerable}|${sort.key}|${sort.direction}`,
     initialPageSize: 50,
   });
+
+  if (rows.length === 0 && !stored) {
+    return (
+      <p className="pi-empty">
+        {enumeratedCount != null
+          ? `${Number(enumeratedCount).toLocaleString()} packages were enumerated and matched against the vulnerability feed during this scan, `
+          : "This scan matched the host's packages against the vulnerability feed, "}
+        but a vulnerability-audit scan does not store the package list itself,
+        so it cannot be shown here. The findings above are the result of that
+        match; package coverage says how much of it was assessable.
+      </p>
+    );
+  }
 
   if (rows.length === 0) {
     return (

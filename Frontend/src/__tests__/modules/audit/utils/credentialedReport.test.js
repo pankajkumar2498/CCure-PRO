@@ -17,6 +17,7 @@ import {
   collectCredentialedReports,
   collectFailedHosts,
   hasReportContent,
+  withHostFindings,
 } from "@audit/utils/credentialedReport";
 
 const report = (extra = {}) => ({
@@ -162,5 +163,46 @@ describe("collectFailedHosts", () => {
       }),
     ).toHaveLength(1);
     expect(collectFailedHosts({})).toEqual([]);
+  });
+});
+
+describe("shape 2 — the host's findings travel with its report", () => {
+  // The pipeline stores posture in the report and the findings on the host;
+  // read from the report alone, scan #17 showed "0 CVEs" for 2,287 findings.
+  const host = (report) => ({
+    ip_address: "10.180.6.45",
+    cves: [{ cve_id: "CVE-2026-0001", severity: "High" }],
+    suppressed_cves: [{ identifier: "CVE-2019-9193" }],
+    vulnerability_counts: { High: 1 },
+    candidates_evaluated: 42,
+    credentialed_report: report,
+  });
+
+  it("takes cves, counts and suppressions from the host when the report has none", () => {
+    const [out] = collectCredentialedReports({
+      results: {
+        phase3: { data: [host({ system_info: { os_name: "Ubuntu" } })] },
+      },
+    });
+    expect(out.cves).toHaveLength(1);
+    expect(out.cve_count).toBe(1);
+    expect(out.severity_summary).toEqual({ High: 1 });
+    expect(out.suppressed_cves).toHaveLength(1);
+    expect(out.candidates_evaluated).toBe(42);
+  });
+
+  it("never replaces what the report itself carries", () => {
+    const own = [{ cve_id: "CVE-2026-9999", severity: "Low" }];
+    const out = withHostFindings(
+      { system_info: { os_name: "Ubuntu" }, cves: own, suppressed_cves: [] },
+      host(null),
+    );
+    expect(out.cves).toBe(own);
+    expect(out.suppressed_cves).toEqual([]);
+  });
+
+  it("leaves a report with no content alone", () => {
+    expect(withHostFindings({}, host(null))).toEqual({});
+    expect(withHostFindings(null, host(null))).toBeNull();
   });
 });

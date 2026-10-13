@@ -72,6 +72,48 @@ const hostOf = (container, report) =>
   "";
 
 /**
+ * A pipeline host's report, with the host's own findings where it has none.
+ *
+ * The vulnerability-audit pipeline stores posture in `credentialed_report`
+ * and the findings beside it on the host record — `cves`, `suppressed_cves`,
+ * `vulnerability_counts` — which is what the database, the findings API and
+ * the exports all report. Read from the report alone, absent became empty:
+ * scan #17 (13 Oct 2026) showed "0 CVEs" and "Suppressed Findings (0)" for a
+ * host with 2,287 findings and 3,677 suppressed candidates. A key the report
+ * already carries is never replaced.
+ */
+export function withHostFindings(report, host) {
+  if (!hasReportContent(report) || !host || typeof host !== "object") {
+    return report;
+  }
+  const merged = { ...report };
+  if (merged.cves === undefined && Array.isArray(host.cves)) {
+    merged.cves = host.cves;
+    if (merged.cve_count === undefined) merged.cve_count = host.cves.length;
+    if (
+      merged.severity_summary === undefined &&
+      host.vulnerability_counts &&
+      typeof host.vulnerability_counts === "object"
+    ) {
+      merged.severity_summary = host.vulnerability_counts;
+    }
+  }
+  if (
+    merged.suppressed_cves === undefined &&
+    Array.isArray(host.suppressed_cves)
+  ) {
+    merged.suppressed_cves = host.suppressed_cves;
+  }
+  if (
+    merged.candidates_evaluated === undefined &&
+    host.candidates_evaluated != null
+  ) {
+    merged.candidates_evaluated = host.candidates_evaluated;
+  }
+  return merged;
+}
+
+/**
  * Every credentialed report in a scan detail, in the order an operator should
  * see them: the standalone shape first, then the per-host nested ones.
  *
@@ -117,7 +159,9 @@ export function collectCredentialedReports(detail) {
   for (const phase of [results?.phase3, results?._phase_data]) {
     const rows = Array.isArray(phase) ? phase : phase?.data;
     if (!Array.isArray(rows)) continue;
-    rows.forEach((host) => push(host?.credentialed_report, host));
+    rows.forEach((host) =>
+      push(withHostFindings(host?.credentialed_report, host), host),
+    );
   }
 
   // 3. The scan record's own copy.

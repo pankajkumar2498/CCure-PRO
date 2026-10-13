@@ -203,7 +203,16 @@ COPY --from=scanner-builder /out/ /usr/local/bin/
 # It is the one input here that is deliberately not pinned: the templates are a
 # detection feed, and freezing them trades new coverage for reproducibility.
 # Which snapshot an image carries is the image's own record, fixed at the SHA.
-RUN nuclei -update-templates 2>/dev/null || echo "Nuclei template update skipped"
+#
+# The chmod is here, not after the COPY into `runtime`: a later recursive mode
+# change writes every file into a second layer (see the --chown note below).
+# `nuclei -update-templates` creates its directories 0700, and COPY keeps the
+# mode, so in the shipped image only root could read a template — as `ccure`
+# nuclei answers "no templates found in path" and finds nothing (measured
+# 13 Oct 2026). The workers run as root today, which is the only reason scans
+# still read them.
+RUN (nuclei -update-templates 2>/dev/null || echo "Nuclei template update skipped") && \
+    if [ -d /root/nuclei-templates ]; then chmod -R a+rX /root/nuclei-templates; fi
 
 # ffuf's wordlist, pinned to a SecLists commit and checked. It was fetched from
 # `master` with `|| echo skipped`, so its contents changed with upstream and a

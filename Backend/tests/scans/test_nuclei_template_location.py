@@ -37,3 +37,15 @@ def test_with_neither_the_tools_own_location_is_the_default():
     assert _resolve_template_dir({}) == os.path.join(
         os.path.expanduser("~"), "nuclei-templates"
     )
+
+
+def test_the_image_makes_the_templates_readable_to_non_root():
+    # `nuclei -update-templates` creates 0700 directories and COPY keeps the
+    # mode: as the image's own `ccure` user nuclei found no templates at all.
+    from testpaths import BACKEND_ROOT
+
+    dockerfile = (BACKEND_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    update = dockerfile.index("nuclei -update-templates")
+    copy = dockerfile.index("/root/nuclei-templates /opt/nuclei-templates")
+    chmod = dockerfile.index("chmod -R a+rX /root/nuclei-templates")
+    assert update < chmod < copy

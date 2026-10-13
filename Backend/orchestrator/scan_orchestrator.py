@@ -1028,7 +1028,8 @@ class ScanOrchestrator:
                         host["os_confidence"] = fingerprint_os_confidence(
                             best_os.accuracy
                         )
-                        host.setdefault("os_evidence", "nmap_fingerprint")
+                        if not host.get("os_evidence"):
+                            host["os_evidence"] = "nmap_fingerprint"
             except Exception as exc:
                 log.debug("_nmap_pre_enrich(%s) error: %s", ip, exc)
 

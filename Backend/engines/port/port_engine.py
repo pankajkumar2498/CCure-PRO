@@ -525,7 +525,8 @@ class PortEngine:
         if best_os and best_os.accuracy >= 75:
             host["os_guess"] = best_os.name
             host["os_confidence"] = fingerprint_os_confidence(best_os.accuracy)
-            host.setdefault("os_evidence", "nmap_fingerprint")
+            if not host.get("os_evidence"):
+                host["os_evidence"] = "nmap_fingerprint"
             if best_os.cpe:
                 host.setdefault("os_cpe", best_os.cpe)
 

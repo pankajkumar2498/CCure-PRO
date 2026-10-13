@@ -355,6 +355,20 @@ def resolve_report_context(
         context["scan_method"] = scan_method
         context["discovery_scan_method"] = scan_method
 
+    # The feed date every vulnerability report states. Only the
+    # regenerate-on-download path added it, so a report written at scan
+    # completion printed "Vulnerability feed: Not recorded".
+    try:
+        from core.vuln_intel import get_feed_freshness
+
+        freshness = get_feed_freshness()
+        if freshness.get("last_modified"):
+            context["cve_feed_updated"] = freshness["last_modified"]
+        if freshness.get("cve_count"):
+            context["cve_feed_size"] = freshness["cve_count"]
+    except Exception as exc:  # never block a report on this
+        log.debug("Feed freshness unavailable for the report: %s", exc)
+
     return context
 
 

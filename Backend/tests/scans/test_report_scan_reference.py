@@ -57,3 +57,17 @@ def test_the_report_context_carries_both_halves_of_the_reference(db_session):
     assert context["scan_id"] == scan.id
     assert context["scan_no"] == scan.scan_no
     assert _scan_reference_text(context) == f"#1 · {scan.id}"
+
+
+def test_the_report_context_states_the_feed_date(db_session, monkeypatch):
+    """A report written at scan completion printed "Vulnerability feed: Not recorded"."""
+    import core.vuln_intel as vuln_intel
+
+    monkeypatch.setattr(
+        vuln_intel,
+        "get_feed_freshness",
+        lambda: {"last_modified": "2026-10-13T02:30:00+00:00", "cve_count": 370000},
+    )
+    context = resolve_report_context(db_session, "nobody", hosts=[])
+    assert context["cve_feed_updated"] == "2026-10-13T02:30:00+00:00"
+    assert context["cve_feed_size"] == 370000

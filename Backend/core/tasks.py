@@ -5025,10 +5025,19 @@ def run_credentialed_scan_task(
             )
 
         orch = _new_orchestrator()
-        # The scan row exists by now; the report names it ("Scan reference").
+        # The scan row exists by now; the report names it ("Scan reference"),
+        # and states the feed date it was matched against.
         report_result.setdefault("metadata", {}).update(
             {"scan_no": getattr(scan, "scan_no", None), "scan_id": str(scan.id)}
         )
+        try:
+            from core.vuln_intel import get_feed_freshness
+
+            _fresh = get_feed_freshness()
+            if _fresh.get("last_modified"):
+                report_result["metadata"]["cve_feed_updated"] = _fresh["last_modified"]
+        except Exception as _feed_exc:  # never block a report on this
+            log.debug("Feed freshness unavailable: %s", _feed_exc)
         report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
         scan.report_executive_path = report_paths.get("executive_pdf")
         scan.report_technical_path = report_paths.get("technical_pdf")

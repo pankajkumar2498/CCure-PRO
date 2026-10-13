@@ -2140,6 +2140,20 @@ def sync_vulnerability_audit(
             "vulnerability_audit",
             max_len=100,
         )
+        # The version an authenticated session read off the host. A Windows
+        # host's record carries none at the top level, so the asset said
+        # "Microsoft Windows 11 Pro" with an empty version while the audit had
+        # read build 10.0.26300.9550.
+        system_info = (host.get("credentialed_report") or {}).get("system_info") or {}
+        _set_asset_field(
+            db,
+            asset,
+            scan_id,
+            "os_version",
+            host.get("os_version") or system_info.get("os_version_id"),
+            "vulnerability_audit",
+            max_len=100,
+        )
         _set_asset_field(
             db,
             asset,

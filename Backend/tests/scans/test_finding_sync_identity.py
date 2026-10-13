@@ -191,3 +191,37 @@ def test_upgrading_one_product_closes_only_its_row(world):
     status = {r.component: r.status for r in rows()}
     assert status["SIMATIC WinCC Runtime Advanced V17.0 UPD6"] == "open"
     assert status["SIMATIC ProSave V19.0"] == "fixed"
+
+
+def test_an_authenticated_os_build_reaches_the_asset(world, db_session):
+    """Windows 11 Pro was stored with an empty os_version beside build 26300.9550."""
+    from db.models import Asset
+    from scans import asset_syncer
+
+    sync, _rows, asset_id = world
+    asset = db_session.get(Asset, asset_id)
+    scan_id = f"scn_id_{uuid.uuid4().hex[:8]}"
+    db_session.add(
+        Scan(
+            id=scan_id,
+            org_id=asset.org_id,
+            target_str=IP,
+            pipeline_mode="vulnerability_audit",
+            status="complete",
+        )
+    )
+    db_session.commit()
+    host = {
+        "ip_address": IP,
+        "is_active": True,
+        "os_guess": "Microsoft Windows 11 Pro",
+        "credentialed": True,
+        "credentialed_report": {"system_info": {"os_version_id": "10.0.26300.9550"}},
+        "cves": [],
+    }
+    asset_syncer.sync_vulnerability_audit(
+        db_session, scan_id, asset.org_id, None, [host]
+    )
+    db_session.commit()
+    db_session.refresh(asset)
+    assert asset.os_version == "10.0.26300.9550"

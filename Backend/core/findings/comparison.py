@@ -639,15 +639,72 @@ def compare_scans(
     return comparison
 
 
+def _scan_targets(scan: Scan) -> list[str]:
+    raw = getattr(scan, "target_hosts", None) or []
+    if isinstance(raw, str):
+        raw = [raw]
+    targets = [str(t).strip() for t in raw if str(t).strip()]
+    if not targets:
+        targets = [
+            t.strip() for t in str(getattr(scan, "target_str", "") or "").split(",")
+        ]
+    return [t for t in targets if t]
+
+
+def _target_network(target: str):
+    import ipaddress
+
+    try:
+        return ipaddress.ip_network(target, strict=False)
+    except ValueError:
+        return None
+
+
+def targets_overlap(a: Scan, b: Scan) -> bool:
+    """
+    Whether two scans examined at least one address in common.
+
+    Addresses and CIDR ranges are compared as networks, so a /24 sweep can be
+    the baseline for a scan of one host inside it. Any other target (a
+    hostname, a range string) has to match exactly.
+    """
+    a_targets, b_targets = _scan_targets(a), _scan_targets(b)
+    b_networks = [n for n in (_target_network(t) for t in b_targets) if n]
+    b_names = {t.lower() for t in b_targets if _target_network(t) is None}
+    for target in a_targets:
+        network = _target_network(target)
+        if network is None:
+            if target.lower() in b_names:
+                return True
+            continue
+        if any(
+            network.version == other.version and network.overlaps(other)
+            for other in b_networks
+        ):
+            return True
+    return False
+
+
+#: How many earlier scans of the same shape are examined for an overlapping
+#: one before giving up. Bounds the walk on a busy organisation.
+_BASELINE_LOOKBACK = 200
+
+
 def previous_scan_for(db: Session, scan: Scan) -> Optional[Scan]:
     """
-    The most recent completed scan of the same shape before *scan*.
+    The most recent completed scan of the same shape, over the same hosts.
 
     Same organisation and same ``pipeline_mode``, because a credentialed audit
     and a discovery sweep look for different things and neither one's absence
     says anything about the other's findings.
+
+    And at least one target in common. Without that, in any organisation that
+    scans more than one host, the "previous scan" was simply the last one run:
+    a Windows audit was compared with a Linux audit of another machine and
+    reported every finding as new — and remediation verification, which reads
+    this baseline, judged fixes against a scan that never looked at the host.
     """
-    return (
+    candidates = (
         db.query(Scan)
         .filter(
             Scan.org_id == scan.org_id,
@@ -657,5 +714,9 @@ def previous_scan_for(db: Session, scan: Scan) -> Optional[Scan]:
             Scan.status.in_(("complete", "completed")),
         )
         .order_by(Scan.created_at.desc())
-        .first()
+        .limit(_BASELINE_LOOKBACK)
     )
+    for candidate in candidates:
+        if targets_overlap(scan, candidate):
+            return candidate
+    return None

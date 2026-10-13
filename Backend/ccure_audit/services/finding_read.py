@@ -199,7 +199,9 @@ def finding_context_map(
 
     A title shared by two findings on one host is registered under neither:
     showing one finding's owner and due date against its sibling would be
-    worse than showing none, and the identifier key still resolves both.
+    worse than showing none, and the identifier key still resolves both. The
+    same holds for an identifier shared by per-product rows of one CVE whose
+    records differ.
     """
     from core.remediation.sla import sla_state
     from db.models.findings import AssetVulnerability
@@ -241,7 +243,15 @@ def finding_context_map(
 
         identifier = str(finding.vuln_id or "").strip().upper()
         if identifier:
-            out[(host, identifier)] = payload
+            # One CVE can now have a row per affected product. Where those rows'
+            # records agree the key is unambiguous; where they differ, showing
+            # one product's owner and due date against another's line would be
+            # worse than showing none — the same rule as for titles below.
+            key = (host, identifier)
+            if key in out and out[key] != payload:
+                ambiguous_titles.add(key)
+            else:
+                out[key] = payload
 
         title_key = (host, str(titles.get(str(finding.vuln_id), "")).strip().upper())
         if not title_key[1] or title_key[1] == identifier:

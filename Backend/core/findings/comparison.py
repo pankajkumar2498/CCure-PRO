@@ -11,10 +11,12 @@ unit: twelve new, eight fixed, two back again.
 No new finding model and no second store. ``asset_vulnerabilities`` already
 carries everything this needs and has since before Phase 0:
 
-* ``id``              — deterministic from (asset, vuln_id, source_family), so
-                        the *same logical finding* keeps one row across scans
-                        and re-detections. This is the identity used here; row
-                        ids are not re-minted per scan.
+* ``id``              — deterministic from (asset, vuln_id, source_family), plus
+                        a product qualifier when one CVE affects several
+                        products on the host, so the *same logical finding*
+                        keeps one row across scans and re-detections. This is
+                        the identity used here; row ids are not re-minted per
+                        scan.
 * ``first_found_at``  — when it was first seen
 * ``last_found_at``   — when it was last seen
 * ``fixed_at``        — when it was last observed to have gone

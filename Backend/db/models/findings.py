@@ -485,12 +485,17 @@ class AssetVulnerability(Base):
 
     __tablename__ = "asset_vulnerabilities"
     __table_args__ = (
+        # One row per CVE per product (component). NULLS NOT DISTINCT keeps a
+        # finding with no component — a network or configuration check — at
+        # exactly one row per CVE, as before. Migration a7c9e1b3d5f8.
         UniqueConstraint(
             "org_id",
             "scan_id",
             "asset_id",
             "vuln_id",
+            "component",
             name="uq_asset_vuln_scan_asset_cve",
+            postgresql_nulls_not_distinct=True,
         ),
         Index("ix_asset_vuln_asset_id", "asset_id"),
         Index("ix_asset_vuln_vuln_id", "vuln_id"),

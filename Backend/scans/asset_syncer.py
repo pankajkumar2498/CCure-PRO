@@ -5,6 +5,7 @@ Performs "Identity Resolution" and synchronizes scanner payload blobs
 into their respective normalized PostgreSQL rows (assets, services, findings).
 """
 
+import hashlib
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -30,6 +31,7 @@ from db.models.findings import (
     STATE_OPEN,
 )
 from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
+from core.checks.contract import normalize_severity
 from scans.db_text import sanitize_for_db_in_place
 from scans.cvss import (
     canonical_severity,
@@ -1203,6 +1205,21 @@ def _finding_fixed_version(v: dict) -> Optional[str]:
     return None
 
 
+def _stored_severity(finding: dict, cvss_score: Optional[float]) -> str:
+    """
+    The severity written for a finding: from its CVSS score, else as declared.
+
+    A network or configuration check — TLS hostname mismatch, missing security
+    headers — carries a severity its check definition states and no CVSS score.
+    Deriving severity from the score alone stored those as "unscored" while the
+    report, the CSV and the scan's own severity counts said Medium and Low, so
+    the findings page disagreed with every report of the same scan.
+    """
+    if cvss_score is not None:
+        return severity_from_score(cvss_score).lower()
+    return normalize_severity(finding.get("severity"))
+
+
 def _build_finding_evidence(
     v: dict, service: Optional[Service], host_data: dict, cve_id: str = ""
 ) -> str:
@@ -1305,6 +1322,77 @@ def _finding_source_from_record(finding: AssetVulnerability) -> str:
 
 def _source_specific_finding_id(asset_id: str, cve_id: str, source_family: str) -> str:
     return f"fnd_{asset_id}_{source_family}_{cve_id}"
+
+
+#: Separates a product qualifier from the finding id it qualifies (the
+#: downgrade of migration a7c9e1b3d5f8 relies on it).
+_COMPONENT_ID_MARK = "__"
+
+
+def _explicit_package(v: dict) -> str:
+    return str(v.get("package") or v.get("package_name") or "").strip()
+
+
+def _component_finding_id(base_id: str, package: str) -> str:
+    digest = hashlib.sha1(package.lower().encode(), usedforsecurity=False).hexdigest()
+    return f"{base_id}{_COMPONENT_ID_MARK}{digest[:10]}"
+
+
+def _base_id_owners(
+    db: Session,
+    org_id: str,
+    asset_id: str,
+    source_family: str,
+    vulns: list,
+) -> Dict[str, str]:
+    """
+    For each CVE this host reports against a named product, the product that
+    owns the CVE's base finding id.
+
+    A finding was keyed by (asset, CVE, family), so one CVE affecting six
+    installed Siemens products — reported as six findings — was stored as one
+    row naming whichever product was written last. Each product now has its
+    own row: the base id stays with the product already stored under it, for
+    good, and every other product takes an id qualified by its name. Only a
+    CVE with no stored row yet gives the base id to the first product by
+    name, so the choice never depends on the order a scan lists them in, and
+    the common one-product case keeps exactly the id it always had.
+    """
+    present: Dict[str, set] = {}
+    for v in vulns:
+        cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
+        package = _explicit_package(v)
+        if cve_id and package:
+            present.setdefault(cve_id, set()).add(package)
+    if not present:
+        return {}
+
+    legacy_ids = {f"fnd_{asset_id}_{cve}": cve for cve in present}
+    specific_ids = {
+        _source_specific_finding_id(asset_id, cve, source_family): cve
+        for cve in present
+    }
+    stored: Dict[str, Optional[str]] = {}
+    rows = (
+        db.query(AssetVulnerability)
+        .filter(
+            AssetVulnerability.org_id == org_id,
+            AssetVulnerability.id.in_(list(legacy_ids) + list(specific_ids)),
+        )
+        .all()
+    )
+    for row in rows:
+        if row.id in legacy_ids:
+            # The legacy id is the base id only while its family matches,
+            # exactly as _resolve_finding_id decides.
+            if _finding_family(_finding_source_from_record(row)) == source_family:
+                stored[legacy_ids[row.id]] = row.component
+        else:
+            stored.setdefault(specific_ids[row.id], row.component)
+
+    return {
+        cve: (stored.get(cve) or sorted(names)[0]) for cve, names in present.items()
+    }
 
 
 def _resolve_finding_id(
@@ -2119,6 +2207,9 @@ def sync_vulnerability_audit(
                 for row in db.query(Service).filter(Service.asset_id == asset_id).all()
             }
         synced_service_ids = set(service_by_id)
+        base_id_owners = _base_id_owners(db, org_id, asset_id, source_family, vulns)
+        written_finding_ids: set = set()
+        written_components: Dict[str, set] = {}
         for v in vulns:
             cve_id = v.get("cve_id") or v.get("cve") or v.get("id")
             if not cve_id:
@@ -2249,7 +2340,7 @@ def sync_vulnerability_audit(
                 references=references,
                 affected_software=affected_software,
                 published_at=published_at,
-                severity=severity_from_score(cvss_score_val).lower(),
+                severity=_stored_severity(v, cvss_score_val),
                 source="scanner",
                 created_at=utcnow(),
                 updated_at=utcnow(),
@@ -2336,6 +2427,10 @@ def sync_vulnerability_audit(
             finding_id = _resolve_finding_id(
                 db, org_id, asset_id, cve_id, source_family
             )
+            package = _explicit_package(v)
+            if package and base_id_owners.get(cve_id, package) != package:
+                finding_id = _component_finding_id(finding_id, package)
+            written_finding_ids.add(finding_id)
             existing_fnd = (
                 db.query(AssetVulnerability)
                 .filter(AssetVulnerability.id == finding_id)
@@ -2392,10 +2487,12 @@ def sync_vulnerability_audit(
 
             detection = _detection_fields(v)
             finding_cvss = float(v.get("cvss") or v.get("cvss_score") or 0.0) or None
-            finding_severity = severity_from_score(finding_cvss).lower()
+            finding_severity = _stored_severity(v, finding_cvss)
             component, component_version = _finding_component(v, finding_service)
             detection["component"] = component
             detection["component_version"] = component_version
+            if component:
+                written_components.setdefault(cve_id, set()).add(component)
             detection["component_fixed_version"] = _finding_fixed_version(v)
             db.execute(
                 insert(AssetVulnerability)
@@ -2479,7 +2576,14 @@ def sync_vulnerability_audit(
         for f in open_findings:
             if _finding_family(_finding_source_from_record(f)) != source_family:
                 continue
-            if f.vuln_id not in found_in_this_scan:
+            if f.id in written_finding_ids:
+                continue
+            # A product's row is gone when *its* product no longer reports the
+            # CVE, even if another product on the host still does.
+            gone_product = bool(f.component) and f.component not in (
+                written_components.get(f.vuln_id) or set()
+            )
+            if f.vuln_id not in found_in_this_scan or gone_product:
                 f.status = "fixed"
                 f.fixed_at = utcnow()
                 _record_asset_change(

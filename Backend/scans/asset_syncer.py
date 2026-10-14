@@ -1298,10 +1298,14 @@ def _build_finding_evidence(
     # to a finding that has just declared "no listening service implicated"
     # contradicts the line above it.
     captured = str(v.get("evidence") or v.get("proof") or "").strip()
-    if service is not None and captured and captured != "Source_Family:network_service":
+    if (
+        (service is not None or v.get("endpoint_observations"))
+        and captured
+        and captured != "Source_Family:network_service"
+    ):
         lines.append("")
         lines.append("Probe output:")
-        lines.append(captured[:2000])
+        lines.append(captured if v.get("endpoint_observations") else captured[:2000])
 
     return "\n".join(lines)
 
@@ -2550,6 +2554,23 @@ def sync_vulnerability_audit(
             # the service, the version fingerprinted on it, the banner returned,
             # and the published range that version was tested against.
             finding_service = service_by_id.get(finding_service_id)
+            from core.checks.endpoint_evidence import render_observations
+
+            for observation in v.get("endpoint_observations") or []:
+                try:
+                    endpoint_id = gen_service_id(
+                        asset_id,
+                        int(observation["port"]),
+                        str(observation.get("protocol") or "tcp"),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    continue
+                observed_service = service_by_id.get(endpoint_id)
+                if observed_service is not None:
+                    observation["service_id"] = endpoint_id
+                    observation["service_name"] = observed_service.service_name
+            if v.get("endpoint_observations"):
+                v["evidence"] = render_observations(v["endpoint_observations"])
             evidence = _build_finding_evidence(v, finding_service, host, cve_id=cve_id)
             # The family a later scan must cover before it can retire this
             # finding; the id above keeps the pipeline's, unchanged.
@@ -2678,6 +2699,12 @@ def sync_vulnerability_audit(
                     continue
             elif family != source_family:
                 continue
+            elif "plugin_outcomes" in host:
+                # Absence after an incomplete network assessment is not remediation.
+                from core.checks.plugin_outcomes import coverage_summary
+
+                if not coverage_summary([host])["complete"]:
+                    continue
             if f.id in written_finding_ids:
                 continue
             # A product's row is gone when *its* product no longer reports the
@@ -2710,9 +2737,15 @@ def sync_vulnerability_audit(
 
             _scan_row = db.query(_Scan).filter(_Scan.id == scan_id).first()
             if _scan_row is not None:
-                record_assessment_scope(
-                    _scan_row, assets=[asset_id], families=[source_family]
-                )
+                from core.checks.plugin_outcomes import coverage_summary
+
+                if (
+                    "plugin_outcomes" not in host
+                    or coverage_summary([host])["complete"]
+                ):
+                    record_assessment_scope(
+                        _scan_row, assets=[asset_id], families=[source_family]
+                    )
                 if credentialed is not None:
                     # The same record the standalone credentialed scan writes,
                     # so a comparison reads both kinds of scan the same way.

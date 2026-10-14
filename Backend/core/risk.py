@@ -321,14 +321,36 @@ def normalize_cve(cve: dict) -> dict:
     return merge_alias_fields(cve)
 
 
-def deduplicate_cves(cves: list[dict]) -> list[dict]:
-    """Remove duplicate CVE entries (same CVE ID)."""
+def deduplicate_cves(cves: list[dict], *, by_endpoint: bool = False) -> list[dict]:
+    """Keep one logical finding, preserving every contributing endpoint."""
+    from core.checks.endpoint_evidence import (
+        observations_for,
+        merge_observations,
+        render_observations,
+    )
+
     best_by_id: dict[str, dict] = {}
     for c in cves:
         normalized = normalize_cve(c)
         key = normalized.get("cve_id", "")
         if not key:
             continue
+        component = (
+            normalized.get("component")
+            or normalized.get("package")
+            or normalized.get("package_name")
+            or ""
+        )
+        key = (key, component)
+        if by_endpoint:
+            key += (
+                normalized.get("port"),
+                normalized.get("protocol", "tcp"),
+                normalized.get("matched_at") or normalized.get("target") or "",
+            )
+        observations = observations_for(normalized)
+        if observations:
+            normalized["endpoint_observations"] = observations
 
         current = best_by_id.get(key)
         if current is None:
@@ -356,6 +378,12 @@ def deduplicate_cves(cves: list[dict]) -> list[dict]:
             merged = dict(normalized)
             merged.update(current)
             best_by_id[key] = merged
+        observations = merge_observations(
+            observations_for(current), observations_for(normalized)
+        )
+        if observations:
+            best_by_id[key]["endpoint_observations"] = observations
+            best_by_id[key]["evidence"] = render_observations(observations)
 
     return sorted(
         best_by_id.values(),

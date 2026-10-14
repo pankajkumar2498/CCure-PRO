@@ -28,6 +28,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import ScanStepper from "@audit/components/layout/ScanStepper";
 import CVELink from "@audit/components/common/CVELink";
+import NetworkPluginCoverage from "@audit/components/scan/NetworkPluginCoverage";
 import { describeAffected } from "@audit/utils/affectedSoftware";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
 import { scanViewState } from "@audit/utils/scanViewState";
@@ -135,7 +136,7 @@ const countActiveFindings = (host) => {
   // Original checks
   if (host.heartbleed_info?.vulnerable) n++;
   if (host.smb_ms17010_info?.ms17010_likely) n++;
-  if (host.ldap_info?.anonymous_bind?.allowed) n++;
+  if (host.ldap_info?.anonymous_bind?.directory_readable === true) n++;
   if (host.dns_info?.zone_transfer?.vulnerable) n++;
   if (host.default_creds_info?.ftp_anon?.allowed) n++;
   if (host.default_creds_info?.redis_noauth?.vulnerable) n++;
@@ -286,7 +287,7 @@ const misconfigurationBadges = (host) => {
       tone: "danger",
       icon: "alert-octagon",
     });
-  if (host.ldap_info?.anonymous_bind?.allowed)
+  if (host.ldap_info?.anonymous_bind?.directory_readable === true)
     badges.push({ label: "LDAP Anon Bind", tone: "warning", icon: "unlock" });
   if (host.dns_info?.zone_transfer?.vulnerable)
     badges.push({ label: "DNS Zone Transfer", tone: "warning", icon: "radio" });
@@ -380,11 +381,15 @@ function RiskReport({
           <Glyph>✓</Glyph> Full Pipeline Complete
         </h3>
         <p className="p3-report__lead">
-          All scan phases finished successfully. Complete vulnerability analysis
-          and risk assessment below.
+          Scan execution has finished. Review plugin coverage alongside the
+          observed findings and risk assessment below.
         </p>
       </div>
 
+      <NetworkPluginCoverage
+        coverage={phase3Summary?.network_plugin_coverage}
+        hosts={hosts}
+      />
       <dl className="p3-stats">
         <div className="p3-stat p3-stat--success">
           <dt className="p3-stat__label">Total Hosts Audited</dt>
@@ -744,7 +749,10 @@ function RiskReport({
         })}
 
         {hostsWithCves.length === 0 && (
-          <p className="p3-empty">No vulnerabilities found in this scan.</p>
+          <p className="p3-empty">
+            No findings were reported. Review plugin coverage before
+            interpreting this result.
+          </p>
         )}
       </section>
 
@@ -1643,6 +1651,10 @@ export default function Phase3Results() {
             {/* Authenticated coverage. Which hosts were logged into bounds what
                 the package-level findings below can possibly cover, and a host
                 that was skipped is unassessed rather than clean. */}
+            <NetworkPluginCoverage
+              coverage={phase3Summary?.network_plugin_coverage}
+              hosts={localVulnResults}
+            />
             {phase3Summary?.credentialed_hosts !== undefined && (
               <div className="p3-coverage">
                 <p className="p3-coverage__title">

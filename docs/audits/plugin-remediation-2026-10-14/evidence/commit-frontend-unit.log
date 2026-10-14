@@ -1,0 +1,308 @@
+
+> ccure-audit-pro-unified@2.0.0 pretest
+> node scripts/build-ux4g-assets.mjs
+
+
+[ux4g] ux4g-web-components@3.0.2  mode=tokens
+  ──────────────────────────────────────────────────────────────────
+  keep  Noto Sans                     1996.6 kB →   868.5 kB  noto-sans.woff2
+  drop  Noto Sans Display                (deferred delivery)
+  drop  UX4G Material Icons              (deferred delivery)
+  drop  UX4G Material Icons Outlined     (deferred delivery)
+  drop  UX4G Material Icons Round        (deferred delivery)
+  drop  UX4G Material Icons Sharp        (deferred delivery)
+  drop  UX4G Material Icons TwoTone      (deferred delivery)
+  ──────────────────────────────────────────────────────────────────
+  stylesheet    8175.5 kB →    60.1 kB
+  fonts              7 faces → 1 file(s), 868.5 kB
+
+  css      → src/design-system/tokens/ux4g.generated.css
+  fonts    → public/assets/fonts/ux4g (1 files)
+  manifest → src/design-system/tokens/ux4g.generated.manifest.json
+  checks   → version pinned, reset shape, no data: fonts, no external origins, face/file parity
+
+
+> ccure-audit-pro-unified@2.0.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v4.1.11 /home/cdac/Downloads/CCure-Audit-PRO/Frontend
+
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Uncaught [Error: SYNTHETIC_PRIVATE_TOKEN: render failure]
+    at reportException (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) Error: SYNTHETIC_PRIVATE_TOKEN: render failure
+    at RenderingFailure (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/src/__tests__/shell/auth/AuthErrorBoundary.test.jsx:8:9)
+    at renderWithHooks (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+Error: Uncaught [Error: SYNTHETIC_PRIVATE_TOKEN: render failure]
+    at reportException (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) Error: SYNTHETIC_PRIVATE_TOKEN: render failure
+    at RenderingFailure (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/src/__tests__/shell/auth/AuthErrorBoundary.test.jsx:8:9)
+    at renderWithHooks (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+Error: Uncaught [Error: SYNTHETIC_PRIVATE_TOKEN: render failure]
+    at reportException (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) Error: SYNTHETIC_PRIVATE_TOKEN: render failure
+    at RenderingFailure (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/src/__tests__/shell/auth/AuthErrorBoundary.test.jsx:8:9)
+    at renderWithHooks (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+Error: Uncaught [Error: SYNTHETIC_PRIVATE_TOKEN: render failure]
+    at reportException (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/helpers/runtime-script-errors.js:66:24)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:353:9)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+    at HTMLUnknownElement.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventTarget.js:241:34)
+    at Object.invokeGuardedCallbackDev (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4213:16)
+    at invokeGuardedCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4277:31)
+    at beginWork$1 (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:27490:7)
+    at performUnitOfWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:26599:12) Error: SYNTHETIC_PRIVATE_TOKEN: render failure
+    at RenderingFailure (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/src/__tests__/shell/auth/AuthErrorBoundary.test.jsx:8:9)
+    at renderWithHooks (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/generated/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:350:25)
+    at invokeEventListeners (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:286:3)
+    at HTMLUnknownElementImpl._dispatch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:233:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:104:17)
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+Error: Not implemented: navigation (except hash changes)
+    at module.exports (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at navigateFetch (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:77:3)
+    at exports.navigate (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/window/navigation.js:55:3)
+    at Timeout._onTimeout (/home/cdac/Downloads/CCure-Audit-PRO/Frontend/node_modules/jsdom/lib/jsdom/living/nodes/HTMLHyperlinkElementUtils-impl.js:81:7)
+    at listOnTimeout (node:internal/timers:581:17)
+    at processTimers (node:internal/timers:519:7) undefined
+
+ Test Files  122 passed (122)
+      Tests  3171 passed (3171)
+   Start at  20:50:09
+   Duration  217.18s (transform 10.18s, setup 23.18s, import 32.71s, tests 281.41s, environment 70.76s)

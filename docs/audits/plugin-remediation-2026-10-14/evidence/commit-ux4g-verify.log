@@ -1,0 +1,13 @@
+
+> ccure-audit-pro-unified@2.0.0 ux4g:verify
+> node scripts/verify-ux4g-assets.mjs
+
+
+[ux4g:verify] reproducibility
+  ────────────────────────────────────────────────────────────────
+  source        ux4g-web-components@3.0.2  mode=tokens
+  css sha256    bb5d179db8f25c8f7661d8744df23a2ff697121d6d07f7d4319829efb0692d0e
+  manifest      7b1e1031d88c6d3eb9a29c4480e21201834007070fdefc7693bc54ed64dfbe2e
+  noto-sans.woff2e30fe55bc615a405377c86ef627742bcba7dddbb0053a1dbe34860cae1ecc92c
+  ────────────────────────────────────────────────────────────────
+  two independent runs produced byte-identical output

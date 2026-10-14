@@ -2938,6 +2938,18 @@ export const P3_UNREACHABLE_SESSION = p3Session("p3-unreachable", {
 export const p3StartSession = (scanId) => p3Session(scanId);
 
 export const P3_STUBS = {
+  "/scans/p3-report": {
+    id: "p3-report",
+    scan_no: 3301,
+    target: "10.60.0.0/28",
+    pipeline_mode: "vulnerability_audit",
+    status: "complete",
+    results: {
+      phase1: { data: P3_PHASE1_HOSTS, summary: P3_PHASE1_SUMMARY },
+      phase2: { data: P3_PHASE2_HOSTS, summary: P3_PHASE2_SUMMARY },
+      phase3: { data: P3_AUDIT_HOSTS, summary: P3_AUDIT_SUMMARY },
+    },
+  },
   "/scans/p3-live": {
     id: "p3-live",
     scan_no: 3301,

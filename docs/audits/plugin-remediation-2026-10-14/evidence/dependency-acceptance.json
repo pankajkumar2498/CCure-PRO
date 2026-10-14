@@ -1,0 +1,37 @@
+{
+  "audited_dependencies": [
+    {
+      "name": "pymongo",
+      "version": "4.18.3",
+      "advisories": 0
+    },
+    {
+      "name": "ldap3",
+      "version": "2.9.1",
+      "advisories": 0
+    },
+    {
+      "name": "pyasn1",
+      "version": "0.5.1",
+      "advisories": 8
+    },
+    {
+      "name": "dnspython",
+      "version": "2.9.0",
+      "advisories": 0
+    }
+  ],
+  "distinct_advisories": [
+    "PYSEC-2026-2263",
+    "PYSEC-2026-3455",
+    "PYSEC-2026-3456",
+    "PYSEC-2026-3457"
+  ],
+  "accepted": [
+    "PYSEC-2026-2263",
+    "PYSEC-2026-3455",
+    "PYSEC-2026-3456",
+    "PYSEC-2026-3457"
+  ],
+  "new_unaccepted": []
+}

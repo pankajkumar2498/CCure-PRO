@@ -1,0 +1,5 @@
+
+> ccure-audit-pro-unified@2.0.0 ux4g:check
+> node scripts/check-ux4g-foundation.mjs --dist
+
+[ux4g:check] PASS {"package":"ux4g-web-components","version":"3.0.2","installedPackages":364,"delivery":"tokens","runtimeEnabled":false}

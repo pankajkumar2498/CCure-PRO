@@ -19,6 +19,7 @@ import { useEffect, useState, useCallback, useId, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import RiskBadge from "@audit/components/scan/RiskBadge";
+import NetworkPluginCoverage from "@audit/components/scan/NetworkPluginCoverage";
 import { useAuth } from "@shell/auth/AuthContext";
 import { useScan } from "@audit/context/ScanContext";
 import { usePreferences } from "@shell/preferences/PreferencesContext";
@@ -457,6 +458,12 @@ function DetailModal({ scanId, onClose, onOpenFullResults }) {
             </CcureAlert>
           )}
 
+          {detail.pipeline_mode === "vulnerability_audit" && (
+            <NetworkPluginCoverage
+              coverage={detail.summary?.network_plugin_coverage}
+              hosts={detail.results?.phase3?.data || []}
+            />
+          )}
           {summaryEntries.length > 0 && (
             <section className="sh-detail__section">
               <h3 className="sh-detail__heading">Summary</h3>

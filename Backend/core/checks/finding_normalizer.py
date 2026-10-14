@@ -412,6 +412,7 @@ class StandardizedFinding:
     # ── Evidence ─────────────────────────────────────────────────────────────
     evidence: str = ""
     evidence_available: bool = False
+    endpoint_observations: list = field(default_factory=list)
     detection_method: DetectionMethod = DetectionMethod.UNVERIFIED
     confidence: Confidence = Confidence.UNVERIFIED
 
@@ -566,6 +567,7 @@ class HostReport:
     findings: List[StandardizedFinding] = field(default_factory=list)
     credentialed: bool = False
     auth_status: str = ""
+    plugin_coverage: dict = field(default_factory=dict)
 
     @property
     def display_name(self) -> str:
@@ -2477,6 +2479,15 @@ def _build_evidence(
     (banner, detected version, matched range) and flagged as derived, so it is
     never presented as captured tool output.
     """
+    from core.checks.endpoint_evidence import render_observations
+
+    observations = finding_dict.get("endpoint_observations") or []
+    if observations:
+        return redact_sensitive_data(render_observations(observations)), any(
+            o.get("evidence_captured") is not False
+            and (o.get("evidence") or o.get("proof") or o.get("plugin_output"))
+            for o in observations
+        )
     if finding_dict.get("evidence_captured") is False:
         # Derived on an earlier pass: rebuild it from what is recorded now.
         raw = _as_str(
@@ -2737,6 +2748,14 @@ def parse_raw_finding(
         description=description,
         evidence=evidence,
         evidence_available=evidence_real,
+        endpoint_observations=[
+            {
+                key: redact_sensitive_data(value) if isinstance(value, str) else value
+                for key, value in observation.items()
+            }
+            for observation in finding_dict.get("endpoint_observations", [])
+            if isinstance(observation, dict)
+        ],
         detection_method=method,
         confidence=confidence,
         remediation=remediation,
@@ -3378,6 +3397,7 @@ def verify_host_findings(host_dict: Dict[str, Any]) -> HostVerification:
                             finding.remediation, "last_affected_version", None
                         ),
                         "evidence": finding.evidence,
+                        "endpoint_observations": finding.endpoint_observations,
                         # Whether that evidence is scanner output or a block
                         # this module derived. Without it, the next pass found
                         # derived text under "evidence" and presented it as
@@ -3507,6 +3527,7 @@ def build_scan_report(
             is_active=bool(host_dict.get("is_active", True)),
             services=services,
             credentialed=bool(host_dict.get("credentialed")),
+            plugin_coverage=host_dict.get("plugin_coverage") or {},
         )
 
         raw_vulns = _first(host_dict, "cves", "vulnerabilities", "findings") or []

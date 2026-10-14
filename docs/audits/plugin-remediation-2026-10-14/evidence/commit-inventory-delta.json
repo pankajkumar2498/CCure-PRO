@@ -1,0 +1,35 @@
+{
+  "semantic_changes": 0,
+  "source_location_changes": [
+    {
+      "file": "routers/phase_scans.py",
+      "old_line": 57,
+      "new_line": 58,
+      "mechanism": "resolve_active_organisation"
+    },
+    {
+      "file": "routers/phase_scans.py",
+      "old_line": 393,
+      "new_line": 395,
+      "mechanism": "require_authorized"
+    },
+    {
+      "file": "routers/phase_scans.py",
+      "old_line": 577,
+      "new_line": 579,
+      "mechanism": "require_authorized"
+    },
+    {
+      "file": "routers/phase_scans.py",
+      "old_line": 646,
+      "new_line": 648,
+      "mechanism": "require_authorized"
+    },
+    {
+      "file": "routers/phase_scans.py",
+      "old_line": 701,
+      "new_line": 703,
+      "mechanism": "require_authorized"
+    }
+  ]
+}

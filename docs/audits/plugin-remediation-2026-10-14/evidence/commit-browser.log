@@ -1,0 +1,254 @@
+
+> ccure-audit-pro-unified@2.0.0 test:browser
+> playwright test --project=chromium
+
+[WebServer] (node:2073780) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[WebServer]
+[WebServer] /assets/fonts/ux4g/noto-sans.woff2 referenced in /assets/fonts/ux4g/noto-sans.woff2 didn't resolve at build time, it will remain unchanged to be resolved at runtime
+
+
+Running 240 tests using 4 workers
+
+[1/240] [chromium] › browser-tests/audit-navigation.spec.mjs:15:3 › Audit navigation retains page scan and report access at 1440px in dark mode
+[2/240] [chromium] › browser-tests/audit-navigation.spec.mjs:15:3 › Audit navigation retains page scan and report access at 1440px in light mode
+[3/240] [chromium] › browser-tests/audit-navigation.spec.mjs:15:3 › Audit navigation retains page scan and report access at 320px in light mode
+[4/240] [chromium] › browser-tests/audit-navigation.spec.mjs:15:3 › Audit navigation retains page scan and report access at 320px in dark mode
+[5/240] [chromium] › browser-tests/audit-navigation.spec.mjs:99:3 › Common Platform retains its notification disclosure at 320px
+[6/240] [chromium] › browser-tests/audit-navigation.spec.mjs:99:3 › Common Platform retains its notification disclosure at 1440px
+[7/240] [chromium] › browser-tests/authentication.spec.mjs:48:3 › Authentication identity and document title: login
+[8/240] [chromium] › browser-tests/authentication.spec.mjs:48:3 › Authentication identity and document title: register
+[9/240] [chromium] › browser-tests/authentication.spec.mjs:48:3 › Authentication identity and document title: forgot
+[10/240] [chromium] › browser-tests/authentication.spec.mjs:48:3 › Authentication identity and document title: reset
+[11/240] [chromium] › browser-tests/authentication.spec.mjs:48:3 › Authentication identity and document title: verify
+[12/240] [chromium] › browser-tests/authentication.spec.mjs:56:1 › Authentication password reveal is keyboard reachable with visible focus
+[13/240] [chromium] › browser-tests/authentication.spec.mjs:90:1 › Authentication sign-in required validation and failure
+[14/240] [chromium] › browser-tests/authentication.spec.mjs:145:3 › Authentication loading is announced and prevents repeat submission: login
+[15/240] [chromium] › browser-tests/authentication.spec.mjs:145:3 › Authentication loading is announced and prevents repeat submission: forgot
+[16/240] [chromium] › browser-tests/authentication.spec.mjs:145:3 › Authentication loading is announced and prevents repeat submission: reset
+[17/240] [chromium] › browser-tests/authentication.spec.mjs:145:3 › Authentication loading is announced and prevents repeat submission: register
+[18/240] [chromium] › browser-tests/authentication.spec.mjs:174:1 › Authentication reset mismatch stays associated with its field
+[19/240] [chromium] › browser-tests/authentication.spec.mjs:195:1 › Authentication missing reset link offers recovery
+[20/240] [chromium] › browser-tests/authentication.spec.mjs:212:1 › Authentication expired session explains the next step
+[21/240] [chromium] › browser-tests/authentication.spec.mjs:234:1 › Authentication compatibility error uses the same CCure presentation
+[22/240] [chromium] › browser-tests/authentication.spec.mjs:251:1 › Authentication registration unavailable state names the platform
+[23/240] [chromium] › browser-tests/authentication.spec.mjs:272:3 › Authentication registration policy remains false across reloads
+[24/240] [chromium] › browser-tests/authentication.spec.mjs:272:3 › Authentication registration policy remains true across reloads
+[25/240] [chromium] › browser-tests/authentication.spec.mjs:310:1 › Authentication waits for delayed configuration without moving credentials or flashing signup
+[26/240] [chromium] › browser-tests/authentication.spec.mjs:353:3 › Authentication throttled configuration stays unknown and can be retried
+[27/240] [chromium] › browser-tests/authentication.spec.mjs:353:3 › Authentication unauthorized configuration stays unknown and can be retried
+[28/240] [chromium] › browser-tests/authentication.spec.mjs:353:3 › Authentication malformed configuration stays unknown and can be retried
+[29/240] [chromium] › browser-tests/authentication.spec.mjs:389:1 › Authentication direct registration waits for configuration and recovers without exposing a form
+[30/240] [chromium] › browser-tests/authentication.spec.mjs:415:1 › Authentication MFA email code and error retain the challenge
+[31/240] [chromium] › browser-tests/authentication.spec.mjs:446:1 › Authentication MFA verification loading prevents repeat submission
+[32/240] [chromium] › browser-tests/authentication.spec.mjs:469:1 › Authentication email verification pending state has an announced loader
+[33/240] [chromium] › browser-tests/authentication.spec.mjs:494:1 › Authentication legal dialogs preserve focus and approved copy
+[34/240] [chromium] › browser-tests/authentication.spec.mjs:513:1 › Authentication rendering failures recover through sign-in without scan claims or private diagnostics
+[35/240] [chromium] › browser-tests/branding-theme.spec.mjs:13:5 › platform header theme saves and survives reload at 1440px
+[36/240] [chromium] › browser-tests/branding-theme.spec.mjs:13:5 › platform header theme saves and survives reload at 320px
+[37/240] [chromium] › browser-tests/branding-theme.spec.mjs:13:5 › Audit header theme saves and survives reload at 320px
+[38/240] [chromium] › browser-tests/branding-theme.spec.mjs:13:5 › Audit header theme saves and survives reload at 1440px
+[39/240] [chromium] › browser-tests/branding-theme.spec.mjs:110:1 › platform identity and theme remain consistent across product entry pages
+[40/240] [chromium] › browser-tests/branding-theme.spec.mjs:144:1 › a failed theme save retains the confirmed theme and allows retry
+[41/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-home
+[42/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-users
+[43/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-deleted
+[44/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-organizations
+[45/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-domains
+[46/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-registration
+[47/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-roles
+[48/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-logs
+[49/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-policy
+[50/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-rank
+[51/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page common-ir
+[52/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b5-login-320
+[53/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b5-register-320
+[54/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b5-forgot-320
+[55/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b5-reset-320
+[56/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b5-verify-320
+[57/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b5-verify-complete-390
+[58/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ar-assets
+[59/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ar-services
+[60/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ar-tls
+[61/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page vb-grouped
+[62/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page vb-cve
+[63/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page sd-default
+[64/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p2-results
+[65/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p2-interactive
+[66/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p2-no-results
+[67/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p2-load-error
+[68/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p2-running
+[69/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p1-basic
+[70/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p1-phase2-done
+[71/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p1-unreachable
+[72/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p1-load-error
+[73/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page nm-org
+[74/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page nm-scan
+[75/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page sh-history
+[76/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page cr-report
+[77/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page cr-running
+[78/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page cr-unreachable
+[79/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p3-report
+[80/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page p3-report-modal
+[81/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ns-setup
+[82/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ns-running
+[83/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ns-failed
+[84/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page ns-unreachable
+[85/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page cw26b-controls
+[86/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b6-web-new-320
+[87/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b6-web-dashboard-320
+[88/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b6-web-list-320
+[89/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page b6-remediation-320
+[90/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-launcher
+[91/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-schedules
+[92/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-credentials
+[93/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-policies
+[94/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-configuration
+[95/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-validator
+[96/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-archived
+[97/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-recycle
+[98/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-reports
+[99/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-asset-detail
+[100/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-comparison
+[101/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-credentialed
+[102/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-web-assets
+[103/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-web-findings
+[104/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-web-detail
+[105/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-attack-surface
+[106/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-all-findings
+[107/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page extra-all-endpoints
+[108/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page amt-overview
+[109/240] [chromium] › browser-tests/closure.spec.mjs:6:3 › page sh-monitor
+[110/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state registration-loading
+[111/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state registration-unavailable
+[112/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state registration-readonly
+[113/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state registration-enabled
+[114/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state auth-loading
+[115/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state common-users-loading
+[116/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state common-users-denied
+[117/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-mfa-390
+[118/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-mfa-complete-390
+[119/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-terms-390
+[120/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-register-complete-390
+[121/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-forgot-complete-390
+[122/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-verify-complete-390
+[123/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-reset-complete-390
+[124/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-account-mfa-390
+[125/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state b5-account-password-390
+[126/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ar-assets-readonly
+[127/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ar-assets-empty
+[128/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ar-assets-error
+[129/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ar-services-dialog
+[130/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state vb-drawer
+[131/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state vb-drawer-accept
+[132/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state sd-noaccess
+[133/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state sd-empty
+[134/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state sd-error
+[135/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state p2-load-error
+[136/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state p1-load-error
+[137/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state sh-rerun-confirm
+[138/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ns-settings
+[139/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ns-validation
+[140/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ns-file-error
+[141/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state ns-failed
+[142/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state cw29-credentials-key
+[143/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state cw27-policy-dialog
+[144/240] [chromium] › browser-tests/closure.spec.mjs:26:3 › state cw30-remediate-dialog
+[145/240] [chromium] › browser-tests/keyboard.spec.mjs:48:3 › profile dropdown is the only sign-out action and clears the session at 320px
+[146/240] [chromium] › browser-tests/keyboard.spec.mjs:48:3 › profile dropdown is the only sign-out action and clears the session at 1440px
+[147/240] [chromium] › browser-tests/keyboard.spec.mjs:120:1 › mobile navigation confines focus, isolates background and restores the opener on Escape
+[148/240] [chromium] › browser-tests/keyboard.spec.mjs:150:1 › account menu arrows, Home/End, Escape and keyboard activation preserve account actions
+[149/240] [chromium] › browser-tests/keyboard.spec.mjs:172:1 › organization choices expose menu radio selection and preserve Escape focus
+[150/240] [chromium] › browser-tests/keyboard.spec.mjs:187:1 › nested account password dialog isolates its parent and restores both opener levels
+[151/240] [chromium] › browser-tests/keyboard.spec.mjs:229:1 › native settings radio arrows and Space operate the selected choice
+[152/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-home
+[153/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-users
+[154/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-deleted
+[155/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-organizations
+[156/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-domains
+[157/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-registration
+[158/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-roles
+[159/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-logs
+[160/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-policy
+[161/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-rank
+[162/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure common-ir
+[163/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ar-assets
+[164/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ar-services
+[165/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ar-tls
+[166/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure vb-grouped
+[167/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure vb-cve
+[168/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure sd-default
+[169/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p2-results
+[170/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p2-interactive
+[171/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p2-no-results
+[172/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p2-load-error
+[173/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p2-running
+[174/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p1-basic
+[175/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p1-phase2-done
+[176/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p1-unreachable
+[177/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p1-load-error
+[178/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure nm-org
+[179/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure nm-scan
+[180/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure sh-history
+[181/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure cr-report
+[182/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure cr-running
+[183/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure cr-unreachable
+[184/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p3-report
+[185/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure p3-report-modal
+[186/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ns-setup
+[187/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ns-running
+[188/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ns-failed
+[189/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure ns-unreachable
+[190/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure cw26b-controls
+[191/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-launcher
+[192/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-schedules
+[193/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-credentials
+[194/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-policies
+[195/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-configuration
+[196/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-validator
+[197/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-archived
+[198/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-recycle
+[199/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-reports
+[200/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-asset-detail
+[201/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-comparison
+[202/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-credentialed
+[203/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-web-assets
+[204/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-web-findings
+[205/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-web-detail
+[206/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-attack-surface
+[207/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-all-findings
+[208/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure extra-all-endpoints
+[209/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure amt-overview
+[210/240] [chromium] › browser-tests/page-structure.spec.mjs:50:3 › page structure sh-monitor
+[211/240] [chromium] › browser-tests/platform-navigation.spec.mjs:26:3 › Common Platform navigation preserves its shell at 320px in light mode
+[212/240] [chromium] › browser-tests/platform-navigation.spec.mjs:26:3 › Common Platform navigation preserves its shell at 320px in dark mode
+[213/240] [chromium] › browser-tests/platform-navigation.spec.mjs:26:3 › Common Platform navigation preserves its shell at 1440px in light mode
+[214/240] [chromium] › browser-tests/platform-navigation.spec.mjs:26:3 › Common Platform navigation preserves its shell at 1440px in dark mode
+[215/240] [chromium] › browser-tests/platform-navigation.spec.mjs:136:1 › desktop sidebar retains its scroll position on platform navigation
+[216/240] [chromium] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 320px in light mode
+[217/240] [chromium] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 320px in dark mode
+[218/240] [chromium] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 1440px in light mode
+[219/240] [chromium] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 1440px in dark mode
+[220/240] [chromium] › browser-tests/primitives.spec.mjs:8:1 › shared official primitives pass names, semantics and contrast in both themes
+[221/240] [chromium] › browser-tests/primitives.spec.mjs:22:1 › nested shared overlays isolate all background layers and restore focus in order
+[222/240] [chromium] › browser-tests/reflow.spec.mjs:16:1 › Common modules use the full available shell width on desktop
+[223/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow common-home
+[224/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow common-users
+[225/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow common-registration
+[226/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow b5-register-320
+[227/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow ar-assets
+[228/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow sd-default
+[229/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow ns-setup
+[230/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow extra-schedules
+[231/240] [chromium] › browser-tests/reflow.spec.mjs:42:3 › 200% and 400% equivalent reflow extra-credentialed
+[232/240] [chromium] › browser-tests/reflow.spec.mjs:53:1 › 200% text size keeps shared forms and navigation operable
+[233/240] [chromium] › browser-tests/reflow.spec.mjs:85:1 › long organization, account and administration text reflows
+[234/240] [chromium] › browser-tests/reflow.spec.mjs:122:1 › long Audit names, evidence and filters remain inside local scroll regions
+[235/240] [chromium] › browser-tests/reflow.spec.mjs:135:1 › drawers and destructive dialogs reflow at 400% equivalent viewport
+[236/240] [chromium] › browser-tests/registration-settings.spec.mjs:15:1 › Registration settings open from User Management and preserve navigation and focus
+[237/240] [chromium] › browser-tests/registration-settings.spec.mjs:54:1 › User administrators without registration permission cannot open the dialog through the URL
+[238/240] [chromium] › browser-tests/registration-settings.spec.mjs:75:1 › Superadmin policy saves control public signup across repeated reloads
+[239/240] [chromium] › browser-tests/registration-settings.spec.mjs:141:1 › Registration settings use authenticator step-up and can restore the deployment default
+[240/240] [chromium] › browser-tests/registration-settings.spec.mjs:192:1 › Conflicting policy saves retain the confirmed state and offer a reload
+  240 passed (5.2m)

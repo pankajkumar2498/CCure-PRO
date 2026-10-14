@@ -1738,30 +1738,26 @@ def _credentialed_plan_for_scan(db, scan_row) -> list[dict]:
             {"credential_id": "..."}                 # applies to every host
         ]
 
-    A malformed or inaccessible entry is skipped with a warning rather than
-    failing the scan: the unauthenticated results are still valid and worth
-    delivering, and the coverage block records that the credentialed pass did
-    not cover every host.
+    Validate the entire supplied scope before resolving any secret. A malformed
+    plan refuses enrichment and records incomplete coverage; an inaccessible
+    credential is skipped without widening the other credentials' scopes.
     """
-    import ipaddress
+    from core.credential_scope import credential_plan_entries
 
     if not scan_row or not scan_row.options:
         return []
-    raw = scan_row.options.get("credentials") or []
-    if isinstance(raw, dict):
-        raw = [raw]
-    if not isinstance(raw, list):
+    raw = scan_row.options.get("credentials")
+    try:
+        entries = credential_plan_entries(raw)
+    except ValueError:
+        log.warning(
+            "Credentialed enrichment refused an invalid credential scope for scan %s",
+            scan_row.id,
+        )
         return []
 
     plan: list[dict] = []
-    for entry in raw:
-        if isinstance(entry, str):
-            entry = {"credential_id": entry}
-        if not isinstance(entry, dict):
-            continue
-        credential_id = entry.get("credential_id")
-        if not credential_id:
-            continue
+    for credential_id, networks in entries:
         try:
             material = _resolve_stored_credential(db, str(scan_row.id), credential_id)
         except Exception as exc:  # noqa: BLE001 — one bad credential is not fatal
@@ -1773,15 +1769,7 @@ def _credentialed_plan_for_scan(db, scan_row) -> list[dict]:
             )
             continue
 
-        networks = []
-        for token in entry.get("targets") or []:
-            try:
-                networks.append(ipaddress.ip_network(str(token).strip(), strict=False))
-            except ValueError:
-                log.warning(
-                    "Credentialed enrichment: ignoring unparseable scope '%s'", token
-                )
-        plan.append({"material": material, "networks": networks or None})
+        plan.append({"material": material, "networks": networks})
     return plan
 
 
@@ -1952,11 +1940,11 @@ def _credential_for_host(plan: list[dict], ip: str) -> dict | None:
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
-        addr = None
+        return None
 
     for entry in plan:
         networks = entry["networks"]
-        if not networks:
+        if networks is None:
             return entry["material"]
         if addr is not None and any(addr in net for net in networks):
             return entry["material"]
@@ -2029,7 +2017,14 @@ def _apply_credentialed_enrichment(
         # asked for a credentialed audit had no way to tell they had not got
         # one.
         requested = (scan_row.options or {}).get("credentials") if scan_row else None
-        if requested:
+        from core.credential_scope import validate_credential_options
+
+        invalid_scope = False
+        try:
+            validate_credential_options(scan_row.options if scan_row else None)
+        except ValueError:
+            invalid_scope = True
+        if requested or invalid_scope:
             count = len(requested) if isinstance(requested, list) else 1
             log.error(
                 "Scan %s requested credentialed enrichment with %d credential(s) "
@@ -2047,7 +2042,7 @@ def _apply_credentialed_enrichment(
                     {
                         "target": "all",
                         "reason": (
-                            "Configured credentials could not be decrypted or "
+                            "Credential scope was invalid or configured credentials could not be "
                             "resolved. Results below are unauthenticated."
                         ),
                     }

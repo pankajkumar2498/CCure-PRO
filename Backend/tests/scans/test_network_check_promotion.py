@@ -730,8 +730,16 @@ class TestPreviouslyReportingAreasKeepReporting:
 
     def test_ldap_anonymous_bind(self):
         with patch.object(
-            ldap_probe, "_check_anonymous_bind", return_value={"allowed": True}
-        ), patch.object(ldap_probe, "_query_root_dse", return_value=None):
+            ldap_probe,
+            "_check_anonymous_bind",
+            return_value={
+                "allowed": True,
+                "directory_readable": True,
+                "entry_dn": "cn=public,dc=example,dc=test",
+                "attributes": ["objectClass"],
+                "status": "completed_with_findings",
+            },
+        ):
             result = ldap_probe.run("10.0.0.1", [389])
         assert "CCURE-CHK-LDAP-ANONYMOUS-BIND" in identifiers(result)
 
@@ -744,7 +752,14 @@ class TestPreviouslyReportingAreasKeepReporting:
 
     def test_dns_zone_transfer_and_open_recursion(self):
         with patch.object(
-            dns_probe, "_check_zone_transfer", return_value={"vulnerable": True}
+            dns_probe,
+            "_check_zone_transfer",
+            return_value={
+                "vulnerable": True,
+                "zone": "example.test.",
+                "records": 3,
+                "status": "completed_with_findings",
+            },
         ), patch.object(dns_probe, "_check_recursion", return_value=True):
             result = dns_probe.run("10.0.0.1", [53])
         assert "CCURE-CHK-DNS-ZONE-TRANSFER" in identifiers(result)
@@ -752,7 +767,9 @@ class TestPreviouslyReportingAreasKeepReporting:
 
     def test_a_locked_down_resolver_reports_nothing(self):
         with patch.object(
-            dns_probe, "_check_zone_transfer", return_value={"vulnerable": False}
+            dns_probe,
+            "_check_zone_transfer",
+            return_value={"vulnerable": False, "status": "completed_with_no_findings"},
         ), patch.object(dns_probe, "_check_recursion", return_value=False):
             result = dns_probe.run("10.0.0.1", [53])
         assert identifiers(result) == set()

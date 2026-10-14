@@ -1,0 +1,84 @@
+{
+  "base_head": "e10db6d",
+  "backend": {
+    "tests": 5401,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 5400,
+    "skips": [
+      {
+        "name": "test_activation_changes_exactly_two_settings_and_keeps_line_endings",
+        "class": "tests.repo.test_alembic_module_branches",
+        "reason": "alembic.ini is already activated (rehearsal copy or live)"
+      }
+    ],
+    "seconds": 690.45
+  },
+  "inventory_reproduction": {
+    "tests": 2,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 0,
+    "skips": []
+  },
+  "inventory_after": {
+    "tests": 69,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 69,
+    "skips": [],
+    "seconds": 69.04
+  },
+  "frontend_units": {
+    "files": 122,
+    "passed": 3171,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 217.18
+  },
+  "chromium": {
+    "startTime": "2026-10-14T15:27:22.493Z",
+    "duration": 309477.914,
+    "expected": 240,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "firefox_webkit_feature": {
+    "startTime": "2026-10-14T15:39:59.565Z",
+    "duration": 21875.415,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "inventory_permission_semantics_changed": false,
+  "csv_data_rows": 170,
+  "csv_fix": "Equivalent generated endpoint wording; identifiers and remaining fields unchanged",
+  "security_hooks": "all applicable hooks passed on complete staged allowlist; Gitleaks passed; YAML inapplicable; no commit-message hook because no commit",
+  "npm_runtime_audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 2,
+    "high": 0,
+    "critical": 0,
+    "total": 2
+  },
+  "scoped_python_dependency_audit": {
+    "distinct_advisories": 4,
+    "preexisting_accepted": 4,
+    "new_unaccepted": 0
+  },
+  "baseline_audit_staging": "Leave unstaged except targeted CSV/renderer fix, per user",
+  "preserved_unstaged_files": [
+    "Backend/ccure_platform/identity/mail_service.py",
+    "Backend/tests/auth/test_authentication_branding.py"
+  ],
+  "committed_cleanup_modified": false,
+  "commit_push_deploy_database_reset_performed": false,
+  "runtime_verification_limits": "See REPORT.md; no production-readiness or Nessus-parity claim",
+  "archival_metadata_redaction": "Two appearances of a public pytest JWK key ID masked in failure log; private key material never captured; JUnit contains no such identifiers"
+}

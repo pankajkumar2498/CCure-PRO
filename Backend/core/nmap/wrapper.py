@@ -862,7 +862,8 @@ class NmapScanner:
                     port=port_num,
                     protocol=proto,
                     state=p.get("state", "filtered"),
-                    service=p.get("name", "unknown"),
+                    service=("ssl/" if p.get("tunnel") == "ssl" else "")
+                    + p.get("name", "unknown"),
                     product=p.get("product", ""),
                     version=p.get("version", ""),
                     extra=p.get("extrainfo", ""),
@@ -962,6 +963,8 @@ class NmapScanner:
 
             if service_elem is not None:
                 service = service_elem.get("name", "unknown")
+                if service_elem.get("tunnel") == "ssl":
+                    service = f"ssl/{service}"
                 product = service_elem.get("product", "")
                 version_str = service_elem.get("version", "")
                 extra = service_elem.get("extrainfo", "")

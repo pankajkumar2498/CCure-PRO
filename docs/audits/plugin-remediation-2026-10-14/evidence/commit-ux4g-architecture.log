@@ -1,0 +1,5 @@
+
+> ccure-audit-pro-unified@2.0.0 ux4g:architecture
+> node scripts/check-ux4g-architecture.mjs
+
+[ux4g:architecture] PASS — shared UI boundaries, exception ratchet and documentation

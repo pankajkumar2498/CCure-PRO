@@ -678,6 +678,27 @@ def _scan_configuration(
         truncated_row = _truncated_searches_row(meta, summary)
         if truncated_row is not None:
             rows.append(truncated_row)
+        coverage = summary.get("network_plugin_coverage") or meta.get(
+            "network_plugin_coverage"
+        )
+        if isinstance(coverage, dict) and coverage.get("recorded"):
+            rows.append(
+                (
+                    "Network plugin coverage",
+                    (
+                        "Complete"
+                        if coverage.get("complete")
+                        else "Incomplete; absence of findings does not establish a clean assessment"
+                    ),
+                )
+            )
+            for outcome in coverage.get("incomplete", []):
+                rows.append(
+                    (
+                        f"{outcome.get('host')} / {outcome.get('plugin')}",
+                        f"{outcome.get('status')}: {outcome.get('detail', '')}",
+                    )
+                )
         rows.append(("Reporting QoD threshold", f"{QOD_REPORT_THRESHOLD}%"))
 
     # Rows a scan that authenticated adds to the above. They are appended only
@@ -2356,7 +2377,16 @@ def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     # Only real scanner output earns a block here. The synthesised fallback
     # merely restated Port / Service / Product / Version, all four of which are
     # already in the metadata grid a few lines above.
-    if finding.evidence and finding.evidence_available:
+    if finding.endpoint_observations and finding.evidence_available:
+        from core.checks.endpoint_evidence import render_observations
+
+        for observation in finding.endpoint_observations:
+            # Separate flowables preserve every endpoint and allow page breaks.
+            output = clean_control_chars(render_observations([observation]))
+            for offset in range(0, len(output), 1200):
+                elements.append(_p(output[offset : offset + 1200], styles["mono"]))
+                elements.append(Spacer(1, 1 * mm))
+    elif finding.evidence and finding.evidence_available:
         body, truncated = truncate_with_notice(
             clean_control_chars(finding.evidence), 1400
         )
@@ -2635,6 +2665,25 @@ class ScanReportGenerator:
         actionable = vuln_counts["Critical"] + vuln_counts["High"]
 
         assesses = _assesses_vulnerabilities(scan_type)
+        coverage = (
+            summary.get("network_plugin_coverage")
+            or meta.get("network_plugin_coverage")
+            or {}
+        )
+        if coverage.get("recorded") and not coverage.get("complete"):
+            story.append(
+                _p(
+                    "Network plugin coverage is incomplete; absence of findings does not establish a clean assessment.",
+                    styles["body"],
+                )
+            )
+            for outcome in coverage.get("incomplete", []):
+                story.append(
+                    _p(
+                        f"{outcome.get('host')} / {outcome.get('plugin')}: {outcome.get('status')} — {outcome.get('detail', '')}",
+                        styles["small"],
+                    )
+                )
         if not assesses:
             # A discovery scan runs no vulnerability checks. Saying "no
             # vulnerabilities were confirmed" over 0/0/0/0 tiles read as a
@@ -3380,12 +3429,16 @@ class ScanReportGenerator:
                 story.append(
                     _boxed(
                         _p(
-                            "No vulnerabilities were confirmed on this host. Open "
-                            "ports above are recorded for attack-surface review.",
+                            "No findings were reported on this host. "
+                            + (
+                                "Plugin coverage is incomplete or unverified; absence of findings does not establish a clean assessment."
+                                if not host.plugin_coverage.get("complete")
+                                else "Review the recorded scope alongside the open port inventory."
+                            ),
                             styles["body"],
                         ),
-                        colors.HexColor("#F0FDF4"),
-                        colors.HexColor("#86EFAC"),
+                        BG_ALT,
+                        BORDER,
                     )
                 )
                 continue

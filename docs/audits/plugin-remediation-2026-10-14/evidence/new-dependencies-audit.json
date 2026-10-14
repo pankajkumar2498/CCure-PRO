@@ -1,0 +1,114 @@
+{
+  "dependencies": [
+    {
+      "name": "pymongo",
+      "version": "4.18.3",
+      "vulns": []
+    },
+    {
+      "name": "ldap3",
+      "version": "2.9.1",
+      "vulns": []
+    },
+    {
+      "name": "pyasn1",
+      "version": "0.5.1",
+      "vulns": [
+        {
+          "id": "PYSEC-2026-2263",
+          "fix_versions": [
+            "0.6.3"
+          ],
+          "aliases": [
+            "CVE-2026-30922",
+            "GHSA-jr27-m4p2-rc6r"
+          ],
+          "description": "### Summary The `pyasn1` library is vulnerable to a Denial of Service (DoS) attack caused by uncontrolled recursion when decoding ASN.1 data with deeply nested structures. An attacker can supply a crafted payload containing nested `SEQUENCE` (`0x30`) or `SET` (`0x31`) tags with Indefinite Length (`0x80`) markers. This forces the decoder to recursively call itself until the Python interpreter crashes with a `RecursionError` or consumes all available memory (OOM), crashing the host application.  ### Details The vulnerability exists because the decoder iterates through the input stream and recursively calls `decodeFun` (the decoding callback) for every nested component found, without tracking or limiting the recursion depth. Vulnerable Code Locations: 1. `indefLenValueDecoder` (Line 998): ```for component in decodeFun(substrate, asn1Spec, allowEoo=True, **options):``` This method handles indefinite-length constructed types. It sits inside a `while True` loop and recursively calls the decoder for every nested tag.  2. `valueDecoder` (Lines 786 and 907): ```for component in decodeFun(substrate, componentType, **options):``` This method handles standard decoding when a schema is present. It contains two distinct recursive calls that lack depth checks: Line 786: Recursively decodes components of `SEQUENCE` or `SET` types. Line 907: Recursively decodes elements of `SEQUENCE OF` or `SET OF` types.  4. `_decodeComponentsSchemaless` (Line 661): ```for component in decodeFun(substrate, **options):``` This method handles decoding when no schema is provided.  In all three cases, `decodeFun` is invoked without passing a `depth` parameter or checking against a global `MAX_ASN1_NESTING` limit.  ### PoC ``` import sys from pyasn1.codec.ber import decoder  sys.setrecursionlimit(100000)  print(\"[*] Generating Recursion Bomb Payload...\") depth = 50_000 chunk = b'\\x30\\x80'  payload = chunk * depth  print(f\"[*] Payload size: {len(payload) / 1024:.2f} KB\") print(\"[*] Triggering Decoder...\")  try:     decoder.decode(payload) except RecursionError:     print(\"[!] Crashed: Recursion Limit Hit\") except MemoryError:     print(\"[!] Crashed: Out of Memory\") except Exception as e:     print(f\"[!] Crashed: {e}\") ```  ``` [*] Payload size: 9.77 KB [*] Triggering Decoder... [!] Crashed: Recursion Limit Hit ```  ### Impact - This is an unhandled runtime exception that typically terminates the worker process or thread handling the request. This allows a remote attacker to trivially kill service workers with a small payload (<100KB), resulting in a Denial of Service. Furthermore, in environments where recursion limits are increased, this leads to server-wide memory exhaustion. - Service Crash: Any service using `pyasn1` to parse untrusted ASN.1 data (e.g., LDAP, SNMP, Kerberos, X.509 parsers) can be crashed remotely. - Resource Exhaustion: The attack consumes RAM linearly with the nesting depth. A small payload (<200KB) can consume hundreds of megabytes of RAM or exhaust the stack.  ### Credits Vulnerability discovered by Kevin Tu of TMIR at ByteDance."
+        },
+        {
+          "id": "PYSEC-2026-2263",
+          "fix_versions": [
+            "0.6.3"
+          ],
+          "aliases": [
+            "CVE-2026-30922",
+            "GHSA-jr27-m4p2-rc6r"
+          ],
+          "description": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.3, the `pyasn1` library is vulnerable to a Denial of Service (DoS) attack caused by uncontrolled recursion when decoding ASN.1 data with deeply nested structures. An attacker can supply a crafted payload containing thousands of nested `SEQUENCE` (`0x30`) or `SET` (`0x31`) tags with \"Indefinite Length\" (`0x80`) markers. This forces the decoder to recursively call itself until the Python interpreter crashes with a `RecursionError` or consumes all available memory (OOM), crashing the host application. This is a distinct vulnerability from CVE-2026-23490 (which addressed integer overflows in OID decoding). The fix for CVE-2026-23490 (`MAX_OID_ARC_CONTINUATION_OCTETS`) does not mitigate this recursion issue. Version 0.6.3 fixes this specific issue."
+        },
+        {
+          "id": "PYSEC-2026-3456",
+          "fix_versions": [
+            "0.6.4"
+          ],
+          "aliases": [
+            "GHSA-8ppf-4f7h-5ppj",
+            "CVE-2026-59885"
+          ],
+          "description": "### Impact The BER/CER/DER decoders process OBJECT IDENTIFIER and RELATIVE-OID values in quadratic time relative to the number of arcs. A small crafted payload (tens of kilobytes) containing an OID with many arcs consumes seconds of CPU per decode() call, allowing denial of service in any application that decodes untrusted ASN.1 data (certificates, LDAP, SNMP, Kerberos, etc.). The corresponding encoders have the same quadratic behavior, reachable when an application re-encodes previously decoded attacker-supplied values.  The arc-size limit introduced for CVE-2026-23490 bounds the byte length of an individual arc but not the number of arcs, so it does not mitigate this issue.  ### Affected components ObjectIdentifierPayloadDecoder and RelativeOIDPayloadDecoder in pyasn1/codec/ber/decoder.py; ObjectIdentifierEncoder and RelativeOIDEncoder in pyasn1/codec/ber/encoder.py. The CER and DER codecs inherit these and are equally affected.  ### Patches Fixed in pyasn1 0.6.4: arc accumulation in both decoders and encoders now runs in linear time.  ### Workarounds Limit the size of untrusted ASN.1 input before decoding."
+        },
+        {
+          "id": "PYSEC-2026-3457",
+          "fix_versions": [
+            "0.6.4"
+          ],
+          "aliases": [
+            "CVE-2026-59886",
+            "GHSA-hm4w-wwcw-mr6r"
+          ],
+          "description": "### Impact The univ.Real type converted its (mantissa, base, exponent) value to a Python float using exact big-integer exponentiation. A BER/CER/DER-encoded REAL value only a few bytes long can carry a very large exponent, causing this computation to attempt to materialize an astronomically large integer.  Any operation that triggers float conversion on such a decoded value \u2014 prettyPrint(), str(), comparison, arithmetic, or an explicit float() call \u2014 consumes excessive CPU and memory, hanging the process. Applications that decode untrusted ASN.1 data and then print, log, or compare the decoded objects are vulnerable to denial of service. Decoding alone does not trigger the issue.  ### Affected components - pyasn1.type.univ.Real \u2014 float conversion (__float__() and everything built on it: prettyPrint(), str(), comparisons, arithmetic, int()) - Reachable through the pyasn1.codec.ber, cer, and der decoders, which produce Real objects from untrusted input; also via directly constructed Real values  The encoders and the native codec are not affected. Applications that never handle ASN.1 REAL values are not affected.  ### Patches Fixed in pyasn1 0.6.4. Binary (base-2) values are now converted with math.ldexp(), and decimal (base-10) values with exponents beyond float range raise OverflowError without constructing huge intermediate integers. Existing behavior is preserved: out-of-range values raise OverflowError and prettyPrint() renders them as <overflow>.  ### Workarounds Avoid converting, printing, or comparing decoded Real objects from untrusted sources; inspect the raw (mantissa, base, exponent) tuple instead."
+        },
+        {
+          "id": "PYSEC-2026-3457",
+          "fix_versions": [
+            "0.6.4"
+          ],
+          "aliases": [
+            "CVE-2026-59886",
+            "GHSA-hm4w-wwcw-mr6r"
+          ],
+          "description": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the univ.Real type converted its mantissa, base, and exponent value to a Python float using exact big-integer exponentiation. A BER, CER, or DER encoded REAL value only a few bytes long can carry a very large exponent, causing float conversion through prettyPrint(), str(), comparison, arithmetic, int(), or an explicit float() call to consume excessive CPU and memory and hang applications that decode untrusted ASN.1 data and then print, log, or compare decoded objects. This issue is fixed in version 0.6.4."
+        },
+        {
+          "id": "PYSEC-2026-3456",
+          "fix_versions": [
+            "0.6.4"
+          ],
+          "aliases": [
+            "GHSA-8ppf-4f7h-5ppj",
+            "CVE-2026-59885"
+          ],
+          "description": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the BER, CER, and DER decoders process OBJECT IDENTIFIER and RELATIVE-OID values in quadratic time relative to the number of arcs, so a small crafted payload containing an OID with many arcs consumes excessive CPU per decode() call and can deny service to applications that decode untrusted ASN.1 data. The corresponding encoders have the same quadratic behavior when an application re-encodes previously decoded attacker-supplied values. This issue is fixed in version 0.6.4."
+        },
+        {
+          "id": "PYSEC-2026-3455",
+          "fix_versions": [
+            "0.6.4"
+          ],
+          "aliases": [
+            "GHSA-m4p7-r5rc-7g4j",
+            "CVE-2026-59884"
+          ],
+          "description": "pyasn1 is a generic ASN.1 library for Python. Prior to 0.6.4, the BER decoder shared by the CER and DER codecs parses long-form tags by accumulating continuation octets without an upper bound on the tag ID size, allowing a crafted input to force construction of an arbitrarily large integer with CPU cost growing quadratically and to trigger unhandled ValueError exceptions in Python 3.11+ error formatting paths. Any application decoding untrusted BER, CER, or DER input is affected. This issue is fixed in version 0.6.4."
+        },
+        {
+          "id": "PYSEC-2026-3455",
+          "fix_versions": [
+            "0.6.4"
+          ],
+          "aliases": [
+            "GHSA-m4p7-r5rc-7g4j",
+            "CVE-2026-59884"
+          ],
+          "description": "### Impact The BER decoder (shared by the CER and DER codecs) parses long-form tags by accumulating continuation octets in a loop with no upper bound on the size of the tag ID. A crafted input can force the decoder to build an arbitrarily large integer, with CPU cost growing quadratically in input size \u2014 a ~1 MB input consumes over a minute of CPU. On Python 3.11+, the oversized tag ID can also trigger an unhandled `ValueError` (integer string conversion limit) while the decoder formats error messages, violating the documented `PyAsn1Error` contract and potentially bypassing caller error handling.  Any application decoding untrusted BER/CER/DER input is affected.  ### Affected components - `pyasn1.codec.ber.decoder` \u2014 `decode()` and `StreamingDecoder` - `pyasn1.codec.cer.decoder` and `pyasn1.codec.der.decoder`, which inherit   the same tag parsing - `pyasn1.type.tag` \u2014 `Tag`/`TagSet` reprs could raise `ValueError` when   rendering oversized tag IDs (reachable through decoder error paths)  The encoders and the `pyasn1.codec.native` codec are not affected.  ### Patches Fixed in 0.6.4. Long-form tag IDs are now limited to 20 octets (140-bit tag IDs, matching the existing OID arc limit); oversized tags are rejected with `PyAsn1Error`. Tag ID rendering in reprs and error messages was additionally hardened against the interpreter's integer-to-string conversion limit.  ### Workarounds Bound the size of untrusted input passed to `decode()` before calling it."
+        }
+      ]
+    },
+    {
+      "name": "dnspython",
+      "version": "2.9.0",
+      "vulns": []
+    }
+  ],
+  "fixes": []
+}

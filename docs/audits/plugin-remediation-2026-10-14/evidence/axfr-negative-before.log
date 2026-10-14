@@ -1,0 +1,49 @@
+....F                                                                    [100%]
+=================================== FAILURES ===================================
+____ test_d06_empty_or_incomplete_axfr_is_unknown_not_vulnerable[messages4] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f34e013ad10>
+messages = [<DNS message, ID 1269>]
+
+    @pytest.mark.parametrize(
+        "messages",
+        [
+            [],
+            [axfr_message()],
+            [axfr_message(soa())],
+            [axfr_message(soa(), soa(2))],
+            [axfr_message(soa(), soa(), soa())],
+        ],
+    )
+    def test_d06_empty_or_incomplete_axfr_is_unknown_not_vulnerable(monkeypatch, messages):
+        monkeypatch.setattr(dns.query, "xfr", lambda *a, **kw: iter(messages))
+        result = dns_probe._check_zone_transfer("192.0.2.1", "example.test.")
+>       assert result["vulnerable"] is None
+E       assert True is None
+
+tests/scans/test_plugin_remediation_p0.py:56: AssertionError
+--------------------------- Captured stderr teardown ---------------------------
+[20:08:25] INFO ccure.api - Shutting down
+---------------------------- Captured log teardown -----------------------------
+INFO     ccure.api:main.py:750 Shutting down
+=============================== warnings summary ===============================
+../../../home/ccure/.local/lib/python3.11/site-packages/starlette/testclient.py:41
+  /home/ccure/.local/lib/python3.11/site-packages/starlette/testclient.py:41: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    [], typing.ContextManager[anyio.abc.BlockingPortal]
+
+../../../home/ccure/.local/lib/python3.11/site-packages/passlib/utils/__init__.py:854
+  /home/ccure/.local/lib/python3.11/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+  /home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.7/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+-------- generated xml file: /tmp/ccure-plugin-axfr-negative-before.xml --------
+=========================== short test summary info ============================
+FAILED tests/scans/test_plugin_remediation_p0.py::test_d06_empty_or_incomplete_axfr_is_unknown_not_vulnerable[messages4]
+1 failed, 4 passed, 44 deselected, 6 warnings in 1.91s

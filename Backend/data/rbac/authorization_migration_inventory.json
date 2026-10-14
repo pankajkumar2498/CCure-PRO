@@ -1817,7 +1817,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 57,
+      "line": 58,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1827,7 +1827,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 393,
+      "line": 395,
       "function": "scan_host_discovery",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1837,7 +1837,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 577,
+      "line": 579,
       "function": "scan_asset_discovery",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1847,7 +1847,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 646,
+      "line": 648,
       "function": "scan_vulnerability_audit",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1857,7 +1857,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 701,
+      "line": 703,
       "function": "scan_phases",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",

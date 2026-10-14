@@ -1,0 +1,48 @@
+COMMAND: /usr/bin/python3 -m black --check Backend/core/checks/finding_normalizer.py Backend/core/models.py Backend/core/risk.py Backend/core/tasks.py Backend/engines/vulnerability/plugin_selector.py Backend/engines/vulnerability/plugins/__init__.py Backend/engines/vulnerability/plugins/default_creds.py Backend/engines/vulnerability/plugins/dns_probe.py Backend/engines/vulnerability/plugins/heartbleed_probe.py Backend/engines/vulnerability/plugins/http_analyzer.py Backend/engines/vulnerability/plugins/ldap_probe.py Backend/engines/vulnerability/plugins/nuclei_probe.py Backend/engines/vulnerability/plugins/smb_probe.py Backend/engines/vulnerability/plugins/ssh_probe.py Backend/engines/vulnerability/plugins/tls_scanner.py Backend/engines/vulnerability/vulnerability_engine.py Backend/orchestrator/scan_orchestrator.py Backend/reporting/exports.py Backend/reporting/pdf_generator.py Backend/routers/phase_scans.py Backend/scans/asset_syncer.py Backend/tests/scans/test_network_check_promotion.py Backend/core/checks/probe_endpoints.py Backend/core/checks/plugin_outcomes.py Backend/core/checks/endpoint_evidence.py Backend/core/credential_scope.py Backend/tests/scans/test_plugin_remediation_p1.py Backend/tests/scans/test_plugin_remediation_pipeline.py Backend/tests/scans/test_plugin_remediation_p0.py Backend/core/nmap/wrapper.py Backend/engines/vulnerability/plugins/ftp_checker.py
+All done! ✨ 🍰 ✨
+31 files would be left unchanged.
+EXIT: 0
+COMMAND: /usr/bin/python3 -m ruff check --select=E,F,W --ignore=E402,F401,F841,E711,E712,E741,F601,E722,F821,E501 Backend/core/checks/finding_normalizer.py Backend/core/models.py Backend/core/risk.py Backend/core/tasks.py Backend/engines/vulnerability/plugin_selector.py Backend/engines/vulnerability/plugins/__init__.py Backend/engines/vulnerability/plugins/default_creds.py Backend/engines/vulnerability/plugins/dns_probe.py Backend/engines/vulnerability/plugins/heartbleed_probe.py Backend/engines/vulnerability/plugins/http_analyzer.py Backend/engines/vulnerability/plugins/ldap_probe.py Backend/engines/vulnerability/plugins/nuclei_probe.py Backend/engines/vulnerability/plugins/smb_probe.py Backend/engines/vulnerability/plugins/ssh_probe.py Backend/engines/vulnerability/plugins/tls_scanner.py Backend/engines/vulnerability/vulnerability_engine.py Backend/orchestrator/scan_orchestrator.py Backend/reporting/exports.py Backend/reporting/pdf_generator.py Backend/routers/phase_scans.py Backend/scans/asset_syncer.py Backend/tests/scans/test_network_check_promotion.py Backend/core/checks/probe_endpoints.py Backend/core/checks/plugin_outcomes.py Backend/core/checks/endpoint_evidence.py Backend/core/credential_scope.py Backend/tests/scans/test_plugin_remediation_p1.py Backend/tests/scans/test_plugin_remediation_pipeline.py Backend/tests/scans/test_plugin_remediation_p0.py Backend/core/nmap/wrapper.py Backend/engines/vulnerability/plugins/ftp_checker.py
+All checks passed!
+EXIT: 0
+COMMAND: /usr/bin/python3 -m bandit -lll -x tests Backend/core/checks/finding_normalizer.py Backend/core/models.py Backend/core/risk.py Backend/core/tasks.py Backend/engines/vulnerability/plugin_selector.py Backend/engines/vulnerability/plugins/__init__.py Backend/engines/vulnerability/plugins/default_creds.py Backend/engines/vulnerability/plugins/dns_probe.py Backend/engines/vulnerability/plugins/heartbleed_probe.py Backend/engines/vulnerability/plugins/http_analyzer.py Backend/engines/vulnerability/plugins/ldap_probe.py Backend/engines/vulnerability/plugins/nuclei_probe.py Backend/engines/vulnerability/plugins/smb_probe.py Backend/engines/vulnerability/plugins/ssh_probe.py Backend/engines/vulnerability/plugins/tls_scanner.py Backend/engines/vulnerability/vulnerability_engine.py Backend/orchestrator/scan_orchestrator.py Backend/reporting/exports.py Backend/reporting/pdf_generator.py Backend/routers/phase_scans.py Backend/scans/asset_syncer.py Backend/core/checks/probe_endpoints.py Backend/core/checks/plugin_outcomes.py Backend/core/checks/endpoint_evidence.py Backend/core/credential_scope.py Backend/core/nmap/wrapper.py Backend/engines/vulnerability/plugins/ftp_checker.py
+[main]	INFO	profile include tests: None
+[main]	INFO	profile exclude tests: None
+[main]	INFO	cli include tests: None
+[main]	INFO	cli exclude tests: None
+[main]	INFO	running on Python 3.12.3
+[manager]	WARNING	Test in comment: fixed is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: argv is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: no is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: shell is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: binary is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: path is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: resolved is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: below is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: fixed is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: argv is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: shell is not a test name or id, ignoring
+[manager]	WARNING	Test in comment: False is not a test name or id, ignoring
+Run started:2026-10-14 14:41:12.180996+00:00
+
+Test results:
+	No issues identified.
+
+Code scanned:
+	Total lines of code: 20623
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 3
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 23
+		Medium: 14
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 17
+		High: 20
+Files skipped (0):
+EXIT: 0

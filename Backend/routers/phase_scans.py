@@ -27,6 +27,7 @@ from db.base import get_db
 from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
+from core.credential_scope import validate_credential_options
 from scan_helpers import (
     VALID_PIPELINE_MODES,
     is_phase_in_pipeline,
@@ -247,6 +248,7 @@ class HostDiscoveryRequest(BaseModel):
         None,
         description="Additional scan configurations including SNMP credentials for topology mapping",
     )
+    _check_credential_options = field_validator("options")(validate_credential_options)
     passive_first: bool | None = Field(
         None, description="Bypass active scan on hosts already resolved passively"
     )

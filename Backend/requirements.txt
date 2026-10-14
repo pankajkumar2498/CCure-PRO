@@ -162,7 +162,8 @@ pytest-asyncio
 
 # ── Optional enhancements ─────────────────────────────────────────────────────
 # pyOpenSSL          # deeper TLS inspection in tls_scanner plugin
-# python-ldap3       # direct LDAP queries in ldap_probe plugin
+ldap3>=2.9.1,<3       # protocol-correct anonymous LDAP search checks
+pymongo>=4.10,<5      # protocol-correct unauthenticated command checks
 impacket==0.13.1   # Windows credentialed scan over SMB / Remote Registry / WMI.
                    # Declared, not optional: the import is reached at scan time
                    # by engines/credentialed/smb_executor.py, which is the

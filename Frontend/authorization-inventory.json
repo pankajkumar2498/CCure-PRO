@@ -241,28 +241,28 @@
     },
     {
       "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 724,
+      "line": 731,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 725,
+      "line": 732,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 726,
+      "line": 733,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 727,
+      "line": 734,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -367,7 +367,7 @@
     },
     {
       "file": "src/modules/audit/pages/scan/Phase3Results.jsx",
-      "line": 811,
+      "line": 819,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"

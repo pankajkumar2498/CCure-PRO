@@ -1,0 +1,18 @@
+
+> ccure-audit-pro-unified@2.0.0 test:browser
+> playwright test --project=webkit browser-tests/plugin-coverage.spec.mjs
+
+[WebServer] (node:1847891) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[WebServer]
+[WebServer] /assets/fonts/ux4g/noto-sans.woff2 referenced in /assets/fonts/ux4g/noto-sans.woff2 didn't resolve at build time, it will remain unchanged to be resolved at runtime
+
+
+Running 4 tests using 4 workers
+
+[1/4] [webkit] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 1440px in dark mode
+[2/4] [webkit] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 320px in dark mode
+[3/4] [webkit] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 320px in light mode
+[4/4] [webkit] › browser-tests/plugin-coverage.spec.mjs:69:5 › incomplete plugin coverage at 1440px in light mode
+  4 passed (14.2s)

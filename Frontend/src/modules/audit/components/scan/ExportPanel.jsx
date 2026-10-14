@@ -512,7 +512,7 @@ export default function ExportPanel({
           .filter((h) => h.is_active)
           .map(
             (h) =>
-              `${h.ip_address.padEnd(16)} ${(h.host_risk_level || "Info").padEnd(10)} ${h.host_risk_score ?? 0}/100  CVEs: ${(h.cves || []).length.toString().padEnd(4)} Active Findings: ${[h.heartbleed_info?.vulnerable ? "Heartbleed" : "", h.smb_ms17010_info?.ms17010_likely ? "MS17-010" : "", h.ldap_info?.anonymous_bind?.allowed ? "LDAP" : "", h.dns_info?.zone_transfer?.vulnerable ? "AXFR" : ""].filter(Boolean).join(",") || "None"}`,
+              `${h.ip_address.padEnd(16)} ${(h.host_risk_level || "Info").padEnd(10)} ${h.host_risk_score ?? 0}/100  CVEs: ${(h.cves || []).length.toString().padEnd(4)} Active Findings: ${[h.heartbleed_info?.vulnerable ? "Heartbleed" : "", h.smb_ms17010_info?.ms17010_likely ? "MS17-010" : "", h.ldap_info?.anonymous_bind?.directory_readable === true ? "LDAP" : "", h.dns_info?.zone_transfer?.vulnerable ? "AXFR" : ""].filter(Boolean).join(",") || "None"}`,
           ),
       ];
     }

@@ -1,0 +1,19 @@
+Detect hardcoded secrets.................................................Passed
+check yaml...........................................(no files to check)Skipped
+check for added large files..............................................Passed
+fix end of files.........................................................Failed
+- hook id: end-of-file-fixer
+- exit code: 1
+
+Fixing docs/audits/plugin-remediation-2026-10-14/evidence/frontend-lint.log
+Fixing docs/audits/plugin-remediation-2026-10-14/evidence/frontend-unit.log
+
+trim trailing whitespace.................................................Passed
+black....................................................................Passed
+ruff.....................................................................Passed
+bandit...................................................................Passed
+prettier.................................................................Passed
+eslint...................................................................Passed
+regenerate the API contract (Backend/openapi.json).......................Passed
+- hook id: openapi-contract
+- duration: 6.13s

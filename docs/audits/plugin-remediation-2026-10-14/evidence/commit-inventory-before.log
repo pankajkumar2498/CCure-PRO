@@ -1,0 +1,136 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+____________________ test_the_inventory_has_no_legacy_site _____________________
+
+    def test_the_inventory_has_no_legacy_site():
+        from scripts.rbac import build_migration_inventory as bi
+
+        inv = bi.build()
+        assert inv["summary"]["legacy"] == 0
+>       assert bi.INVENTORY.read_text(encoding="utf-8") == bi.render(inv)
+E       assert '{\n  "schema...  }\n  ]\n}\n' == '{\n  "schema...  }\n  ]\n}\n'
+E         Skipping 66956 identical leading characters in diff, use -v to show
+E         Skipping 29287 identical trailing characters in diff, use -v to show
+E         -  "line": 58,
+E         ?           ^
+E         +  "line": 57,
+E         ?           ^
+E                 "function": "_resolve_org",...
+E
+E         ...Full output truncated (52 lines hidden), use '-vv' to show
+
+tests/repo/test_rbac_final_ratchet.py:172: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+
+  Creating table partitions (Enterprise Mode)...
+    ✓ All partitions already exist for 'audit_logs'
+    ⚠ Skipping partitions for 'asset_vulnerabilities' — table exists as a regular (non-partitioned) table.
+
+============================================================
+  Step 3: Seeding Default Organization (Stripe-Style ID)
+============================================================
+  + Created default organization: 'CCure Development' (id=org_development)
+  ✔ ID is human-readable: 'org_development' (not a UUID!)
+---------------------------- Captured stderr setup -----------------------------
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.autogenerate.schemas
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.autogenerate.tables
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.autogenerate.types
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.autogenerate.constraints
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.autogenerate.defaults
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.autogenerate.comments
+[21:08:20] INFO alembic.runtime.plugins - setup plugin alembic.ext.checkconstraint_byname
+[21:08:20] INFO alembic.runtime.migration - Context impl PostgresqlImpl.
+[21:08:20] INFO alembic.runtime.migration - Will assume transactional DDL.
+[21:08:20] INFO ccure.audit.hardening - audit_logs append-only enforcement applied (row trigger + 9 truncate triggers, DELETE/TRUNCATE revoked from ccure_user)
+[21:08:20] INFO core.rate_limit_middleware - Baseline API rate limit active: 600/minute per client IP
+[21:08:20] INFO core.ip_resolver - Client IP resolution trusts 3 proxy range(s): 127.0.0.1/32, ::1/128, 172.18.0.1/32
+[21:08:20] INFO ccure.security - Token keyset: REDACTED (active)
+[21:08:20] INFO ccure.security - Token issuance: ES256 with key PU7oSa4sG5LYntTh2Q4EjhyldLlQY21opSV31Kua3KE
+[21:08:20] INFO ccure.security - Service identities: none registered (CCURE_SERVICE_REGISTRY_DIR unset)
+[21:08:20] WARNING ccure.audit.hardening - Audit tamper-evidence chain NOT INSTALLED — 0 audit event(s) carry no hash and cannot be verified. A database administrator must run scripts/audit/bootstrap_chain.sql as a superuser; the application role cannot install it. (head table: missing, insert trigger: missing)
+[21:08:20] INFO ccure.api - Database connection verified
+[21:08:21] INFO ccure.api - User, scan, topology, mac vendor and email security schemas verified and migrated
+[21:08:21] WARNING ccure.api - Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded.
+[21:08:21] INFO ccure.api - Compliance catalog (ISO 27001, NIST CSF v2.0, SOC 2 Type II, CERT-In 2022, PCI-DSS v4.0, DPDP Act 2023, GDPR, NIST SP 800-53 Rev. 5, IEC 62443, NIST SP 800-82 Rev. 3 frameworks, controls & rules) fully present and synchronized.
+[21:08:21] INFO ccure.orchestrator - ScanOrchestrator ready — platform=linux, priv=False, intensity=normal
+[21:08:21] INFO ccure.api - HostDiscoveryAPI initialised
+[21:08:21] INFO conftest - Reference data seeded; preserving 1 organisation(s), 14 framework(s) and 1046 control(s) across resets
+------------------------------ Captured log setup ------------------------------
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.schemas
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.tables
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.types
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.constraints
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.defaults
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.autogenerate.comments
+INFO     alembic.runtime.plugins:plugins.py:37 setup plugin alembic.ext.checkconstraint_byname
+INFO     alembic.runtime.migration:migration.py:205 Context impl PostgresqlImpl.
+INFO     alembic.runtime.migration:migration.py:208 Will assume transactional DDL.
+INFO     ccure.audit.hardening:audit_hardening.py:363 audit_logs append-only enforcement applied (row trigger + 9 truncate triggers, DELETE/TRUNCATE revoked from ccure_user)
+INFO     core.rate_limit_middleware:rate_limit_middleware.py:111 Baseline API rate limit active: 600/minute per client IP
+INFO     core.ip_resolver:ip_resolver.py:71 Client IP resolution trusts 3 proxy range(s): 127.0.0.1/32, ::1/128, 172.18.0.1/32
+INFO     ccure.security:main.py:139 Token keyset: REDACTED (active)
+INFO     ccure.security:main.py:160 Token issuance: ES256 with key PU7oSa4sG5LYntTh2Q4EjhyldLlQY21opSV31Kua3KE
+INFO     ccure.security:main.py:174 Service identities: none registered (CCURE_SERVICE_REGISTRY_DIR unset)
+WARNING  ccure.audit.hardening:audit_hardening.py:525 Audit tamper-evidence chain NOT INSTALLED — 0 audit event(s) carry no hash and cannot be verified. A database administrator must run scripts/audit/bootstrap_chain.sql as a superuser; the application role cannot install it. (head table: missing, insert trigger: missing)
+INFO     ccure.api:main.py:206 Database connection verified
+INFO     ccure.api:main.py:224 User, scan, topology, mac vendor and email security schemas verified and migrated
+WARNING  ccure.api:main.py:334 Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded.
+INFO     ccure.api:main.py:629 Compliance catalog (ISO 27001, NIST CSF v2.0, SOC 2 Type II, CERT-In 2022, PCI-DSS v4.0, DPDP Act 2023, GDPR, NIST SP 800-53 Rev. 5, IEC 62443, NIST SP 800-82 Rev. 3 frameworks, controls & rules) fully present and synchronized.
+INFO     ccure.orchestrator:scan_orchestrator.py:1428 ScanOrchestrator ready — platform=linux, priv=False, intensity=normal
+INFO     ccure.api:main.py:638 HostDiscoveryAPI initialised
+INFO     conftest:conftest.py:903 Reference data seeded; preserving 1 organisation(s), 14 framework(s) and 1046 control(s) across resets
+----------------------------- Captured stderr call -----------------------------
+[21:08:26] INFO ccure.api - Starting automatic 24-hour incremental NVD catalogue sync into vulnerability_definitions...
+[21:08:26] INFO scans.nvd_sync - NVD incremental sync: 2026-07-16T15:38:26.559631+00:00 .. 2026-10-14T15:38:26.559631+00:00 (1 window(s), at most 120 days each).
+------------------------------ Captured log call -------------------------------
+INFO     ccure.api:main.py:734 Starting automatic 24-hour incremental NVD catalogue sync into vulnerability_definitions...
+INFO     scans.nvd_sync:nvd_sync.py:436 NVD incremental sync: 2026-07-16T15:38:26.559631+00:00 .. 2026-10-14T15:38:26.559631+00:00 (1 window(s), at most 120 days each).
+_____________ test_the_file_is_exactly_what_the_generator_produces _____________
+
+    def test_the_file_is_exactly_what_the_generator_produces():
+>       assert bi.INVENTORY.read_text(encoding="utf-8") == bi.render(
+            bi.build()
+        ), "run: python -m scripts.rbac.build_migration_inventory --write"
+E       AssertionError: run: python -m scripts.rbac.build_migration_inventory --write
+E       assert '{\n  "schema...  }\n  ]\n}\n' == '{\n  "schema...  }\n  ]\n}\n'
+E         Skipping 66956 identical leading characters in diff, use -v to show
+E         Skipping 29287 identical trailing characters in diff, use -v to show
+E         -  "line": 58,
+E         ?           ^
+E         +  "line": 57,
+E         ?           ^
+E                 "function": "_resolve_org",...
+E
+E         ...Full output truncated (52 lines hidden), use '-vv' to show
+
+tests/rbac/test_rbac_migration_inventory.py:35: AssertionError
+----------------------------- Captured stderr call -----------------------------
+[21:08:30] INFO httpx - HTTP Request: GET https://services.nvd.nist.gov/rest/json/cves/2.0?lastModStartDate=2026-07-16T15%3A38%3A26.559631%2B00%3A00&lastModEndDate=2026-10-14T15%3A38%3A26.559631%2B00%3A00&resultsPerPage=2000&startIndex=0 "HTTP/1.1 200 OK"
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: GET https://services.nvd.nist.gov/rest/json/cves/2.0?lastModStartDate=2026-07-16T15%3A38%3A26.559631%2B00%3A00&lastModEndDate=2026-10-14T15%3A38%3A26.559631%2B00%3A00&resultsPerPage=2000&startIndex=0 "HTTP/1.1 200 OK"
+--------------------------- Captured stderr teardown ---------------------------
+[21:08:35] INFO ccure.api - Shutting down
+---------------------------- Captured log teardown -----------------------------
+INFO     ccure.api:main.py:750 Shutting down
+=============================== warnings summary ===============================
+../../../home/ccure/.local/lib/python3.11/site-packages/starlette/testclient.py:41
+  /home/ccure/.local/lib/python3.11/site-packages/starlette/testclient.py:41: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    [], typing.ContextManager[anyio.abc.BlockingPortal]
+
+../../../home/ccure/.local/lib/python3.11/site-packages/passlib/utils/__init__.py:854
+  /home/ccure/.local/lib/python3.11/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+../../../home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284
+  /home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.7/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+------ generated xml file: /tmp/ccure-plugin-commit-inventory-before.xml -------
+=========================== short test summary info ============================
+FAILED tests/repo/test_rbac_final_ratchet.py::test_the_inventory_has_no_legacy_site
+FAILED tests/rbac/test_rbac_migration_inventory.py::test_the_file_is_exactly_what_the_generator_produces
+2 failed, 6 warnings in 15.50s

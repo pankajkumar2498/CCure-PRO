@@ -1,0 +1,49 @@
+
+> ccure-audit-pro-unified@2.0.0 prebuild
+> node scripts/build-ux4g-assets.mjs
+
+
+[ux4g] ux4g-web-components@3.0.2  mode=tokens
+  ──────────────────────────────────────────────────────────────────
+  keep  Noto Sans                     1996.6 kB →   868.5 kB  noto-sans.woff2
+  drop  Noto Sans Display                (deferred delivery)
+  drop  UX4G Material Icons              (deferred delivery)
+  drop  UX4G Material Icons Outlined     (deferred delivery)
+  drop  UX4G Material Icons Round        (deferred delivery)
+  drop  UX4G Material Icons Sharp        (deferred delivery)
+  drop  UX4G Material Icons TwoTone      (deferred delivery)
+  ──────────────────────────────────────────────────────────────────
+  stylesheet    8175.5 kB →    60.1 kB
+  fonts              7 faces → 1 file(s), 868.5 kB
+
+  css      → src/design-system/tokens/ux4g.generated.css
+  fonts    → public/assets/fonts/ux4g (1 files)
+  manifest → src/design-system/tokens/ux4g.generated.manifest.json
+  checks   → version pinned, reset shape, no data: fonts, no external origins, face/file parity
+
+
+> ccure-audit-pro-unified@2.0.0 build
+> vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 328 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     1.36 kB │ gzip:   0.77 kB
+dist/assets/index-fUcAAlko.css    588.75 kB │ gzip:  72.56 kB
+dist/assets/index-3NQWAoBZ.js   1,747.03 kB │ gzip: 464.38 kB
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/shell/api/axiosInstance.js is dynamically imported by src/modules/audit/pages/SecurityDashboard.jsx but also statically imported by src/modules/audit/api/assets.js, src/modules/audit/api/comparison.js, src/modules/audit/api/complianceSchedules.js, src/modules/audit/api/configAudit.js, src/modules/audit/api/credentialedScan.js, ..., dynamic import will not move module into another chunk.
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.66s
+
+> ccure-audit-pro-unified@2.0.0 postbuild
+> node scripts/check-ux4g-foundation.mjs --dist
+
+[ux4g:check] PASS {"package":"ux4g-web-components","version":"3.0.2","installedPackages":364,"delivery":"tokens","runtimeEnabled":false}

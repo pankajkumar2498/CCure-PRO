@@ -303,6 +303,7 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
     misreport every scan whose policy has moved on.
     """
     from core.findings.comparison import policy_context
+    from core.checks.plugin_outcomes import coverage_summary
 
     org_name = organisation_name(db, scan)
 
@@ -324,6 +325,7 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
         # None for a scan that never recorded its candidate searches; [] for
         # one where every search ran to completion. See core.candidate_enumeration.
         "candidate_searches_truncated": _truncated_searches(db, scan),
+        "network_plugin_coverage": coverage_summary(_scan_hosts(db, scan)),
         "exported_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -395,6 +397,25 @@ def scan_context_rows(context: Mapping[str, Any]) -> List[List[str]]:
         ["Exported At", _text(context.get("exported_at"))],
     ]
     truncated = context.get("candidate_searches_truncated")
+    coverage = context.get("network_plugin_coverage") or {}
+    if coverage.get("recorded"):
+        rows.append(
+            [
+                "Network plugin coverage",
+                (
+                    "Complete"
+                    if coverage.get("complete")
+                    else "Incomplete; absence of findings does not establish a clean assessment"
+                ),
+            ]
+        )
+        for outcome in coverage.get("incomplete", []):
+            rows.append(
+                [
+                    f"{outcome.get('host')} / {outcome.get('plugin')}",
+                    f"{outcome.get('status')}: {outcome.get('detail', '')}",
+                ]
+            )
     if truncated is not None:
         rows.append(
             [

@@ -176,7 +176,9 @@ class HostResult:
 
     # v2 enrichment
     tls_info: dict = field(default_factory=dict)
+    tls_endpoints: list = field(default_factory=list)
     http_audit: dict = field(default_factory=dict)
+    http_endpoints: list = field(default_factory=list)
     snmp_info: dict = field(default_factory=dict)
     smb_info: dict = field(default_factory=dict)
     ssh_info: dict = field(default_factory=dict)
@@ -196,6 +198,8 @@ class HostResult:
     #: A truncated search leaves candidates that were never evaluated; recorded
     #: here so the report can say so instead of the worker log alone.
     candidate_enumeration: dict = field(default_factory=dict)
+    plugin_outcomes: list = field(default_factory=list)
+    plugin_coverage: dict = field(default_factory=dict)
     host_risk_score: int = 0  # 0-100
     host_risk_level: str = "Info"  # Critical / High / Medium / Low / Info
     _ot_probed: bool = False
@@ -279,7 +283,9 @@ class HostResult:
             "os_confidence",
             "response_time_ms",
             "tls_info",
+            "tls_endpoints",
             "http_audit",
+            "http_endpoints",
             "snmp_info",
             "smb_info",
             "ssh_info",
@@ -289,6 +295,8 @@ class HostResult:
             "vulnerability_counts",
             "candidates_evaluated",
             "candidate_enumeration",
+            "plugin_outcomes",
+            "plugin_coverage",
             "host_risk_score",
             "host_risk_level",
             "device_category",

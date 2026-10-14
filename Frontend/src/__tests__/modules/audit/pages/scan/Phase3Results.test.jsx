@@ -213,7 +213,7 @@ const P3_HOSTS = [
       { cve_id: "CVE-2023-1", severity: null, cvss_score: 0 },
     ],
     heartbleed_info: { vulnerable: true },
-    ldap_info: { anonymous_bind: { allowed: true } },
+    ldap_info: { anonymous_bind: { allowed: true, directory_readable: true } },
     ftp_info: {
       open: true,
       banner: `220 ${"x".repeat(130)}`,
@@ -1239,6 +1239,21 @@ describe("Phase3Results — contract", () => {
   });
 
   describe("the risk report", () => {
+    it("does not promote a bind-only LDAP result", async () => {
+      await loaded({
+        ...REPORT,
+        cc_phase3AuditResults: [
+          {
+            ...P3_HOSTS[0],
+            ldap_info: {
+              anonymous_bind: { allowed: true, directory_readable: null },
+            },
+          },
+        ],
+      });
+      expect(squash(await openReport())).not.toMatch(/LDAP Anon Bind/);
+    });
+
     it("is titled with the scan number and target", async () => {
       await loaded(REPORT);
       const d = await openReport();
@@ -1247,7 +1262,7 @@ describe("Phase3Results — contract", () => {
       expect(text).toMatch(/Scan No\. 3207 - Target: 10\.50\.0\.0\/28/);
       expect(text).toMatch(/Full Pipeline Complete/);
       expect(text).toMatch(
-        /All scan phases finished successfully\. Complete vulnerability analysis and risk assessment below\./,
+        /Scan execution has finished\. Review plugin coverage alongside the observed findings and risk assessment below\./,
       );
     });
 
@@ -1490,7 +1505,7 @@ describe("Phase3Results — contract", () => {
         cc_phase3AuditResults: [P3_HOSTS[1], P3_HOSTS[2]],
       });
       expect(squash(await openReport())).toMatch(
-        /No vulnerabilities found in this scan\./,
+        /No findings were reported\. Review plugin coverage before interpreting this result\./,
       );
     });
 

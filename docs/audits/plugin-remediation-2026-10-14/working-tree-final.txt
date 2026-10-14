@@ -1,0 +1,164 @@
+ M Backend/ccure_platform/identity/mail_service.py
+ M Backend/ccure_platform/modules/registry.py
+ M Backend/ccure_policy/README.md
+ M Backend/ccure_rank/README.md
+ M Backend/core/checks/finding_normalizer.py
+ M Backend/core/models.py
+ M Backend/core/nmap/wrapper.py
+ M Backend/core/risk.py
+ M Backend/core/tasks.py
+ M Backend/engines/vulnerability/plugin_selector.py
+ M Backend/engines/vulnerability/plugins/__init__.py
+ M Backend/engines/vulnerability/plugins/default_creds.py
+ M Backend/engines/vulnerability/plugins/dns_probe.py
+ M Backend/engines/vulnerability/plugins/ftp_checker.py
+ M Backend/engines/vulnerability/plugins/heartbleed_probe.py
+ M Backend/engines/vulnerability/plugins/http_analyzer.py
+ M Backend/engines/vulnerability/plugins/ldap_probe.py
+ M Backend/engines/vulnerability/plugins/nuclei_probe.py
+ M Backend/engines/vulnerability/plugins/smb_probe.py
+ M Backend/engines/vulnerability/plugins/ssh_probe.py
+ M Backend/engines/vulnerability/plugins/tls_scanner.py
+ M Backend/engines/vulnerability/vulnerability_engine.py
+ M Backend/orchestrator/scan_orchestrator.py
+ M Backend/reporting/exports.py
+ M Backend/reporting/pdf_generator.py
+ M Backend/requirements.txt
+ M Backend/routers/phase_scans.py
+ M Backend/scans/asset_syncer.py
+ M Backend/scripts/architecture/import_graph.py
+ M Backend/tests/auth/test_authentication_branding.py
+ M Backend/tests/scans/test_network_check_promotion.py
+ M CLAUDE.md
+ M Frontend/authorization-inventory.json
+ M Frontend/scripts/ux4g-harness/lib/fixtures.mjs
+ M Frontend/src/__tests__/modules/audit/pages/scan/Phase3Results.test.jsx
+ M Frontend/src/modules/audit/components/scan/ExportPanel.jsx
+ M Frontend/src/modules/audit/pages/ScanHistory.jsx
+ M Frontend/src/modules/audit/pages/scan/Phase3Results.jsx
+ M docs/AUTHENTICATION_AND_AUTHORIZATION.md
+ M docs/BACKEND_API_REFERENCE.md
+ M docs/RBAC_Management_Permissions.md
+ M docs/SYSTEM_ARCHITECTURE.md
+ M docs/api_ui_coverage/README.md
+ M docs/architecture/PHASE10_API_GATEWAY.md
+ M docs/architecture/PHASE11_MODULE_FOLDERS.md
+ M docs/architecture/PHASE12_FRONTEND_SHELL.md
+D  docs/architecture/PHASE8_4_ORGANISATION_PLAN.md
+ M docs/architecture/PHASE8_PLATFORM_IDENTITY.md
+ M docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md
+D  docs/architecture/PROGRAMME_STATUS_2026-10-06.md
+ M docs/architecture/RBAC_ADMINISTRATION.md
+D  docs/architecture/RBAC_AUTHORITY_MIGRATION.md
+ M docs/architecture/RBAC_FOUNDATION.md
+D  docs/architecture/RBAC_SHADOW_AUTHORIZATION.md
+ M docs/architecture/README.md
+ M docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md
+ M docs/architecture/phase10/PHASE10_5_CUTOVER.md
+ M docs/architecture/phase10/PHASE10_6_HARDENING.md
+ M docs/architecture/phase10/PHASE10_7_GATEWAY_ONLY.md
+RM docs/FILE_UPLOAD_AUDIT.md -> docs/archive/FILE_UPLOAD_AUDIT.md
+RM docs/PIPELINE_DATA_INTEGRITY_AUDIT.md -> docs/archive/PIPELINE_DATA_INTEGRITY_AUDIT.md
+ A docs/archive/README.md
+RM docs/SCAN_MODULE_REVIEW.md -> docs/archive/SCAN_MODULE_REVIEW.md
+R  docs/STALE_CODE_AUDIT.md -> docs/archive/STALE_CODE_AUDIT.md
+R  docs/api_ui_coverage/FIELD_LEVEL_AUDIT.md -> docs/archive/api_ui_coverage/FIELD_LEVEL_AUDIT.md
+R  docs/api_ui_coverage/PHASE2_REPORTS_EXPORT.md -> docs/archive/api_ui_coverage/PHASE2_REPORTS_EXPORT.md
+R  docs/api_ui_coverage/PHASE3_SCAN_COMPARISON.md -> docs/archive/api_ui_coverage/PHASE3_SCAN_COMPARISON.md
+R  docs/api_ui_coverage/PHASE4_SCAN_POLICY.md -> docs/archive/api_ui_coverage/PHASE4_SCAN_POLICY.md
+R  docs/api_ui_coverage/PHASE5_REMEDIATION.md -> docs/archive/api_ui_coverage/PHASE5_REMEDIATION.md
+R  docs/api_ui_coverage/PHASE6_CONFIG_AUDIT.md -> docs/archive/api_ui_coverage/PHASE6_CONFIG_AUDIT.md
+R  docs/api_ui_coverage/PHASE7_MASTER_MATRIX.md -> docs/archive/api_ui_coverage/PHASE7_MASTER_MATRIX.md
+RM docs/architecture/00_INVENTORY.md -> docs/archive/architecture/00_INVENTORY.md
+RM docs/architecture/01_MASTER_ARCHITECTURE.md -> docs/archive/architecture/01_MASTER_ARCHITECTURE.md
+R  docs/architecture/phase10/PHASE10_3_ALONGSIDE.md -> docs/archive/architecture/phase10/PHASE10_3_ALONGSIDE.md
+RM docs/architecture/phase10/PHASE10_7_PLAN.md -> docs/archive/architecture/phase10/PHASE10_7_PLAN.md
+R  docs/architecture/phase10/cutover_valid_probe.json -> docs/archive/architecture/phase10/cutover_valid_probe.json
+R  docs/architecture/phase10/observe_10_6.json -> docs/archive/architecture/phase10/observe_10_6.json
+R  docs/architecture/phase10/observe_10_6_battery.json -> docs/archive/architecture/phase10/observe_10_6_battery.json
+R  docs/architecture/phase10/observe_10_7.json -> docs/archive/architecture/phase10/observe_10_7.json
+R  docs/architecture/phase10/observe_10_7_battery.json -> docs/archive/architecture/phase10/observe_10_7_battery.json
+R  "docs/policy compliance/compliance_api_specification.md" -> docs/archive/policy-compliance/compliance_api_specification.md
+R  "docs/policy compliance/compliance_backend_implementation.md" -> docs/archive/policy-compliance/compliance_backend_implementation.md
+R  "docs/policy compliance/compliance_database_design.md" -> docs/archive/policy-compliance/compliance_database_design.md
+R  "docs/policy compliance/compliance_evidence_provider_layer.md" -> docs/archive/policy-compliance/compliance_evidence_provider_layer.md
+R  "docs/policy compliance/compliance_frontend_specification.md" -> docs/archive/policy-compliance/compliance_frontend_specification.md
+R  "docs/policy compliance/compliance_future_frameworks.md" -> docs/archive/policy-compliance/compliance_future_frameworks.md
+RM "docs/policy compliance/compliance_implementation_roadmap.md" -> docs/archive/policy-compliance/compliance_implementation_roadmap.md
+R  "docs/policy compliance/compliance_rule_engine.md" -> docs/archive/policy-compliance/compliance_rule_engine.md
+R  "docs/policy compliance/compliance_sequence_diagrams.md" -> docs/archive/policy-compliance/compliance_sequence_diagrams.md
+R  "docs/policy compliance/compliance_testing_strategy.md" -> docs/archive/policy-compliance/compliance_testing_strategy.md
+R  "docs/policy compliance/policy_compliance_engine_architecture.md" -> docs/archive/policy-compliance/policy_compliance_engine_architecture.md
+R  docs/rbac/CLEAN_DEVELOPMENT_RESET.md -> docs/archive/rbac/CLEAN_DEVELOPMENT_RESET.md
+R  docs/rbac/RBAC_HARDENING_REPORT.md -> docs/archive/rbac/RBAC_HARDENING_REPORT.md
+RM docs/rbac/RBAC_PREMERGE_REVIEW.md -> docs/archive/rbac/RBAC_PREMERGE_REVIEW.md
+RM docs/rbac/RBAC_RELEASE_READINESS.md -> docs/archive/rbac/RBAC_RELEASE_READINESS.md
+R  docs/ux4g/00-baseline.md -> docs/archive/ux4g/00-baseline.md
+R  docs/ux4g/03a-primitives.md -> docs/archive/ux4g/03a-primitives.md
+R  docs/ux4g/03b-security-patterns.md -> docs/archive/ux4g/03b-security-patterns.md
+R  docs/ux4g/03c-archived-scans.md -> docs/archive/ux4g/03c-archived-scans.md
+R  docs/ux4g/03c-auth-group.md -> docs/archive/ux4g/03c-auth-group.md
+R  docs/ux4g/03c-batch10-harness.md -> docs/archive/ux4g/03c-batch10-harness.md
+R  docs/ux4g/03c-batch10-read-mostly.md -> docs/archive/ux4g/03c-batch10-read-mostly.md
+R  docs/ux4g/03c-batch11-asset-detail.md -> docs/archive/ux4g/03c-batch11-asset-detail.md
+R  docs/ux4g/03c-batch11-harness.md -> docs/archive/ux4g/03c-batch11-harness.md
+R  docs/ux4g/03c-batch11-plan.md -> docs/archive/ux4g/03c-batch11-plan.md
+R  docs/ux4g/03c-batch12-harness.md -> docs/archive/ux4g/03c-batch12-harness.md
+R  docs/ux4g/03c-batch12-shell.md -> docs/archive/ux4g/03c-batch12-shell.md
+R  docs/ux4g/03c-batch13-admin.md -> docs/archive/ux4g/03c-batch13-admin.md
+R  docs/ux4g/03c-batch13-harness.md -> docs/archive/ux4g/03c-batch13-harness.md
+R  docs/ux4g/03c-batch14-account.md -> docs/archive/ux4g/03c-batch14-account.md
+R  docs/ux4g/03c-batch14-harness.md -> docs/archive/ux4g/03c-batch14-harness.md
+R  docs/ux4g/03c-batch15-scan-components.md -> docs/archive/ux4g/03c-batch15-scan-components.md
+RM docs/ux4g/03c-batch16-harness.md -> docs/archive/ux4g/03c-batch16-harness.md
+R  docs/ux4g/03c-batch16-registry-cleanup.md -> docs/archive/ux4g/03c-batch16-registry-cleanup.md
+R  docs/ux4g/03c-batch17-security-dashboard.md -> docs/archive/ux4g/03c-batch17-security-dashboard.md
+R  docs/ux4g/03c-batch18-phase2-results.md -> docs/archive/ux4g/03c-batch18-phase2-results.md
+R  docs/ux4g/03c-batch19-phase1-results.md -> docs/archive/ux4g/03c-batch19-phase1-results.md
+R  docs/ux4g/03c-batch20-amt-integration.md -> docs/archive/ux4g/03c-batch20-amt-integration.md
+R  docs/ux4g/03c-batch21-network-map.md -> docs/archive/ux4g/03c-batch21-network-map.md
+R  docs/ux4g/03c-batch22-scan-history.md -> docs/archive/ux4g/03c-batch22-scan-history.md
+R  docs/ux4g/03c-batch23-credentialed-results.md -> docs/archive/ux4g/03c-batch23-credentialed-results.md
+R  docs/ux4g/03c-batch24-phase3-results.md -> docs/archive/ux4g/03c-batch24-phase3-results.md
+R  docs/ux4g/03c-batch25-new-scan.md -> docs/archive/ux4g/03c-batch25-new-scan.md
+R  docs/ux4g/03c-batch26a-compliance-exceptions.md -> docs/archive/ux4g/03c-batch26a-compliance-exceptions.md
+R  docs/ux4g/03c-batch26b-compliance-views.md -> docs/archive/ux4g/03c-batch26b-compliance-views.md
+R  docs/ux4g/03c-batch27-compliance-ordinary-writes.md -> docs/archive/ux4g/03c-batch27-compliance-ordinary-writes.md
+R  docs/ux4g/03c-batch28-compliance-attestation-evidence.md -> docs/archive/ux4g/03c-batch28-compliance-attestation-evidence.md
+R  docs/ux4g/03c-batch29-compliance-credentials-manager.md -> docs/archive/ux4g/03c-batch29-compliance-credentials-manager.md
+R  docs/ux4g/03c-batch30-compliance-credential-bearing-execution.md -> docs/archive/ux4g/03c-batch30-compliance-credential-bearing-execution.md
+R  docs/ux4g/03c-batch31-compliance-gap-analysis-pagination.md -> docs/archive/ux4g/03c-batch31-compliance-gap-analysis-pagination.md
+R  docs/ux4g/03c-batch32-compliance-workspace-shell.md -> docs/archive/ux4g/03c-batch32-compliance-workspace-shell.md
+R  docs/ux4g/03c-batch5-admin-tables.md -> docs/archive/ux4g/03c-batch5-admin-tables.md
+R  docs/ux4g/03c-batch6-harness.md -> docs/archive/ux4g/03c-batch6-harness.md
+R  docs/ux4g/03c-batch6-web-scanning.md -> docs/archive/ux4g/03c-batch6-web-scanning.md
+R  docs/ux4g/03c-batch7-harness.md -> docs/archive/ux4g/03c-batch7-harness.md
+R  docs/ux4g/03c-batch7-newwebscan.md -> docs/archive/ux4g/03c-batch7-newwebscan.md
+R  docs/ux4g/03c-batch8-harness.md -> docs/archive/ux4g/03c-batch8-harness.md
+R  docs/ux4g/03c-batch8-scandetail.md -> docs/archive/ux4g/03c-batch8-scandetail.md
+R  docs/ux4g/03c-batch9-credentials.md -> docs/archive/ux4g/03c-batch9-credentials.md
+R  docs/ux4g/03c-batch9-harness.md -> docs/archive/ux4g/03c-batch9-harness.md
+R  docs/ux4g/03c-forgotpassword.md -> docs/archive/ux4g/03c-forgotpassword.md
+R  docs/ux4g/03c-placeholder-tier.md -> docs/archive/ux4g/03c-placeholder-tier.md
+R  docs/ux4g/03c-rolemanagement.md -> docs/archive/ux4g/03c-rolemanagement.md
+R  docs/ux4g/AUTHENTICATION_ENTERPRISE_REDESIGN.md -> docs/archive/ux4g/AUTHENTICATION_ENTERPRISE_REDESIGN.md
+RM docs/ux4g/common-platform-layout.md -> docs/archive/ux4g/common-platform-layout.md
+D  docs/audit-baselines/phase4_post_state.txt
+D  docs/audit-baselines/phase4_pre_baseline.txt
+D  docs/audit-baselines/pre_schema_move_state.txt
+ M docs/ci/CONTAINER_IMAGES.md
+ M "docs/policy compliance/compliance_deployment_guide.md"
+ M "docs/policy compliance/compliance_developer_guide.md"
+ M docs/ux4g/01-spike-report.md
+ M docs/ux4g/02-dependency-strategy.md
+?? Backend/core/checks/endpoint_evidence.py
+?? Backend/core/checks/plugin_outcomes.py
+?? Backend/core/checks/probe_endpoints.py
+?? Backend/core/credential_scope.py
+?? Backend/tests/scans/test_plugin_remediation_p0.py
+?? Backend/tests/scans/test_plugin_remediation_p1.py
+?? Backend/tests/scans/test_plugin_remediation_pipeline.py
+?? Frontend/browser-tests/plugin-coverage.spec.mjs
+?? Frontend/src/__tests__/modules/audit/components/scan/NetworkPluginCoverage.test.jsx
+?? Frontend/src/modules/audit/components/scan/NetworkPluginCoverage.jsx
+?? docs/audits/

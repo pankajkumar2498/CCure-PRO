@@ -925,6 +925,9 @@ class ScanOrchestrator:
             "candidate_searches": searches_run(formatted),
             "candidate_searches_truncated": truncated_searches(formatted),
         }
+        from core.checks.plugin_outcomes import coverage_summary
+
+        summary["network_plugin_coverage"] = coverage_summary(formatted)
         return {
             "success": True,
             "data": formatted,
@@ -1287,7 +1290,9 @@ class ScanOrchestrator:
             tcp_fingerprint=data.get("tcp_fingerprint", {}),
             port_states=data.get("port_states", {}),
             tls_info=data.get("tls_info", {}),
+            tls_endpoints=data.get("tls_endpoints", []),
             http_audit=data.get("http_audit", {}),
+            http_endpoints=data.get("http_endpoints", []),
             snmp_info=data.get("snmp_info", {}),
             smb_info=data.get("smb_info", {}),
             ssh_info=data.get("ssh_info", {}),
@@ -1301,6 +1306,8 @@ class ScanOrchestrator:
             vulnerability_counts=data.get("vulnerability_counts", {}),
             candidates_evaluated=data.get("candidates_evaluated", 0),
             candidate_enumeration=data.get("candidate_enumeration") or {},
+            plugin_outcomes=data.get("plugin_outcomes") or [],
+            plugin_coverage=data.get("plugin_coverage") or {},
             host_risk_score=data.get("host_risk_score", 0),
             host_risk_level=data.get("host_risk_level", "Info"),
             _ot_probed=data.get("_ot_probed", False),

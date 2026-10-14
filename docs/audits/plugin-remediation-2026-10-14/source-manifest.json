@@ -1,0 +1,169 @@
+{
+  "head": "ef63e5ad2addf08ef3b7c4a8970188f13b94f095",
+  "source_files": [
+    {
+      "path": "Backend/core/checks/endpoint_evidence.py",
+      "sha256": "5738f1b23bd14a9995a93baea29764622be1d7b7e5751a2cdd03a33e4d4fe0c5"
+    },
+    {
+      "path": "Backend/core/checks/finding_normalizer.py",
+      "sha256": "bc37631405e0394bbab3c230548a6282fcd6019d0a84ca6d85e9501d66054641"
+    },
+    {
+      "path": "Backend/core/checks/plugin_outcomes.py",
+      "sha256": "b06ffd9c95d3b491f84396d88448072672404d97333ce29deecd7c97930fdef9"
+    },
+    {
+      "path": "Backend/core/checks/probe_endpoints.py",
+      "sha256": "8afe77a51e6188e3c8712ff86fb35f484a12901e097e08258a62861646f0837c"
+    },
+    {
+      "path": "Backend/core/credential_scope.py",
+      "sha256": "e75f8baddb92a1451ed00e3d519eb75469f45a7d42fae457b9cec87d6a0897a7"
+    },
+    {
+      "path": "Backend/core/models.py",
+      "sha256": "3b549232679d8ddb45ce9648f06b17b28ccc589fe596569ee8ac150581fd45bf"
+    },
+    {
+      "path": "Backend/core/nmap/wrapper.py",
+      "sha256": "337a248ebbdab1e1e1403ef448d4c07a55fc90317d29d6544384e4f51ede0047"
+    },
+    {
+      "path": "Backend/core/risk.py",
+      "sha256": "895db4ddb0594f759e20120277ffebf35a2418651c24a99c27173e67e5ce9c91"
+    },
+    {
+      "path": "Backend/core/tasks.py",
+      "sha256": "6836ca880ef4a9a0a51a19764fc17b953aaa7c657c12bc4183ae3aa9bb912cf8"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugin_selector.py",
+      "sha256": "a5680cea5ebe5b7b0443ba8264e73eeb196c7e1ee6f2a5ab3e74cd86ff189086"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/__init__.py",
+      "sha256": "9876f62330d7f34b75d04e9d559983f3c4869a6b4ad8820b932fe9aa1ce42296"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/default_creds.py",
+      "sha256": "af3261659f8eff314c955a0f0d9b22baa484bc713b8dea6a33374fe3fd27858f"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/dns_probe.py",
+      "sha256": "2d55065c0dae312e97bc80f454cc24fa27ce0110e365f36dabe381e573d62026"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/ftp_checker.py",
+      "sha256": "d5dabd856e862c3772b0edcd66faf25bbecae181e738cba6fceea4b2f7c0d2ba"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/heartbleed_probe.py",
+      "sha256": "6c6fe04739c36b7872eedca454c3d9d3e9d5e4b68a1ae701e410d354c42b0916"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/http_analyzer.py",
+      "sha256": "ff8f3e1a028611b536056f7a7d1416957fc35788f371895296f6f1e4bb4be215"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/ldap_probe.py",
+      "sha256": "22c7b29b1eac384917424033c5ff6609f100caff7452630762a38523769c73fc"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/nuclei_probe.py",
+      "sha256": "afc413341912ce75ef86528cd3e45c30fe6f7713a2d9f9f2261b3fa89dd85562"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/smb_probe.py",
+      "sha256": "aa5e4f85e11f629ea40e7d6aaf48a7fdbfb8a70c8db6ed5a48bd7b912f087987"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/ssh_probe.py",
+      "sha256": "bc699bd8b8a4d5549e4e87859f042e7ab58eb93be8534e1a4a6c198210b467d3"
+    },
+    {
+      "path": "Backend/engines/vulnerability/plugins/tls_scanner.py",
+      "sha256": "cd6494d41afffcf6f6c4b5121755fbf318848baf75a9a52279a2892acdbb2d03"
+    },
+    {
+      "path": "Backend/engines/vulnerability/vulnerability_engine.py",
+      "sha256": "640b92bead2b0e80d94088aa382f911010ce5b864e1a6de8b5f77c09967c9207"
+    },
+    {
+      "path": "Backend/orchestrator/scan_orchestrator.py",
+      "sha256": "701059eba5abe198fb888f81f2f65972df049f2cf7fb88f348e8f160120f694f"
+    },
+    {
+      "path": "Backend/reporting/exports.py",
+      "sha256": "eab275dbdc8e42ba6b74f85dfb518af9a2a8280289cce526debad945868a71d9"
+    },
+    {
+      "path": "Backend/reporting/pdf_generator.py",
+      "sha256": "84924011121c2c00e4b9bf39d9600c7f9e2b775a5b1ffe982d3832cd0c44e2b9"
+    },
+    {
+      "path": "Backend/requirements.txt",
+      "sha256": "8e55148472fa502eca727d39cc02f50f49e314fc6690a77896b349d0e5129303"
+    },
+    {
+      "path": "Backend/routers/phase_scans.py",
+      "sha256": "006afb83f7e12d495aec7e398c08aaad919dad64d04df9ae6c415b2dd969074d"
+    },
+    {
+      "path": "Backend/scans/asset_syncer.py",
+      "sha256": "aa750bbae3c8cb055bb23a75cb72bda151ebdc977ca85c646a2ee4c474cf2aca"
+    },
+    {
+      "path": "Backend/tests/scans/test_network_check_promotion.py",
+      "sha256": "57bacc2d3f849f2fba5567566bf4325f7303c89b1307537cf8763703d470d362"
+    },
+    {
+      "path": "Backend/tests/scans/test_plugin_remediation_p0.py",
+      "sha256": "f4aa37d51bb492721d0cd8b3f095ac60df9816131eb56f86d38cc64d1ba09222"
+    },
+    {
+      "path": "Backend/tests/scans/test_plugin_remediation_p1.py",
+      "sha256": "2738758a73dc1718abe4cd629f9606330be50a128be026dd41a4f1b366a81091"
+    },
+    {
+      "path": "Backend/tests/scans/test_plugin_remediation_pipeline.py",
+      "sha256": "1ae183389ca7d3035e256ff0f75d6e27f19352b2ab07740d90c975b5c6031a1a"
+    },
+    {
+      "path": "Frontend/authorization-inventory.json",
+      "sha256": "a19c8e47f822321267618fe0155af669a21083624109f3780d0d9daedaf64781"
+    },
+    {
+      "path": "Frontend/browser-tests/plugin-coverage.spec.mjs",
+      "sha256": "05c3b94938de810910798941ad36c9477d7ec51c375f51ec20ef8c7a6d9631e0"
+    },
+    {
+      "path": "Frontend/scripts/ux4g-harness/lib/fixtures.mjs",
+      "sha256": "18f9f7fe649f6e567d56e1b3cdfe3ff775b3715ddf69746be73654fa32d196a5"
+    },
+    {
+      "path": "Frontend/src/__tests__/modules/audit/components/scan/NetworkPluginCoverage.test.jsx",
+      "sha256": "51db54da9ed2a6a9ce0dad9aa46cd41d9b9d2bc5c2ca5f6c08e8169117fbc65f"
+    },
+    {
+      "path": "Frontend/src/__tests__/modules/audit/pages/scan/Phase3Results.test.jsx",
+      "sha256": "aaaf10b0b99d51ac49c20f577bcae4aace9de6bb1ade8b8553425e3704286d9a"
+    },
+    {
+      "path": "Frontend/src/modules/audit/components/scan/ExportPanel.jsx",
+      "sha256": "06600166caf0accfdaecf19178ddbbf0b7d3e5268b23eec0741ad8902e40d8ce"
+    },
+    {
+      "path": "Frontend/src/modules/audit/components/scan/NetworkPluginCoverage.jsx",
+      "sha256": "8f7566d278634b0179d0393c7063f4e4d61a11cbd7def0472f3dc6cc2bbbc7fb"
+    },
+    {
+      "path": "Frontend/src/modules/audit/pages/ScanHistory.jsx",
+      "sha256": "dc041c4c01cfefb2018fa4d68e319c2655324a7834680c56ca7c1be2926da131"
+    },
+    {
+      "path": "Frontend/src/modules/audit/pages/scan/Phase3Results.jsx",
+      "sha256": "573c67107323cc5edf044a79cbc1604d7d4d75114f16ca52968c79863266a774"
+    }
+  ]
+}

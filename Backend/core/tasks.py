@@ -14,6 +14,7 @@ from config import AppConfig
 from core import task_names
 from core.candidate_enumeration import searches_run, truncated_searches
 from core.celery_app import celery_app
+from core.findings.credentialed_scope import assessed_check_ids, packages_assessed
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
 from db.base import SessionLocal, gen_asset_id, utcnow
@@ -316,37 +317,9 @@ def _merge_host_identity(
     return merged
 
 
-def _assessed_config_definition_ids(config_summary) -> set:
-    """
-    Catalogue ids of the configuration checks this scan reached a *verdict* on.
-
-    Only PASS and FAIL count. A check that errored, was not applicable or could
-    not be collected established nothing about the host, and a finding it did
-    not report is not a finding that went away.
-
-    This is what stops the sweep below turning an unreachable session into a
-    page of remediated controls: 126 Windows STIG findings on one measured host
-    are absent from `cve_list` when the audit passes *and* when the audit never
-    ran, and only this set tells the two apart.
-    """
-    ids: set = set()
-    if not isinstance(config_summary, dict) or not config_summary.get("assessed"):
-        return ids
-    from core.config_audit.findings import config_definition_id
-
-    for result in config_summary.get("results") or []:
-        if not isinstance(result, dict):
-            continue
-        if str(result.get("outcome") or "").strip().lower() not in ("pass", "fail"):
-            continue
-        check_id = str(result.get("check_id") or "").strip()
-        if not check_id:
-            continue
-        finding_type = str(
-            (result.get("metadata") or {}).get("finding_type") or "config_check"
-        )
-        ids.add(config_definition_id(check_id, finding_type))
-    return ids
+# Shared with the pipeline's sweep in scans.asset_syncer, so the two cannot
+# disagree about which absent findings a credentialed audit really retired.
+_assessed_config_definition_ids = assessed_check_ids
 
 
 def _sync_credentialed_asset_identity(
@@ -574,6 +547,10 @@ def _sync_credentialed_asset_identity(
     # therefore which absent configuration findings are genuinely gone.
     _config_summary = (stored_report or {}).get("config_audit") or {}
     _assessed_checks = _assessed_config_definition_ids(_config_summary)
+    # And whether the package inventory was assessed at all. With no inventory,
+    # or a feed lookup that failed, cve_list carries no package CVEs, and the
+    # sweep below used to read that as every package finding remediated.
+    _packages_assessed = packages_assessed(stored_report)
 
     from core.checks.definitions import DEFINITION_TYPE_CVE, definition_type_for_id
 
@@ -592,6 +569,8 @@ def _sync_credentialed_asset_identity(
                 # assessment scope is what lets a comparison say so out loud
                 # rather than silently carrying it forward.
                 continue
+        elif not _packages_assessed:
+            continue
         f.status = "fixed"
         f.fixed_at = utcnow()
         _record_asset_change(
@@ -614,6 +593,7 @@ def _sync_credentialed_asset_identity(
                 families=["credentialed_package"],
                 detail={
                     "config_audit_assessed": bool(_config_summary.get("assessed")),
+                    "packages_assessed": _packages_assessed,
                     "checks_assessed": len(_assessed_checks),
                     # The set itself, not only its size. The sweep above uses
                     # it to decide which absent configuration findings are
@@ -2008,6 +1988,10 @@ def _as_credentialed_findings(cve_list: list[dict], packages: list[dict]) -> lis
             continue
         record = dict(raw)
         record.setdefault("detection_method", "credentialed")
+        # Configuration and privilege findings keep their own detection method
+        # (config_check), which network checks share; the origin is what lets
+        # the sync file them under the credentialed family.
+        record.setdefault("finding_origin", "credentialed")
         if not record.get("installed_version"):
             installed = record.get("installed_ver") or versions.get(
                 str(record.get("package") or "").strip(), ""

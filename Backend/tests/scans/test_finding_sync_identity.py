@@ -60,11 +60,20 @@ def world(db_session, monkeypatch):
             )
         )
         db_session.commit()
+        # The package findings here come from an authenticated audit, and a
+        # pipeline scan that ran one carries its report. Without it the sync
+        # cannot retire a package finding at all (test_pipeline_credentialed_family).
         host = {
             "ip_address": IP,
             "hostname": "PANKAJM-HPNEW",
             "is_active": True,
             "cves": cves,
+            "credentialed": True,
+            "credentialed_report": {
+                "package_count": 190,
+                "inventory_complete": True,
+                "package_coverage": {"lookup_failures": []},
+            },
         }
         asset_syncer.sync_vulnerability_audit(db_session, scan_id, org.id, None, [host])
         db_session.commit()

@@ -33,6 +33,13 @@ from db.models.findings import (
 from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
 from core.checks.contract import normalize_severity
 from core.findings.comparison import STATUS_RULED_OUT
+from core.findings.credentialed_scope import (
+    CREDENTIALED_DETECTIONS,
+    CREDENTIALED_ID_PREFIXES,
+    assessed_check_ids,
+    is_credentialed_finding,
+    packages_assessed,
+)
 from scans.db_text import sanitize_for_db_in_place
 from scans.cvss import (
     canonical_severity,
@@ -1321,6 +1328,55 @@ def _finding_source_from_record(finding: AssetVulnerability) -> str:
     return "vulnerability_audit"
 
 
+CREDENTIALED_FAMILY = "credentialed_package"
+
+
+def _row_family(finding: AssetVulnerability) -> str:
+    """
+    The family a stored finding belongs to, for deciding which scan may retire it.
+
+    The vulnerability-audit pipeline filed every finding under network_service,
+    including the package, configuration and privilege findings its credentialed
+    enrichment adds, so an unauthenticated rescan of the host "covered" them and
+    swept them as fixed: on 13 Oct 2026 scan #19 retired all 2,281 of #17's
+    credentialed findings, a remediation nobody made. Rows written that way
+    before the fix still say network_service; their detection method or
+    identifier says where they came from.
+    """
+    family = _finding_family(_finding_source_from_record(finding))
+    if family == CREDENTIALED_FAMILY:
+        return family
+    detection = str(getattr(finding, "detection_method", "") or "").lower()
+    identifier = str(getattr(finding, "vuln_id", "") or "").upper()
+    if detection in CREDENTIALED_DETECTIONS or identifier.startswith(
+        CREDENTIALED_ID_PREFIXES
+    ):
+        return CREDENTIALED_FAMILY
+    return family
+
+
+def _credentialed_assessment(host: dict) -> Optional[dict]:
+    """
+    What this scan's credentialed audit of ``host`` assessed, or None if none ran.
+
+    ``packages`` says whether absent package CVEs are gone; ``checks`` is the
+    set of configuration checks that reached a verdict. See
+    core.findings.credentialed_scope.
+    """
+    report = host.get("credentialed_report")
+    if not host.get("credentialed") or not isinstance(report, dict) or not report:
+        return None
+    config_summary = report.get("config_audit") or {}
+    checks = assessed_check_ids(config_summary)
+    return {
+        "packages": packages_assessed(report),
+        "checks": checks,
+        "config_audit_assessed": bool(
+            isinstance(config_summary, dict) and config_summary.get("assessed")
+        ),
+    }
+
+
 def _source_specific_finding_id(asset_id: str, cve_id: str, source_family: str) -> str:
     return f"fnd_{asset_id}_{source_family}_{cve_id}"
 
@@ -2495,7 +2551,12 @@ def sync_vulnerability_audit(
             # and the published range that version was tested against.
             finding_service = service_by_id.get(finding_service_id)
             evidence = _build_finding_evidence(v, finding_service, host, cve_id=cve_id)
-            proof = f"Source_Family:{source_family}"
+            # The family a later scan must cover before it can retire this
+            # finding; the id above keeps the pipeline's, unchanged.
+            row_family = (
+                CREDENTIALED_FAMILY if is_credentialed_finding(v) else source_family
+            )
+            proof = f"Source_Family:{row_family}"
             plugin_output = (
                 v.get("plugin_output") or v.get("description") or v.get("desc") or ""
             )
@@ -2524,7 +2585,7 @@ def sync_vulnerability_audit(
                     proof=proof,
                     plugin_output=plugin_output,
                     evidence=evidence,
-                    source_family=source_family,
+                    source_family=row_family,
                     evidence_source=str(
                         v.get("evidence_source") or "vulnerability_audit"
                     ),
@@ -2541,7 +2602,7 @@ def sync_vulnerability_audit(
                         "status": "open",
                         "severity": finding_severity,
                         "cvss_score": finding_cvss,
-                        "source_family": source_family,
+                        "source_family": row_family,
                         "evidence_source": str(
                             v.get("evidence_source") or "vulnerability_audit"
                         ),
@@ -2600,8 +2661,22 @@ def sync_vulnerability_audit(
             if isinstance(entry, dict)
             and str(entry.get("reason") or "").startswith("Ruled out")
         }
+        # Credentialed findings are retired only by a scan whose credentialed
+        # audit of this host assessed them: package CVEs when the inventory was
+        # collected and matched, configuration findings when their check
+        # reached a verdict. An unauthenticated rescan assesses neither.
+        credentialed = _credentialed_assessment(host)
         for f in open_findings:
-            if _finding_family(_finding_source_from_record(f)) != source_family:
+            family = _row_family(f)
+            if family == CREDENTIALED_FAMILY:
+                if credentialed is None:
+                    continue
+                if definition_type_for_id(f.vuln_id) == DEFINITION_TYPE_CVE:
+                    if not credentialed["packages"]:
+                        continue
+                elif f.vuln_id not in credentialed["checks"]:
+                    continue
+            elif family != source_family:
                 continue
             if f.id in written_finding_ids:
                 continue
@@ -2638,6 +2713,22 @@ def sync_vulnerability_audit(
                 record_assessment_scope(
                     _scan_row, assets=[asset_id], families=[source_family]
                 )
+                if credentialed is not None:
+                    # The same record the standalone credentialed scan writes,
+                    # so a comparison reads both kinds of scan the same way.
+                    record_assessment_scope(
+                        _scan_row,
+                        assets=[asset_id],
+                        families=[CREDENTIALED_FAMILY],
+                        detail={
+                            "config_audit_assessed": credentialed[
+                                "config_audit_assessed"
+                            ],
+                            "packages_assessed": credentialed["packages"],
+                            "checks_assessed": len(credentialed["checks"]),
+                            "assessed_checks": sorted(credentialed["checks"]),
+                        },
+                    )
         except Exception as exc:  # bookkeeping must never fail a scan
             logger.warning(
                 "Could not record assessment scope for scan %s: %s", scan_id, exc

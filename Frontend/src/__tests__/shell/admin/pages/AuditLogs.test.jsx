@@ -26,7 +26,7 @@ import { everything } from "../../../fixtures/authorization";
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AuditLogs from "@shell/admin/pages/AuditLogs";
@@ -158,6 +158,41 @@ describe("AuditLogs — functional", () => {
     await renderPage();
     expect(await screen.findByText("alice@example.test")).toBeInTheDocument();
     expect(await screen.findByText("bob@example.test")).toBeInTheDocument();
+  });
+
+  it("names the scan recycle-bin events, and offers them as filters", async () => {
+    /* The backend writes scan.recycled / scan.restored / scan.purged since
+       14 Oct 2026. Without a label the page derived one from the last word of
+       the key, so a permanent deletion read only as "Purged". */
+    const lifecycle = ["scan.recycled", "scan.restored", "scan.purged"].map(
+      (action, i) => ({
+        ...LOGS[1],
+        id: `lc-${i}`,
+        user_email: `lifecycle-${i}@example.test`,
+        action,
+      }),
+    );
+    axiosInstance.get.mockImplementation((url) =>
+      String(url) === "/admin/audit-logs/"
+        ? Promise.resolve({ data: { logs: lifecycle, total: 3 } })
+        : routeGet(url),
+    );
+    const { container } = await renderPage();
+    await screen.findByText("lifecycle-2@example.test");
+    const table = container.querySelector("table");
+    for (const label of [
+      "Scan Moved to Recycle Bin",
+      "Scan Restored",
+      "Scan Permanently Deleted",
+    ]) {
+      expect(within(table).getByText(label)).toBeInTheDocument();
+    }
+    const actions = [
+      ...container.querySelectorAll("#filter-action option"),
+    ].map((o) => o.value);
+    expect(actions).toEqual(
+      expect.arrayContaining(["scan.recycled", "scan.restored", "scan.purged"]),
+    );
   });
 
   it("requests the first page with skip 0", async () => {

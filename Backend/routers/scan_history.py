@@ -14,10 +14,10 @@ import logging
 from datetime import datetime, timezone
 
 from auth.jwt_handler import decode_token
-from ccure_platform.api import CurrentUser, require_authorized
+from ccure_platform.api import CurrentUser, log_audit_event, require_authorized
 from db.base import SessionLocal, get_db, utcnow
 from ccure_platform import api as platform_api
-from db.models import User
+from db.models import AssetVulnerability, ScanPhase, Service, User
 from db.models.scans import Scan
 from fastapi import (
     APIRouter,
@@ -65,6 +65,61 @@ TERMINAL_STATUSES = {
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _record_scan_lifecycle(
+    db: Session,
+    user: CurrentUser,
+    request: Request,
+    scan: Scan,
+    action: str,
+    **changes,
+) -> None:
+    """
+    One audit event for a scan leaving or returning to view, in the same
+    transaction as the change itself.
+
+    The event is filed under the scan's own organisation rather than the
+    actor's: a superadmin acting across organisations moves another
+    organisation's assessment evidence, and that organisation's trail is where
+    an auditor will look for it. A request that changes nothing records
+    nothing.
+    """
+    log_audit_event(
+        db,
+        user,
+        action,
+        "scan",
+        scan.id,
+        changes={
+            "scan_no": scan.scan_no,
+            "target": scan.target_str,
+            "status": scan.status,
+            **changes,
+        },
+        request=request,
+        org_id=scan.org_id,
+    )
+
+
+def _purge_footprint(db: Session, scan_id: str) -> dict:
+    """What permanently deleting a scan removes with it, counted before it goes.
+
+    Its findings, phases and services are deleted by ON DELETE CASCADE, so
+    nothing else records them afterwards. ``services`` matters most: the rows
+    are an asset's *current* service inventory, re-pointed to whichever scan
+    last saw them, so purging that scan empties the inventory of an asset that
+    is kept (both test assets' 104 rows on 14 Oct 2026, noticed only after
+    the fact).
+    """
+    count = lambda model: (  # noqa: E731
+        db.query(func.count(model.id)).filter(model.scan_id == scan_id).scalar() or 0
+    )
+    return {
+        "findings": count(AssetVulnerability),
+        "phases": count(ScanPhase),
+        "services": count(Service),
+    }
 
 
 def _as_utc_iso(dt: datetime | None) -> str | None:
@@ -946,6 +1001,7 @@ def stop_scan(
 @router.post("/{scan_id}/restore")
 def restore_scan(
     scan_id: str,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
@@ -957,6 +1013,15 @@ def restore_scan(
         scan.deleted_at = None
         scan.updated_at = utcnow()
         db.add(scan)
+        _record_scan_lifecycle(
+            db,
+            user,
+            request,
+            scan,
+            "scan.restored",
+            restored_from="recycle_bin",
+            destination="archived" if scan.is_archived else "active",
+        )
         db.commit()
         destination = "Archived Scans" if scan.is_archived else "My Scan Jobs"
         return {
@@ -976,6 +1041,15 @@ def restore_scan(
     scan.archived_at = None
     scan.updated_at = utcnow()
     db.add(scan)
+    _record_scan_lifecycle(
+        db,
+        user,
+        request,
+        scan,
+        "scan.restored",
+        restored_from="archive",
+        destination="active",
+    )
     db.commit()
     return {
         "detail": f"Scan {scan_id} restored to My Scan Jobs",
@@ -987,6 +1061,7 @@ def restore_scan(
 @router.delete("/{scan_id}")
 def delete_scan(
     scan_id: str,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
@@ -1003,6 +1078,14 @@ def delete_scan(
     scan.deleted_at = utcnow()
     scan.updated_at = utcnow()
     db.add(scan)
+    _record_scan_lifecycle(
+        db,
+        user,
+        request,
+        scan,
+        "scan.recycled",
+        was_archived=bool(scan.is_archived),
+    )
     db.commit()
     return {
         "detail": f"Scan {scan_id} moved to recycle bin",
@@ -1013,6 +1096,7 @@ def delete_scan(
 @router.delete("/{scan_id}/purge")
 def purge_scan(
     scan_id: str,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_authorized("audit.scan.purge")),
@@ -1025,6 +1109,19 @@ def purge_scan(
             detail="Move the scan to the recycle bin before permanently deleting it.",
         )
 
+    # Written before the delete and committed with it: once the row is gone
+    # this event is the only record that the scan, and what it found, existed.
+    _record_scan_lifecycle(
+        db,
+        user,
+        request,
+        scan,
+        "scan.purged",
+        created_at=_as_utc_iso(scan.created_at),
+        completed_at=_as_utc_iso(scan.completed_at),
+        recycled_at=_as_utc_iso(scan.deleted_at),
+        removed=_purge_footprint(db, scan.id),
+    )
     db.delete(scan)
     db.commit()
     return {"detail": f"Scan {scan_id} permanently deleted"}

@@ -16,7 +16,7 @@ blocks, and what to do when one fails. The workflows are
 | Ruff (in `ci.yml`)            | ruff             | yes              | yes              | no                              | unchanged from before                        |
 
 Container images are scanned separately, by Trivy in `images.yml`, against the
-image each commit actually builds: after every merge to `master`, nightly, and
+image each commit actually builds: nightly, on a release tag, and
 on demand, but **not on pull requests**. A PR is gated on what it changes in the
 application; the image scan reports on OS packages and binaries whose
 advisories arrive with no commit. Its policy and exceptions are in

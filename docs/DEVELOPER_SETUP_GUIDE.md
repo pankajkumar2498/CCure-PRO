@@ -454,7 +454,7 @@ every feed has run. Grant access with
 
 ```bash
 cd Backend
-pytest                                  # whole suite
+pytest                                  # whole suite (nightly CI does this; locally, prefer a group)
 pytest tests/scans/test_scans.py -v
 pytest --cov=. --cov-report=xml -v --reruns 1   # the CI invocation
 ```

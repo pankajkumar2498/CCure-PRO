@@ -51,8 +51,9 @@ import works from any group.
 ## Running
 
 ```powershell
-pytest                             # the whole suite
-pytest tests/compliance -v         # one group
+pytest tests/compliance -v         # one group (start here)
+pytest                             # the whole suite: when asked, or for a cross-cutting change
+python ../scripts/ci/select_tests.py --base origin/master   # which groups this change needs
 pytest tests/repo/test_docs_integrity.py -v
 ```
 

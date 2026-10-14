@@ -3,8 +3,29 @@ name: CI Pipeline
 on:
   push:
     branches: [main, master]
+    # A release tag runs the full regression, as the nightly run does.
+    tags: ["v*"]
   pull_request:
     branches: [main, master]
+  # Nightly full regression: every backend test group and the whole frontend
+  # suite plus the Chromium browser suite. 19:00 UTC is 00:30 IST, ahead of the
+  # image, security and browser-matrix runs so a red one is seen first.
+  schedule:
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+
+# Two scopes, chosen by scripts/ci/select_tests.py (see docs/ci/CI_SCOPE.md):
+#
+#   targeted  pull_request, and push to main/master. The static gates always run
+#             (Bandit, ruff, OpenAPI contract, docs, gateway, lint, build,
+#             UX4G boundaries); the tests are the groups the changed paths
+#             map to, plus the repository-wide invariants in tests/repo and
+#             tests/security. A path the selector does not recognise widens the
+#             selection to the whole suite, never narrows it.
+#   full      the nightly schedule, a release tag and a manual run. Everything
+#             the pipeline ran before 15 Oct 2026, unchanged.
+#
+# The job names below are the required checks and must not change.
 
 # The branch filter on `push` is deliberate and must stay. Without it, a push
 # to a branch with an open PR fires `push` *and* `pull_request` for the same
@@ -37,9 +58,10 @@ env:
 jobs:
   backend-validation:
     name: Backend Validation
-    # Reset execution must pass in its own disposable service before this
-    # required check can pass. It never shares this job's release-test database.
-    needs: reset-validation
+    # Disposable Reset Validation runs beside this job, not before it: it
+    # shares nothing with it (own database, own services), and serialising the
+    # two put its ~2 minutes on every pull request's critical path. It is a
+    # required check in its own right (docs/ci/BRANCH_PROTECTION.md).
     runs-on: ubuntu-latest
     # Without a timeout a hung pytest, or a postgres service that never
     # reports healthy, runs to GitHub's 6-hour ceiling before anyone is told.
@@ -93,6 +115,29 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The selector diffs against the PR base or the previous push.
+          fetch-depth: 0
+
+      - name: Select tests for this change
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          base=""
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) case "$GITHUB_REF" in refs/tags/*) ;; *) base="$PUSH_BEFORE" ;; esac ;;
+          esac
+          # No usable base (schedule, dispatch, tag, new branch, force-push
+          # that dropped the old tip) means the full run, never a guess.
+          if [ -n "$base" ] && ! [[ "$base" =~ ^0+$ ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            python3 scripts/ci/select_tests.py --base "$base" --github-output
+          else
+            python3 scripts/ci/select_tests.py --full --github-output
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -143,7 +188,11 @@ jobs:
           python -m scripts.seed_compliance
           python -m scripts.seed_real_rules
 
+      # The up/down round-trip is the migration check. It runs on every full
+      # run and on any change under alembic/, db/ or a module's migrations;
+      # schema drift and ownership are checked by tests/repo either way.
       - name: Run Alembic Migration Integrity Check
+        if: steps.scope.outputs.backend_scope == 'full' || steps.scope.outputs.migrations == 'true'
         run: |
           cd Backend
           # Roll back the newest migration on every branch, then re-apply them.
@@ -208,8 +257,21 @@ jobs:
       - name: Run Test Suite (with mock profile fallbacks)
         env:
           MOCK_SCANNERS: "true"
+          SCOPE: ${{ steps.scope.outputs.backend_scope }}
+          PYTEST_ARGS: ${{ steps.scope.outputs.pytest_args }}
         run: |
           cd Backend
+          # Targeted: the groups the changed paths map to (the selection and its
+          # reasons are in the "Select tests" step). Full: the whole suite, with
+          # coverage. The same --reruns/-rR and deselects apply to both.
+          if [ "$SCOPE" = full ]; then
+            COVERAGE="--cov=. --cov-report=xml"
+            TARGETS=""
+          else
+            COVERAGE=""
+            TARGETS="$PYTEST_ARGS"
+            echo "Targeted run: $TARGETS"
+          fi
           # --reruns keeps a genuinely flaky runner from failing the build.
           # -rR is what makes that honest: without it a test that fails and
           # then passes is recorded as plain green, so the instability is
@@ -217,7 +279,7 @@ jobs:
           # summary and the job still passes.
           # Only these execution cases move to reset-validation. Head checks,
           # production refusals and all remaining reset guards stay here.
-          pytest --cov=. --cov-report=xml -v --reruns 1 -rR \
+          pytest $TARGETS $COVERAGE -v --reruns 1 -rR \
             --deselect tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues \
             --deselect tests/rbac/test_development_reset.py::test_forward_migration_removes_only_legacy_objects
 
@@ -358,8 +420,34 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Same selector as the backend job. A change with nothing under
+      # Frontend/ skips the steps below (the check still reports, green);
+      # a change under Frontend/ runs the static gates, the build and the
+      # unit tests that import what changed; the full unit suite and the
+      # Chromium browser suite run nightly, on a release tag and on demand.
+      - name: Select tests for this change
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          base=""
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) case "$GITHUB_REF" in refs/tags/*) ;; *) base="$PUSH_BEFORE" ;; esac ;;
+          esac
+          if [ -n "$base" ] && ! [[ "$base" =~ ^0+$ ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            python3 scripts/ci/select_tests.py --base "$base" --github-output
+          else
+            python3 scripts/ci/select_tests.py --full --github-output
+          fi
 
       - name: Set up Node.js
+        if: steps.scope.outputs.frontend_scope != 'none'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
@@ -367,11 +455,13 @@ jobs:
           cache-dependency-path: Frontend/package-lock.json
 
       - name: Install Frontend Dependencies
+        if: steps.scope.outputs.frontend_scope != 'none'
         run: |
           cd Frontend
           npm ci
 
       - name: Verify Approved UX4G Dependency Foundation
+        if: steps.scope.outputs.frontend_scope != 'none'
         run: |
           cd Frontend
           npm run ux4g:check -- --dependencies-only
@@ -387,6 +477,7 @@ jobs:
       # all. `prebuild` generates the UX4G assets from the pinned package, so
       # this step needs no network beyond `npm ci`.
       - name: Build Frontend
+        if: steps.scope.outputs.frontend_scope != 'none'
         env:
           VITE_API_BASE_URL: /api
         run: |
@@ -394,33 +485,52 @@ jobs:
           npm run build
 
       - name: Verify Reproducible UX4G Assets and Provenance
+        if: steps.scope.outputs.frontend_scope != 'none'
         run: |
           cd Frontend
           npm run ux4g:verify
           npm run ux4g:check -- --dist
 
       - name: Run Frontend Tests
+        if: steps.scope.outputs.frontend_scope != 'none'
+        env:
+          SCOPE: ${{ steps.scope.outputs.frontend_scope }}
+          RELATED: ${{ steps.scope.outputs.frontend_related }}
         run: |
           cd Frontend
-          npm test
+          if [ "$SCOPE" = full ]; then
+            npm test
+          else
+            # Architecture and boundary tests always; then every test that
+            # imports a changed source file.
+            npx vitest run src/__tests__/architecture
+            if [ -n "$RELATED" ]; then
+              npx vitest related --run --passWithNoTests $RELATED
+            fi
+          fi
 
       - name: Verify UX4G UI Boundaries and Documentation
+        if: steps.scope.outputs.frontend_scope != 'none'
         run: |
           cd Frontend
           npm run ux4g:architecture
           node scripts/build-authorization-inventory.mjs --check
 
-      # Chromium on every PR and push: the same accessibility, keyboard,
-      # responsive and reflow checks, in one engine. Firefox and WebKit run the
-      # identical suite every night in browser-matrix.yml, which is where a
-      # cross-engine regression shows up. Three engines here made this the
-      # slowest check on every PR and did not finish on a hosted runner.
+      # Chromium runs when the change can alter what a user sees (browser
+      # tests, design system, styles, the UX4G harness) and in every full run:
+      # the accessibility, keyboard, responsive and reflow checks, in one
+      # engine. Firefox and WebKit run the identical suite every night in
+      # browser-matrix.yml, which is where a cross-engine regression shows up.
+      # Three engines here made this the slowest check on every PR and did not
+      # finish on a hosted runner.
       - name: Install Pinned Browser Engine (Chromium)
+        if: steps.scope.outputs.frontend_browser == 'true'
         run: |
           cd Frontend
           npx --no-install playwright install --with-deps chromium
 
       - name: Check Accessibility, Responsive UI and Browser Contracts (Chromium)
+        if: steps.scope.outputs.frontend_browser == 'true'
         env:
           UX4G_BROWSER_OUTPUT: ${{ runner.temp }}/ux4g-browser-results
           UX4G_BROWSER_REPORT: ${{ runner.temp }}/ux4g-browser-report.json
@@ -457,6 +567,7 @@ jobs:
       # If this step starts failing, that is the gate working. Fix the finding
       # rather than restoring a `|| echo`.
       - name: Run Frontend Lint (ESLint)
+        if: steps.scope.outputs.frontend_scope != 'none'
         run: |
           cd Frontend
           npm run lint

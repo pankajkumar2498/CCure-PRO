@@ -12,6 +12,7 @@ Then read the specialist documents for the area you are changing:
 | Frontend (anything under `Frontend/`) | [Frontend/AGENTS.md](Frontend/AGENTS.md), [docs/FRONTEND_ARCHITECTURE.md](docs/FRONTEND_ARCHITECTURE.md) |
 | UX4G and the CCure Design System | [docs/ux4g/UX4G_STANDARD.md](docs/ux4g/UX4G_STANDARD.md), the standard; [Frontend/ux4g-baseline.json](Frontend/ux4g-baseline.json), the binding release pin and checksums |
 | Backend tests | [Backend/tests/README.md](Backend/tests/README.md) |
+| Which tests to run for a change (targeted first) | [CLAUDE.md](CLAUDE.md), "Test targeted-first"; [docs/ci/CI_SCOPE.md](docs/ci/CI_SCOPE.md) |
 | CI, branch protection, security gates | [docs/ci/](docs/ci/) |
 
 `.pre-commit-config.yaml`, the architecture guardrails in

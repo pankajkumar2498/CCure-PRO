@@ -53,3 +53,8 @@ Read `../docs/FRONTEND_ARCHITECTURE.md` and
   foundation/reproducibility/build/lint/unit/authorization checks. Do not bypass
   these gates, add native primitive duplicates/alerts, expand exception lists
   or hide overflow/contrast findings. Preserve the existing CSP and disabled runtime.
+- Test targeted-first: run the unit tests for what changed (`npx vitest related
+--run <files>`) plus `src/__tests__/architecture`, and the full vitest or
+  browser suite only when asked or when `scripts/ci/select_tests.py` reports a
+  cross-cutting change. The rule and the reporting duty are in
+  [`../CLAUDE.md`](../CLAUDE.md), "Test targeted-first".

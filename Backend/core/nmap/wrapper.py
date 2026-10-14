@@ -194,6 +194,51 @@ if not _NMAP_LIB_AVAILABLE:
     log.warning("python-nmap not installed. Install it: pip install python-nmap")
 
 
+def _service_cpes_by_port(nm) -> dict[tuple[str, str, int], list[str]]:
+    """
+    Every ``<cpe>`` of every service, read from python-nmap's own raw XML.
+
+    python-nmap 0.7.1 keeps one CPE per service, the *last* ``<cpe>`` element,
+    overwriting the ones before it. Nmap lists a service's application CPE
+    before the operating system it inferred, so an Ubuntu OpenSSH arrived as
+    ``cpe:/o:linux:linux_kernel`` alone and ``cpe:/a:openbsd:openssh:9.6p1``
+    was thrown away (measured on 10.180.6.45:22, 14 Oct 2026). With no
+    application identity the port got no OpenSSH CVE search at all on an
+    unauthenticated scan. Keyed ``(ip, protocol, port)``; empty when the XML is
+    unavailable, in which case the caller keeps python-nmap's single value.
+    """
+    try:
+        raw = nm.get_nmap_last_output()
+    except Exception:
+        return {}
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    if not raw:
+        return {}
+    try:
+        root = ET.fromstring(raw)  # nosec B314 - nmap's own output, as _parse_xml
+    except ET.ParseError:
+        return {}
+    found: dict[tuple[str, str, int], list[str]] = {}
+    for host in root.findall("host"):
+        addresses = [
+            a.get("addr", "")
+            for a in host.findall("address")
+            if a.get("addrtype") in ("ipv4", "ipv6")
+        ]
+        for port in host.findall("ports/port"):
+            cpes = [c.text.strip() for c in port.findall("service/cpe") if c.text]
+            if not cpes:
+                continue
+            try:
+                number = int(port.get("portid", ""))
+            except ValueError:
+                continue
+            for addr in addresses:
+                found[(addr, port.get("protocol", "tcp"), number)] = cpes
+    return found
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Data Models returned by NmapScanner
 # ─────────────────────────────────────────────────────────────────────────────
@@ -712,7 +757,9 @@ class NmapScanner:
                 return NmapScanResult(ip=ip, state="down", scan_duration=duration)
 
             ip = hosts[0]
-            return self._parse_python_nmap(nm, ip, duration)
+            return self._parse_python_nmap(
+                nm, ip, duration, service_cpes=_service_cpes_by_port(nm)
+            )
 
         except Exception as exc:
             error_msg = str(exc)
@@ -745,8 +792,11 @@ class NmapScanner:
             duration = time.time() - t0
 
             results = {}
+            service_cpes = _service_cpes_by_port(nm)
             for ip in nm.all_hosts():
-                results[ip] = self._parse_python_nmap(nm, ip, duration)
+                results[ip] = self._parse_python_nmap(
+                    nm, ip, duration, service_cpes=service_cpes
+                )
 
             # Fill in any targets not returned (Nmap marks them down/filtered)
             for target_ip in targets:
@@ -843,9 +893,18 @@ class NmapScanner:
     # ── Parsers ───────────────────────────────────────────────────────────────
 
     def _parse_python_nmap(
-        self, nm: "_nmap_lib.PortScanner", ip: str, duration: float
+        self,
+        nm: "_nmap_lib.PortScanner",
+        ip: str,
+        duration: float,
+        service_cpes: dict[tuple[str, str, int], list[str]] | None = None,
     ) -> NmapScanResult:
-        """Convert python-nmap result for one host into NmapScanResult."""
+        """Convert python-nmap result for one host into NmapScanResult.
+
+        ``service_cpes`` is :func:`_service_cpes_by_port` over the same scan:
+        python-nmap's own ``cpe`` field holds only a service's last CPE.
+        """
+        service_cpes = service_cpes or {}
         host_data = nm[ip]
         state = host_data.state()
 
@@ -866,7 +925,8 @@ class NmapScanner:
                     product=p.get("product", ""),
                     version=p.get("version", ""),
                     extra=p.get("extrainfo", ""),
-                    cpe=p.get("cpe", "").split(",") if p.get("cpe") else [],
+                    cpe=service_cpes.get((ip, proto, port_num))
+                    or (p.get("cpe", "").split(",") if p.get("cpe") else []),
                     scripts={},
                 )
                 # NSE script outputs

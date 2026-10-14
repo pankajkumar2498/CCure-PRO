@@ -313,23 +313,15 @@ def update_scan_phase(
     # Keep duration rolling
     scan.duration_seconds = (scan.duration_seconds or 0.0) + duration
 
-    # ENTERPRISE FIX: Preserve 'unreachable' status if already set by Phase 1
-    if is_final:
-        if scan.status != "unreachable":
-            scan.status = "complete"
-        scan.completed_at = utcnow()
-        # A finished scan's duration is the time it took. The rolling sum above
-        # adds each phase's own "scan_duration", and the audit phase reports
-        # only its port re-check — so a credentialed audit that ran for 3m55s
-        # was listed as 2m17s while its report said 3.9 minutes.
-        if scan.started_at:
-            started = scan.started_at
-            if started.tzinfo is None:
-                started = started.replace(tzinfo=scan.completed_at.tzinfo)
-            scan.duration_seconds = max(
-                (scan.completed_at - started).total_seconds(), 0.0
-            )
-    else:
+    # A final phase is marked complete further down, *after* the findings
+    # sync — never here. The phase-row commit below commits this scan object
+    # too, so setting the status and completed_at here published "complete"
+    # while the sync was still writing (scan #22, 14 Oct 2026: complete at
+    # 13:43:45, findings queryable at 13:44:28), and stamped completed_at
+    # before every finding the scan produced: all 2,270 findings scan #17
+    # first found carry a first_found_at after its own completion, which a
+    # comparison against it reads as new.
+    if not is_final:
         # Do not revert a terminal scan status (complete, unreachable, failed, cancelled) back to running
         if scan.status not in ("complete", "unreachable", "failed", "cancelled"):
             scan.status = "running"
@@ -508,6 +500,20 @@ def update_scan_phase(
         # ENTERPRISE FIX: Do not overwrite 'unreachable' status with 'complete'
         if scan.status != "unreachable":
             scan.status = "complete"
+        # Stamped after the sync, so every finding this scan wrote is dated no
+        # later than its completion (GAP-13 reconstructs baselines from it).
+        scan.completed_at = utcnow()
+        # A finished scan's duration is the time it took. The rolling sum above
+        # adds each phase's own "scan_duration", and the audit phase reports
+        # only its port re-check — so a credentialed audit that ran for 3m55s
+        # was listed as 2m17s while its report said 3.9 minutes.
+        if scan.started_at:
+            started = scan.started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=scan.completed_at.tzinfo)
+            scan.duration_seconds = max(
+                (scan.completed_at - started).total_seconds(), 0.0
+            )
 
     db.commit()
     db.refresh(scan)

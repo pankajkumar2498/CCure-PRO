@@ -67,3 +67,63 @@ def test_stored_hosts_say_unknown_with_null_not_n_a():
     host = payload["_phase_data"][0]
     assert host["mac_address"] is None and host["vendor"] is None
     assert host["hostname"] == "h"
+
+
+def test_a_scan_is_complete_only_once_its_findings_are_written(
+    db_session, test_org, test_user
+):
+    """
+    Scan #22 (14 Oct 2026) read "complete" at 13:43:45 while its findings were
+    written until 13:44:28, and every scan stamped completed_at before the
+    findings it produced — all 2,270 that scan #17 first found carry a
+    first_found_at after its own completion, which GAP-13's baseline
+    reconstruction reads as new. CLAUDE.md: completed_at is stamped after the
+    findings sync, not before.
+    """
+    from db.base import engine
+    from sqlalchemy import text
+
+    scan = Scan(
+        id=f"scn_{uuid.uuid4().hex[:12]}",
+        org_id=test_org.id,
+        created_by=test_user.id,
+        target_str="10.180.6.30",
+        pipeline_mode="vulnerability_audit",
+        status="running",
+        started_at=datetime.now(timezone.utc) - timedelta(minutes=12),
+    )
+    db_session.add(scan)
+    db_session.commit()
+
+    seen = {}
+
+    def sync_probe(db, scan_id, org_id, user_id, hosts):
+        # What any other reader could see while the findings are being written.
+        with engine.connect() as other:
+            status, completed = other.execute(
+                text("SELECT status, completed_at FROM scans WHERE id = :id"),
+                {"id": scan_id},
+            ).one()
+        seen.update(status=status, completed_at=completed)
+        seen["synced_at"] = datetime.now(timezone.utc)
+
+    with patch("scans.db_helpers.sync_vulnerability_audit", sync_probe), patch(
+        "core.celery_app.registered_task", return_value=MagicMock()
+    ):
+        update_scan_phase(
+            db_session,
+            scan.id,
+            test_user.id,
+            phase=3,
+            phase_data={
+                "summary": {"scan_duration": 600.0},
+                "data": [{"ip_address": "10.180.6.30"}],
+            },
+            is_final=True,
+            pipeline_mode="vulnerability_audit",
+        )
+
+    assert seen["status"] == "running" and seen["completed_at"] is None
+    db_session.refresh(scan)
+    assert scan.status == "complete"
+    assert scan.completed_at >= seen["synced_at"]

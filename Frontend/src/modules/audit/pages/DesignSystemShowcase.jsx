@@ -245,7 +245,7 @@ function ShowcaseBody() {
 
   return (
     <CcureAppShell
-      title="CCure design system"
+      title="CCure PRO design system"
       meta="Development build · not a product page"
       sections={SECTIONS}
       currentPath="/design-system"

@@ -3,7 +3,7 @@ Platform authentication carries the platform's name, not a product's.
 
 Sign-in, password reset, account mail and MFA enrolment are the platform's. They
 used to say "CCure Audit PRO": in the subject, the body and the footer of every
-account email, and as the issuer shown in an authenticator app. They say "CCure"
+account email, and as the issuer shown in an authenticator app. They say "CCure PRO"
 now. Nothing else about authentication changed: the same five messages are sent
 by the same functions to the same recipients, the TOTP secret and its
 verification are untouched, and only the issuer label in the provisioning URI
@@ -94,11 +94,10 @@ def test_account_email_names_the_platform_not_a_product(sent, name, args):
     messages = sent.parsed()
     assert len(messages) == 1 and messages[0]["to"] == "a@x.test"
     message = messages[0]
-    assert "CCure" in message["subject"]
     for part in ("subject", "text", "html"):
+        assert "CCure PRO" in message[part], (name, part)
         assert "Audit" not in message[part], (name, part)
-        assert "PRO" not in message[part].replace("PROFILE", ""), (name, part)
-    assert "CCure" in message["text"] and "CCure" in message["html"]
+        assert "CCure" not in message[part].replace("CCure PRO", ""), (name, part)
 
 
 def test_the_message_content_that_is_not_branding_is_unchanged(sent):
@@ -106,7 +105,7 @@ def test_the_message_content_that_is_not_branding_is_unchanged(sent):
     message = sent.parsed()[0]
     assert "https://x.test/reset?t=1" in message["html"]
     assert "https://x.test/reset?t=1" in message["text"]
-    assert message["subject"] == "Reset Your Password - CCure"
+    assert message["subject"] == "Reset Your Password - CCure PRO"
 
 
 def test_the_totp_issuer_is_the_platform_and_the_secret_still_verifies(
@@ -123,7 +122,7 @@ def test_the_totp_issuer_is_the_platform_and_the_secret_still_verifies(
     test_user.mfa_enabled = False
     try:
         out = router.enable_mfa(current_user=test_user, db=db_session)
-        assert seen == {"issuer": "CCure", "name": test_user.email}
+        assert seen == {"issuer": "CCure PRO", "name": test_user.email}
         assert set(out) == {"secret", "qr_code"}  # the response shape is unchanged
         assert out["qr_code"].startswith("data:image/png;base64,")
         # verification is independent of the issuer label

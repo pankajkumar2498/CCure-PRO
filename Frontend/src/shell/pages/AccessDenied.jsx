@@ -31,7 +31,7 @@ export default function AccessDenied() {
           think it should, ask an administrator of your organisation.
         </CcureAlert>
         <CcureButton as={Link} to="/" variant="secondary" className="pm-back">
-          Back to CCurePRO Home
+          Back to CCure PRO Home
         </CcureButton>
       </CcurePage>
     </PlatformLayout>

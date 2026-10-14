@@ -668,7 +668,7 @@ describe("AssetDetail — owner", () => {
     await renderPage({
       asset: { ...ASSET, provenance: { owner: { source: "amt_import" } } },
     });
-    expect(screen.getByText(/Ccure VERIFIED/)).toBeInTheDocument();
+    expect(screen.getByText(/CCure PRO VERIFIED/)).toBeInTheDocument();
     expect(screen.queryByText("OVERRIDE")).not.toBeInTheDocument();
   });
 

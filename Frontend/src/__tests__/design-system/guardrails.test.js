@@ -409,7 +409,11 @@ describe("built bundle", () => {
     // ship a route with no auth gate into production.
     for (const f of built) {
       const text = readFileSync(path.join(distAssets, f), "utf8");
-      for (const marker of ["DesignSystemShowcase", "CCure design system"]) {
+      for (const marker of [
+        "DesignSystemShowcase",
+        "CCure design system",
+        "CCure PRO design system",
+      ]) {
         expect(text.includes(marker), `${f} contains "${marker}"`).toBe(false);
       }
     }

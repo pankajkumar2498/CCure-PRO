@@ -98,8 +98,8 @@ function HomeContent() {
   return (
     <>
       <CcurePageHeader
-        title="CCurePRO Home"
-        subtitle="The CCurePRO products and what each is responsible for. Choose where to go."
+        title="CCure PRO Home"
+        subtitle="The CCure PRO products and what each is responsible for. Choose where to go."
       />
 
       {status === "loading" ? <ProductListLoading /> : null}
@@ -111,12 +111,12 @@ function HomeContent() {
       {status === "ready" && products.length === 0 ? (
         <CcureAlert variant="warning" title="No products were listed">
           The server answered with an empty product list. This is not expected;
-          every CCurePRO product is listed whatever its state.
+          every CCure PRO product is listed whatever its state.
         </CcureAlert>
       ) : null}
 
       {status === "ready" && products.length > 0 ? (
-        <ul className="ph-grid" aria-label="CCurePRO products">
+        <ul className="ph-grid" aria-label="CCure PRO products">
           {products.map((product, index) => (
             <li key={product.key || index}>
               <ProductCard product={product} tileStates={tileStates} />

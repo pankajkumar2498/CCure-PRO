@@ -25,9 +25,9 @@ def send_password_reset_email(email_to: str, username: str, reset_link: str) -> 
     Sends a password reset link to the specified email address.
     """
     sender = AppConfig.SMTP_FROM_EMAIL
-    subject = "Reset Your Password - CCure"
+    subject = "Reset Your Password - CCure PRO"
 
-    # HTML Body Design (Premium Corporate Light/Indigo Theme matching the CCure platform)
+    # HTML Body Design (Premium Corporate Light/Indigo Theme matching the CCure PRO platform)
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -38,11 +38,11 @@ def send_password_reset_email(email_to: str, username: str, reset_link: str) -> 
     <body style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6; color: #374151; margin: 0; padding: 40px 10px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);">
             <div style="background-color: #1e1b4b; padding: 30px; text-align: center; border-bottom: 1px solid #312e81;">
-                <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.025em;">CCure</h1>
+                <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.025em;">CCure PRO</h1>
             </div>
             <div style="padding: 40px 30px; line-height: 1.6;">
                 <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Hello {username},</p>
-                <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">We received a request to reset the password associated with your CCure account. Click the button below to set a new password:</p>
+                <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">We received a request to reset the password associated with your CCure PRO account. Click the button below to set a new password:</p>
                 <div style="text-align: center; margin: 32px 0;">
                     <a href="{reset_link}" style="background-color: #4f46e5; color: #ffffff !important; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-size: 15px; font-weight: 600; display: inline-block; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);">Reset Password</a>
                 </div>
@@ -53,7 +53,7 @@ def send_password_reset_email(email_to: str, username: str, reset_link: str) -> 
                 </div>
             </div>
             <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">&copy; 2026 CCure. All rights reserved.</p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">&copy; 2026 CCure PRO. All rights reserved.</p>
                 <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">This is an automated system message. Please do not reply directly to this email.</p>
             </div>
         </div>
@@ -64,7 +64,7 @@ def send_password_reset_email(email_to: str, username: str, reset_link: str) -> 
     text_content = f"""
 Hello {username},
 
-We received a request to reset the password associated with your CCure account.
+We received a request to reset the password associated with your CCure PRO account.
 Please visit the following link to set a new password:
 
 {reset_link}
@@ -73,7 +73,7 @@ This link is secure and will expire in 15 minutes.
 If you did not request this, you can safely ignore this email.
 
 --
-CCure Team
+CCure PRO Team
 """
 
     msg = MIMEMultipart("alternative")
@@ -128,9 +128,9 @@ def send_mfa_otp_email(email_to: str, username: str, code: str) -> None:
     Sends a 6-digit MFA OTP code to the specified email address.
     """
     sender = AppConfig.SMTP_FROM_EMAIL
-    subject = "Your Multi-Factor Verification Code - CCure"
+    subject = "Your Multi-Factor Verification Code - CCure PRO"
 
-    # HTML Body Design (Premium Corporate Light/Indigo Theme matching the CCure platform)
+    # HTML Body Design (Premium Corporate Light/Indigo Theme matching the CCure PRO platform)
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -141,7 +141,7 @@ def send_mfa_otp_email(email_to: str, username: str, code: str) -> None:
     <body style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6; color: #374151; margin: 0; padding: 40px 10px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);">
             <div style="background-color: #1e1b4b; padding: 30px; text-align: center; border-bottom: 1px solid #312e81;">
-                <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.025em;">CCure</h1>
+                <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.025em;">CCure PRO</h1>
             </div>
             <div style="padding: 40px 30px; line-height: 1.6;">
                 <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Hello {username},</p>
@@ -154,7 +154,7 @@ def send_mfa_otp_email(email_to: str, username: str, code: str) -> None:
                 </div>
             </div>
             <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">&copy; 2026 CCure. All rights reserved.</p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">&copy; 2026 CCure PRO. All rights reserved.</p>
                 <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">This is an automated system message. Please do not reply directly to this email.</p>
             </div>
         </div>
@@ -171,7 +171,7 @@ This code is single-use and will expire in 5 minutes.
 If you did not request this, you can safely ignore this email.
 
 --
-CCure Team
+CCure PRO Team
 """
 
     msg = MIMEMultipart("alternative")
@@ -345,7 +345,7 @@ def _record_hard_bounce(email_to: str, detail: str) -> None:
 
 
 def _shell(title: str, body_html: str) -> str:
-    """Wrap body HTML in the shared CCure email chrome."""
+    """Wrap body HTML in the shared CCure PRO email chrome."""
     return f"""
     <!DOCTYPE html>
     <html>
@@ -353,11 +353,11 @@ def _shell(title: str, body_html: str) -> str:
     <body style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6; color: #374151; margin: 0; padding: 40px 10px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);">
             <div style="background-color: #1e1b4b; padding: 30px; text-align: center; border-bottom: 1px solid #312e81;">
-                <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.025em;">CCure</h1>
+                <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.025em;">CCure PRO</h1>
             </div>
             <div style="padding: 40px 30px; line-height: 1.6;">{body_html}</div>
             <div style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">&copy; 2026 CCure. All rights reserved.</p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">&copy; 2026 CCure PRO. All rights reserved.</p>
                 <p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">This is an automated system message. Please do not reply directly to this email.</p>
             </div>
         </div>
@@ -387,7 +387,7 @@ def send_verification_email(email_to: str, username: str, verify_link: str) -> N
         "Verify your email",
         f"""
         <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Hello {safe_user},</p>
-        <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">Confirm this email address to continue setting up your CCure account:</p>
+        <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">Confirm this email address to continue setting up your CCure PRO account:</p>
         <div style="text-align: center; margin: 32px 0;">
             <a href="{safe_link}" style="background-color: #4f46e5; color: #ffffff !important; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-size: 15px; font-weight: 600; display: inline-block; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);">Verify Email</a>
         </div>
@@ -404,7 +404,7 @@ def send_verification_email(email_to: str, username: str, verify_link: str) -> N
     text_content = f"""
 Hello {username},
 
-Confirm this email address to continue setting up your CCure account:
+Confirm this email address to continue setting up your CCure PRO account:
 
 {verify_link}
 
@@ -417,11 +417,11 @@ If you did not create this account, ignore this email and it will be removed
 automatically.
 
 --
-CCure Team
+CCure PRO Team
 """
     _deliver(
         email_to,
-        "Verify your email - CCure",
+        "Verify your email - CCure PRO",
         text_content,
         html_content,
         "verification email",
@@ -450,7 +450,7 @@ def send_password_changed_email(
         "Your password was changed",
         f"""
         <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Hello {safe_user},</p>
-        <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">The password on your CCure account was changed on <strong>{safe_when}</strong>{origin_html}. All other active sessions have been signed out.</p>
+        <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">The password on your CCure PRO account was changed on <strong>{safe_when}</strong>{origin_html}. All other active sessions have been signed out.</p>
         <div style="font-size: 13px; color: #991b1b; background-color: #fee2e2; padding: 16px; border-radius: 8px; border-left: 4px solid #ef4444; margin-top: 24px;">
             <strong>If this wasn't you</strong>, your account may be compromised. Reset your password immediately and contact your administrator.
         </div>
@@ -460,18 +460,18 @@ def send_password_changed_email(
     text_content = f"""
 Hello {username},
 
-The password on your CCure account was changed on {when}{origin_text}.
+The password on your CCure PRO account was changed on {when}{origin_text}.
 All other active sessions have been signed out.
 
 If this wasn't you, your account may be compromised. Reset your password
 immediately and contact your administrator.
 
 --
-CCure Team
+CCure PRO Team
 """
     _deliver(
         email_to,
-        "Your password was changed - CCure",
+        "Your password was changed - CCure PRO",
         text_content,
         html_content,
         "password-change notification",
@@ -509,7 +509,7 @@ def send_account_approved_email(
         "Your account has been approved",
         f"""
         <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Hello {safe_user},</p>
-        <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">An administrator has approved your CCure account. You can now sign in with the email address and password you registered with.</p>
+        <p style="color: #4b5563; font-size: 16px; margin: 0 0 24px 0;">An administrator has approved your CCure PRO account. You can now sign in with the email address and password you registered with.</p>
         {role_line}
         <div style="text-align: center; margin: 32px 0;">
             <a href="{safe_link}" style="background-color: #4f46e5; color: #ffffff !important; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-size: 15px; font-weight: 600; display: inline-block; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);">Sign in</a>
@@ -524,7 +524,7 @@ def send_account_approved_email(
     text_content = f"""
 Hello {username},
 
-An administrator has approved your CCure account. You can now sign in
+An administrator has approved your CCure PRO account. You can now sign in
 with the email address and password you registered with.
 {f'Your access level is {role_name}.' if role_name else ''}
 
@@ -534,11 +534,11 @@ If you did not request an account, do not sign in - tell your administrator,
 who can disable it.
 
 --
-CCure Team
+CCure PRO Team
 """
     _deliver(
         email_to,
-        "Your account has been approved - CCure",
+        "Your account has been approved - CCure PRO",
         text_content,
         html_content,
         "account-approved notification",

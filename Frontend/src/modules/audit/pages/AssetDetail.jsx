@@ -1281,7 +1281,7 @@ export default function AssetDetail() {
                               variant="success"
                               title="Verified via AMT inventory synchronization."
                             >
-                              ✔ Ccure VERIFIED
+                              ✔ CCure PRO VERIFIED
                             </CcureBadge>
                           )}
                         </span>

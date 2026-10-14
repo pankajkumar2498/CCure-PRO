@@ -44,7 +44,7 @@ for (const [name, state] of [
       );
       const log = await openState(page, state, { width });
       const header = page.locator(".cc-header");
-      await expect(page).toHaveTitle("CCurePRO Platform");
+      await expect(page).toHaveTitle("CCure PRO Platform");
       const dark = header.getByRole("button", { name: "Switch to dark mode" });
       await expect(dark).toBeEnabled();
       await expect(dark.locator('[data-icon="moon"]')).toHaveCount(1);
@@ -112,9 +112,9 @@ test("platform identity and theme remain consistent across product entry pages",
 }) => {
   const log = await openState(page, home, { theme: "dark" });
   await expect(
-    page.getByRole("heading", { name: "CCurePRO Home" }),
+    page.getByRole("heading", { name: "CCure PRO Home" }),
   ).toBeVisible();
-  await expect(page.locator(".cc-sidebar__brand-name")).toHaveText("CCurePRO");
+  await expect(page.locator(".cc-sidebar__brand-name")).toHaveText("CCure PRO");
   for (const [route, title] of [
     ["/policy-dashboard", "CCure Policy Pro"],
     ["/rank-dashboard", "CCure Rank"],
@@ -129,9 +129,9 @@ test("platform identity and theme remain consistent across product entry pages",
       page.getByRole("heading", { name: title, exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("list", { name: "CCurePRO Platform" }),
+      page.getByRole("list", { name: "CCure PRO Platform" }),
     ).toBeVisible();
-    await expect(page).toHaveTitle("CCurePRO Platform");
+    await expect(page).toHaveTitle("CCure PRO Platform");
     await expect(
       page
         .locator(".cc-header")

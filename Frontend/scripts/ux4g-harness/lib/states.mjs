@@ -3051,7 +3051,7 @@ const NS_STATES = [
 ];
 
 /* ── Platform Home (after sign-in) ───────────────────────────────────────────
-   CCurePRO Home at /, the three product entry pages, and the platform header's
+   CCure PRO Home at /, the three product entry pages, and the platform header's
    shared navigation: Administration, organisation switcher, notifications,
    settings and the account menu. Added with the platform header, so the page a
    person lands on after sign-in is captured like every other screen. */
@@ -3068,7 +3068,7 @@ const PH_BASE = {
   },
   tracked: PH_TRACKED,
 };
-const phReady = `document.querySelectorAll('ul[aria-label="CCurePRO products"] > li').length === 4`;
+const phReady = `document.querySelectorAll('ul[aria-label="CCure PRO products"] > li').length === 4`;
 const PH_STATES = [
   { ...PH_BASE, id: "ph-home", themes: BOTH, ready: phReady },
   {

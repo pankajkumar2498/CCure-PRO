@@ -164,7 +164,7 @@ const renderShell = async (props = {}) => {
     <AppLayout {...props}>
       <div data-testid="page">page content</div>
     </AppLayout>,
-    // The header's CCurePRO Home control is a real router link (Phase 12), so
+    // The header's CCure PRO Home control is a real router link (Phase 12), so
     // the shell needs a router; navigation itself stays the mocked hooks.
     { wrapper: MemoryRouter },
   );
@@ -318,12 +318,12 @@ describe("AppLayout — navigation gating (real permissions)", () => {
   });
 
   /* ── Phase 12.2: Audit's dashboard moved to /audit-dashboard, and / is
-     CCurePRO Home. Audit's own navigation must stay inside Audit. ── */
+     CCure PRO Home. Audit's own navigation must stay inside Audit. ── */
   const isActive = (el) =>
     el.className.includes("--active") ||
     el.getAttribute("aria-current") === "page";
 
-  it("Audit Dashboard opens /audit-dashboard, not CCurePRO Home", async () => {
+  it("Audit Dashboard opens /audit-dashboard, not CCure PRO Home", async () => {
     const u = userEvent.setup();
     await renderShell();
     await u.click(navButton(/^Audit Dashboard/));
@@ -340,7 +340,7 @@ describe("AppLayout — navigation gating (real permissions)", () => {
     },
   );
 
-  it("no Audit item is active on CCurePRO Home's address", async () => {
+  it("no Audit item is active on CCure PRO Home's address", async () => {
     location = { pathname: "/", search: "" };
     await renderShell();
     expect(isActive(navButton(/^Audit Dashboard/))).toBe(false);
@@ -357,11 +357,11 @@ describe("AppLayout — navigation gating (real permissions)", () => {
     expect(navigate).toHaveBeenCalledWith("/reports");
   });
 
-  it("the header carries a CCurePRO Home link to /", async () => {
+  it("the header carries a CCure PRO Home link to /", async () => {
     for (const persona of [SUPERADMIN, ORG_ADMIN, VIEWER]) {
       user = persona;
       const { unmount } = await renderShell();
-      const home = screen.getByRole("link", { name: "CCurePRO Home" });
+      const home = screen.getByRole("link", { name: "CCure PRO Home" });
       expect(home).toHaveAttribute("href", "/");
       unmount();
     }
@@ -384,7 +384,7 @@ describe("AppLayout — header actions", () => {
         expect(header.queryByRole("button", { name })).not.toBeInTheDocument();
       }
       expect(
-        header.getByRole("link", { name: "CCurePRO Home" }),
+        header.getByRole("link", { name: "CCure PRO Home" }),
       ).toBeInTheDocument();
       expect(
         header.getByRole("button", { name: "Switch to dark mode" }),

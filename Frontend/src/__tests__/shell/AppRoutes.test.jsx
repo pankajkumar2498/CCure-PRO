@@ -3,10 +3,10 @@
  *
  * Every Audit page is a stub naming itself, so this pins *which page an
  * address opens* — the routing decision Phase 12 changes — and nothing about
- * the pages, which have their own suites. CCurePRO Home and the module entry
+ * the pages, which have their own suites. CCure PRO Home and the module entry
  * page are real; the product list is the live :443 body recorded at 12.1.
  *
- *   /                  CCurePRO Home
+ *   /                  CCure PRO Home
  *   /audit-dashboard   Audit's Audit Dashboard (canonical)
  *   /dashboard         redirect to /audit-dashboard, query and fragment kept
  *   /{policy,rank,ir}-dashboard   the module page from the registry
@@ -14,7 +14,7 @@
  *
  * And D12-8: authentication and authorisation behave exactly as before — an
  * unauthenticated visit goes to sign-in carrying its address, and a refusal is
- * never turned into a trip to CCurePRO Home.
+ * never turned into a trip to CCure PRO Home.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -217,11 +217,11 @@ beforeEach(() => {
   auth = signedIn(ANALYST);
 });
 
-describe("/ is CCurePRO Home", () => {
+describe("/ is CCure PRO Home", () => {
   it("renders the Product Hub, not Audit's dashboard", async () => {
     visit("/");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "CCurePRO Home" }),
+      await screen.findByRole("heading", { level: 1, name: "CCure PRO Home" }),
     ).toBeInTheDocument();
     expect(await screen.findAllByRole("heading", { level: 2 })).toHaveLength(4);
     expect(page()).toBeNull();
@@ -299,7 +299,7 @@ describe("module entry pages from the registry", () => {
         ),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("link", { name: "Back to CCurePRO Home" }),
+        screen.getByRole("link", { name: "Back to CCure PRO Home" }),
       ).toHaveAttribute("href", "/");
       expect(
         container.querySelector("table, canvas, figure, progress"),
@@ -346,7 +346,7 @@ describe("module entry pages from the registry", () => {
     visit("/no-such-page");
     await waitFor(() => expect(where().pathname).toBe("/"));
     expect(
-      await screen.findByRole("heading", { level: 1, name: "CCurePRO Home" }),
+      await screen.findByRole("heading", { level: 1, name: "CCure PRO Home" }),
     ).toBeInTheDocument();
   });
 
@@ -363,7 +363,7 @@ describe("module entry pages from the registry", () => {
     api.get.mockResolvedValueOnce({ data: real });
     visit("/ir-dashboard");
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The CCurePRO product list could not be loaded",
+      "The CCure PRO product list could not be loaded",
     );
     expect(where().pathname).toBe("/ir-dashboard");
     await userEvent
@@ -469,7 +469,7 @@ describe("D12-8 — authentication and authorisation are unchanged", () => {
     expect(where().from).toBe("/dashboard");
   });
 
-  it("a refused platform route is refused in place: not CCurePRO Home, not Audit", () => {
+  it("a refused platform route is refused in place: not CCure PRO Home, not Audit", () => {
     visit("/admin/users");
     expect(where().pathname).toBe("/admin/users");
     expect(screen.getByRole("heading", { name: "Access denied" })).toBeTruthy();
@@ -484,7 +484,7 @@ describe("D12-8 — authentication and authorisation are unchanged", () => {
     expect(screen.getByRole("heading", { name: "Access denied" })).toBeTruthy();
   });
 
-  it("a 403 from the product list is shown on CCurePRO Home, not navigated away from", async () => {
+  it("a 403 from the product list is shown on CCure PRO Home, not navigated away from", async () => {
     api.get.mockReset();
     api.get.mockRejectedValue(
       Object.assign(new Error("Forbidden"), { response: { status: 403 } }),
@@ -566,10 +566,10 @@ describe("a denied platform route stays in the Platform Shell", () => {
     auth = signedIn(ANALYST);
     visit("/admin/users");
     const sections = platformSidebarLists();
-    expect(sections).toContain("CCurePRO Platform");
+    expect(sections).toContain("CCure PRO Platform");
     expect(sections.join("|")).not.toMatch(/Overview|Scanning|Intelligence/);
     expect(
-      screen.getByRole("link", { name: "Back to CCurePRO Home" }),
+      screen.getByRole("link", { name: "Back to CCure PRO Home" }),
     ).toBeTruthy();
   });
 

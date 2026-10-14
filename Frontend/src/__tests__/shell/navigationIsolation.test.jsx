@@ -3,7 +3,7 @@ import { everything } from "../fixtures/authorization";
  * Platform navigation and product navigation are separate levels, decided by
  * the route tree — not by hiding one of two rendered menus.
  *
- *   CCurePRO Home / an entry page / a shared admin screen   → Platform Shell
+ *   CCure PRO Home / an entry page / a shared admin screen   → Platform Shell
  *   an Audit address                                     → Audit's own layout
  *
  * Audit's state (ScanProvider) mounts only under Audit's routes, so the
@@ -92,7 +92,7 @@ const open = (path) =>
     </MemoryRouter>,
   );
 const sidebar = () => screen.getByRole("navigation", { name: "Sections" });
-const PLATFORM_LIST = { name: "CCurePRO Platform" };
+const PLATFORM_LIST = { name: "CCure PRO Platform" };
 
 beforeEach(() => {
   api.get.mockReset();
@@ -103,10 +103,10 @@ beforeEach(() => {
   );
 });
 
-describe("CCurePRO Home", () => {
+describe("CCure PRO Home", () => {
   it("is in the Platform Shell, with the product switcher and no Audit", async () => {
     open("/");
-    await screen.findByRole("heading", { name: "CCurePRO Home" });
+    await screen.findByRole("heading", { name: "CCure PRO Home" });
     const list = within(sidebar()).getByRole("list", PLATFORM_LIST);
     expect(
       within(list)
@@ -126,7 +126,7 @@ describe("CCurePRO Home", () => {
   it("keeps the header and sidebar mounted across platform pages", async () => {
     const u = userEvent.setup();
     open("/");
-    await screen.findByRole("heading", { name: "CCurePRO Home" });
+    await screen.findByRole("heading", { name: "CCure PRO Home" });
     const header = document.querySelector(".cc-header");
     const nav = sidebar();
     const sidebarFrame = document.querySelector(".cc-sidebar");
@@ -134,7 +134,7 @@ describe("CCurePRO Home", () => {
     for (const [link, content] of [
       ["CCure Rank", "CCure Rank"],
       ["User Management", "UserManagement"],
-      ["Home", "CCurePRO Home"],
+      ["Home", "CCure PRO Home"],
     ]) {
       await u.click(
         within(sidebar()).getByRole("link", { name: link, exact: true }),

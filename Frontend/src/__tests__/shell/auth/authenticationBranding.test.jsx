@@ -34,7 +34,7 @@ function copyIn(node, copy = []) {
 }
 
 describe("Authentication platform identity", () => {
-  it("uses CCurePRO consistently in shared platform copy without renaming product contracts", () => {
+  it("uses CCure PRO consistently in shared platform copy without renaming product contracts", () => {
     for (const file of filesIn(SHELL_SRC)) {
       const ast = parse(readFileSync(file, "utf8"), {
         ecmaVersion: "latest",
@@ -42,7 +42,10 @@ describe("Authentication platform identity", () => {
         ecmaFeatures: { jsx: true },
       });
       for (const copy of copyIn(ast))
-        expect(copy, file).not.toMatch(/\bCCure\b/);
+        expect(
+          copy.replace(/\s+/g, " ").replaceAll("CCure PRO", ""),
+          file,
+        ).not.toMatch(/\b(?:CCure|Ccure)(?:PRO)?\b/);
     }
   });
 
@@ -77,12 +80,14 @@ describe("Authentication platform identity", () => {
         <h1>Sign in</h1>
       </AuthLayout>,
     );
-    expect(container.querySelector("header")).toHaveTextContent("CCurePRO");
+    expect(container.querySelector(".auth-brand-name")).toHaveTextContent(
+      /^CCure PRO$/,
+    );
     expect(container.querySelector("header")).toHaveTextContent(
       "Enterprise Security / Vulnerability Management Platform",
     );
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(document.title).toBe("Sign in | CCurePRO Platform");
+    expect(document.title).toBe("Sign in | CCure PRO Platform");
     unmount();
     expect(document.title).toBe(previousTitle);
   });

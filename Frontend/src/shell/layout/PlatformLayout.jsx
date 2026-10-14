@@ -74,7 +74,7 @@ function platformSections(user, productList) {
   const admin = SHARED_ADMIN_NAV.filter((item) => canSeeNavItem(user, item));
   return [
     {
-      label: "CCurePRO Platform",
+      label: "CCure PRO Platform",
       items: [{ id: "home", label: "Home", route: "/" }, ...productItems],
     },
     ...(admin.length ? [{ label: "Administration", items: admin }] : []),
@@ -200,7 +200,7 @@ function PlatformFrame({ children }) {
   return (
     <>
       <CcureAppShell
-        brand={{ name: "CCurePRO", sub: "Platform" }}
+        brand={{ name: "CCure PRO", sub: "Platform" }}
         sections={platformSections(user, productList)}
         currentPath={pathname}
         onNavigate={(route) => navigate(route)}

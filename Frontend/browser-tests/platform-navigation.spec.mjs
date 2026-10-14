@@ -14,7 +14,7 @@ const platformLinks = [
   ["Organizations", "/admin/organizations", "Organizations"],
   ["Roles & Permissions", "/admin/roles", "Roles & Permissions"],
   ["Audit Logs", "/admin/audit-logs", "Audit Logs"],
-  ["Home", "/", "CCurePRO Home"],
+  ["Home", "/", "CCure PRO Home"],
 ];
 
 for (const [width, theme] of [
@@ -39,7 +39,7 @@ for (const [width, theme] of [
       { width, theme },
     );
     await expect(
-      page.getByRole("heading", { level: 1, name: "CCurePRO Home" }),
+      page.getByRole("heading", { level: 1, name: "CCure PRO Home" }),
     ).toBeVisible();
     await page.evaluate(() => {
       window.__platformNavigation = {
@@ -121,11 +121,11 @@ for (const [width, theme] of [
     await assertPage(page, log);
     expect(documents).toHaveLength(1);
     await page
-      .getByRole("link", { name: "CCurePRO Home", exact: true })
+      .getByRole("link", { name: "CCure PRO Home", exact: true })
       .click();
     await expect(page).toHaveURL("/");
     await expect(
-      page.getByRole("heading", { level: 1, name: "CCurePRO Home" }),
+      page.getByRole("heading", { level: 1, name: "CCure PRO Home" }),
     ).toBeVisible();
     await expect(page.locator(".cc-shell")).toHaveCount(1);
     await assertPage(page, log);

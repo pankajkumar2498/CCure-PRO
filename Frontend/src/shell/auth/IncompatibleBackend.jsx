@@ -14,7 +14,7 @@ export default function IncompatibleBackend({ message }) {
       <AuthLayout pageType="unavailable" title="Account access unavailable">
         <h1 className="auth-title">Account access unavailable</h1>
         <p className="auth-sub">
-          CCurePRO cannot complete sign-in with this backend. Contact your
+          CCure PRO cannot complete sign-in with this backend. Contact your
           administrator.
         </p>
         <CcureAlert variant="danger">{message}</CcureAlert>

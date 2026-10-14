@@ -270,7 +270,7 @@ export default function Register() {
           are provisioned deliberately rather than opened on request.
         </p>
         <p className="auth-sub">
-          Ask your CCurePRO administrator to create an account for you. If you
+          Ask your CCure PRO administrator to create an account for you. If you
           already have one, sign in below.
         </p>
         <CcureButton as={Link} to="/login" block size="lg">
@@ -368,7 +368,7 @@ export default function Register() {
         <>
           <h1 className="auth-title">Create account</h1>
           <p className="auth-sub">
-            Create your CCurePRO account. Email verification and administrator
+            Create your CCure PRO account. Email verification and administrator
             approval are required.
           </p>
 

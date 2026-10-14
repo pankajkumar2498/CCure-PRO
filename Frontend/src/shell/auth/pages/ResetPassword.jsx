@@ -120,7 +120,7 @@ export default function ResetPassword() {
     <AuthLayout pageType="reset" title="Set new password">
       <h1 className="auth-title">Set new password</h1>
       <p className="auth-sub">
-        Choose a new password for your CCurePRO account.
+        Choose a new password for your CCure PRO account.
       </p>
 
       {error && (

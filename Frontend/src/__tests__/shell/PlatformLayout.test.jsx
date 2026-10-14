@@ -1,11 +1,11 @@
 import { everything } from "../fixtures/authorization";
 /**
- * The platform header (PlatformLayout) — the shared CCurePRO Platform navigation a
+ * The platform header (PlatformLayout) — the shared CCure PRO Platform navigation a
  * person sees the moment they sign in, before entering any product.
  *
  * Every control is the shell's own shared component; these pin that each is
  * present, works, and is gated exactly as it is in Audit's layout:
- *   CCurePRO Home · Administration (by permission) · organisation switcher
+ *   CCure PRO Home · Administration (by permission) · organisation switcher
  *   (superadmin) · notifications · settings (platform preferences only) ·
  *   account menu (My Account, Sign Out).
  */
@@ -264,7 +264,7 @@ describe("the platform sidebar is a product switcher", () => {
   it("lists every product from the registry, in its order, and nothing of Audit's", async () => {
     renderLayout();
     const nav = screen.getByRole("navigation", { name: "Sections" });
-    const list = within(nav).getByRole("list", { name: "CCurePRO Platform" });
+    const list = within(nav).getByRole("list", { name: "CCure PRO Platform" });
     await waitFor(() =>
       expect(within(list).getAllByRole("link")).toHaveLength(
         1 + real.modules.length,

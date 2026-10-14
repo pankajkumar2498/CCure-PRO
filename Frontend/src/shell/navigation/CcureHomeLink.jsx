@@ -41,10 +41,10 @@ export default function CcureHomeLink({
       variant={variant}
       size={size}
       className={className}
-      aria-label="CCurePRO Home"
+      aria-label="CCure PRO Home"
     >
       <HomeIcon />
-      <span className={labelClassName || undefined}>CCurePRO Home</span>
+      <span className={labelClassName || undefined}>CCure PRO Home</span>
     </CcureButton>
   );
 }

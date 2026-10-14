@@ -138,7 +138,7 @@ export const COMMON_STUBS = {
 const persona = nativePersona();
 persona.authorization.can_switch_organisation = true;
 export const COMMON_STATES = [
-  ["home", "/", "CCurePRO Home"],
+  ["home", "/", "CCure PRO Home"],
   ["users", "/admin/users", "User Management"],
   ["deleted", "/admin/users/deleted", "Deleted Users"],
   ["organizations", "/admin/organizations", "Organizations"],

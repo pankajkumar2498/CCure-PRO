@@ -7,12 +7,14 @@ const auth = (name) =>
 const widths = [320, 375, 390, 414, 768, 1024, 1280, 1440, 1920];
 
 async function assertIdentity(page) {
-  await expect(page.locator(".auth-platform-header")).toContainText("CCurePRO");
+  await expect(page.locator(".auth-platform-header")).toContainText(
+    "CCure PRO",
+  );
   await expect(page.locator(".auth-platform-description")).toBeVisible();
   await expect(page.locator(".auth-platform-description")).toHaveText(
     "Enterprise Security / Vulnerability Management Platform",
   );
-  await expect(page).toHaveTitle(/\| CCurePRO Platform$/);
+  await expect(page).toHaveTitle(/\| CCure PRO Platform$/);
   await expect(page.locator("h1")).toHaveCount(1);
   // Excludes legally controlled dialog content, which retains its approved text.
   expect(await page.locator(".auth-layout").innerText()).not.toMatch(

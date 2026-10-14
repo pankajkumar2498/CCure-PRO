@@ -101,7 +101,7 @@ export default function RegistrationSettingsDialog({ onClose }) {
       <CcureModal
         open
         title="Registration settings"
-        subtitle="Control self-service account registration across all organizations in CCurePRO."
+        subtitle="Control self-service account registration across all organizations in CCure PRO."
         onClose={busy || pending ? undefined : onClose}
         closeLabel="Close registration settings"
         closeOnOverlayClick={false}

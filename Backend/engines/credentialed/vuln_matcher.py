@@ -377,8 +377,7 @@ class VulnMatcher:
         Fetches all potential matches in one query, then filters in Python.
         This reduces N database round-trips to 1-2 queries.
         """
-        findings: list[CredentialedCVE] = []
-        best_by_cve: dict[str, CredentialedCVE] = {}
+        all_findings: list[CredentialedCVE] = []
 
         try:
             with self.engine.connect() as conn:
@@ -391,24 +390,57 @@ class VulnMatcher:
                 # Build batch query for OSV records
                 osv_findings = self._batch_query_osv(conn, package_names, package_data)
 
-                # Merge findings, keeping highest priority per CVE
                 all_findings = cpe_findings + osv_findings
-                for finding in all_findings:
-                    current = best_by_cve.get(finding.cve_id)
-                    if (
-                        current is None
-                        or finding.priority_score > current.priority_score
-                    ):
-                        best_by_cve[finding.cve_id] = finding
 
         except SQLAlchemyError as exc:
             self._lookup_failed("Batch vulnerability query", exc)
 
-        findings = list(best_by_cve.values())
-        findings.sort(
-            key=lambda item: (item.priority_score, item.cvss_score), reverse=True
+        return self._merge_by_package(all_findings)
+
+    def _package_unit(self, package_name: str) -> str:
+        """
+        What one finding is about: the source package where dpkg named one,
+        otherwise the installed package itself.
+
+        Binaries built from one source share its advisory and its fix, so
+        libssl3t64 and openssl are one openssl finding. Two sources are two
+        findings even when one CVE names both.
+        """
+        name = str(package_name or "")
+        return getattr(self, "_package_sources", {}).get(name) or name.lower()
+
+    def _merge_by_package(
+        self, findings: list[CredentialedCVE]
+    ) -> list[CredentialedCVE]:
+        """
+        One finding per CVE per affected package, in a fixed order.
+
+        The merge was keyed on the CVE alone, so a CVE affecting two installed
+        packages kept whichever ranked higher and dropped the other: on
+        10.180.6.45 (13 Oct 2026) a shared xorg-server/xwayland CVE named one
+        package, and which one depended on the order rows came back — and the
+        package is part of a finding's identity since a7c9e1b3d5f8. Remediation
+        that names one of two vulnerable packages leaves the other installed.
+        A CPE and an OSV match on the same package still merge, keeping the
+        higher priority; the first-seen wins a tie, and the input order is
+        itself deterministic (the OSV query's ORDER BY is total).
+        """
+        best: dict[tuple[str, str], CredentialedCVE] = {}
+        for finding in findings:
+            key = (finding.cve_id, self._package_unit(finding.package_name))
+            current = best.get(key)
+            if current is None or finding.priority_score > current.priority_score:
+                best[key] = finding
+        merged = list(best.values())
+        merged.sort(
+            key=lambda item: (
+                -(item.priority_score or 0.0),
+                -(item.cvss_score or 0.0),
+                item.cve_id,
+                str(item.package_name or "").lower(),
+            )
         )
-        return findings
+        return merged
 
     def _attach_platform_scope(self, findings: list[CredentialedCVE]) -> None:
         """
@@ -1064,8 +1096,7 @@ class VulnMatcher:
 
         Uses ThreadPoolExecutor to query multiple packages concurrently.
         """
-        findings: list[CredentialedCVE] = []
-        best_by_cve: dict[str, CredentialedCVE] = {}
+        found: list[CredentialedCVE] = []
 
         try:
             with self.engine.connect() as conn:
@@ -1080,13 +1111,7 @@ class VulnMatcher:
 
                     for future in as_completed(future_to_pkg):
                         try:
-                            for finding in future.result():
-                                current = best_by_cve.get(finding.cve_id)
-                                if (
-                                    current is None
-                                    or finding.priority_score > current.priority_score
-                                ):
-                                    best_by_cve[finding.cve_id] = finding
+                            found.extend(future.result())
                         except Exception as exc:
                             pkg_name = future_to_pkg[future][0]
                             log.warning(f"Package '{pkg_name}' matching failed: {exc}")
@@ -1094,11 +1119,10 @@ class VulnMatcher:
         except SQLAlchemyError as exc:
             log.warning("Parallel vulnerability query failed: %s", exc)
 
-        findings = list(best_by_cve.values())
-        findings.sort(
-            key=lambda item: (item.priority_score, item.cvss_score), reverse=True
-        )
-        return findings
+        # as_completed yields in completion order; fix it before the merge so a
+        # tie between two records resolves the same way every time.
+        found.sort(key=lambda f: (f.cve_id, str(f.package_name), f.matched_by))
+        return self._merge_by_package(found)
 
     def _match_package(
         self, conn, package_name: str, installed_version: str

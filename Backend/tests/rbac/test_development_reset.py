@@ -53,8 +53,9 @@ def test_reset_migration_head_gate_only_reads_the_database(rbac_db):
     "heads",
     [
         {"f6a8c0e2b4d7", "policy_pro_0001", "rank_0001"},
-        {"a7c9e1b3d5f8", "policy_pro_0001"},
-        {"a7c9e1b3d5f8", "policy_pro_0001", "rank_0001", "unreviewed_head"},
+        {"a7c9e1b3d5f8", "policy_pro_0001", "rank_0001"},
+        {"d5e7f9a1b3c6", "policy_pro_0001"},
+        {"d5e7f9a1b3c6", "policy_pro_0001", "rank_0001", "unreviewed_head"},
         set(),
     ],
 )

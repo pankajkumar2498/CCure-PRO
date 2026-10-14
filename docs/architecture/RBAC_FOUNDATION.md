@@ -9,7 +9,7 @@
 **Status: dark.** RBAC-1 built the independent RBAC capability and wired it to
 nothing; RBAC-2 populated its permission catalogue and role model and mapped every
 legacy atom onto them (§10, and [RBAC_PERMISSION_CATALOG.md](RBAC_PERMISSION_CATALOG.md)).
-**RBAC-2 is prepared, not live.** **RBAC-3 is shadow only** — the new engine is compared beside the legacy check, off by default, and changes no outcome; legacy authorization remains authoritative ([RBAC_SHADOW_AUTHORIZATION.md](RBAC_SHADOW_AUTHORIZATION.md)). The legacy authorization — `users.role_id`, `roles`, `permissions`,
+**RBAC-2 is prepared, not live.** **RBAC-3 is shadow only** — the new engine is compared beside the legacy check, off by default, and changes no outcome; legacy authorization remains authoritative (the retired RBAC-3 shadow-authorization design (removed in RBAC-8; see [RBAC_CUTOVER.md](RBAC_CUTOVER.md))). The legacy authorization — `users.role_id`, `roles`, `permissions`,
 `role_permissions`, `require_permission`, `require_role`, `user_has_permission` and
 the frontend `can()` — is **still the only authority**. No route, no `/auth/me`
 field, no frontend behaviour, no role assignment, no registration flow and no
@@ -161,7 +161,7 @@ controls a request** — the hook returns nothing and cannot raise, runs on its 
 read-only session, and is off unless `RBAC_SHADOW_MODE=observe`. Architecture, result
 classifications, failure behaviour, configuration, privacy rules, the scope-deferred
 cases, the RBAC-2 equivalence results and the RBAC-4 prerequisites are in
-[RBAC_SHADOW_AUTHORIZATION.md](RBAC_SHADOW_AUTHORIZATION.md). Turning role-name
+the retired RBAC-3 shadow-authorization design (removed in RBAC-8; see [RBAC_CUTOVER.md](RBAC_CUTOVER.md)). Turning role-name
 checks into permissions is RBAC-4.
 
 ## 8. Configuration

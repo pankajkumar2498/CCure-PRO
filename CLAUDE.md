@@ -13,6 +13,8 @@ to it or own one subject:
 | `Frontend/AGENTS.md`                                                         | Frontend-specific guidance                                                                                                         |
 | [`docs/ux4g/UX4G_STANDARD.md`](docs/ux4g/UX4G_STANDARD.md)                   | The UX4G standard: approved release, boundaries, required checks                                                                   |
 | `Frontend/ux4g-baseline.json`                                                | The binding UX4G release pin and checksums, read by the asset pipeline and its checks                                              |
+| [`docs/architecture/README.md`](docs/architecture/README.md) | Current-state map for module teams: module responsibilities, contracts, boundaries, runbooks |
+| `docs/archive/` | Historical records of finished work; evidence, not current requirements |
 | `.pre-commit-config.yaml`, `Backend/scripts/architecture/`, repository tests | Authoritative for the rules they enforce. If a document and a check disagree, the check is right and the document needs correcting |
 
 **Current stack** (verified against the files named, 9 Oct 2026):

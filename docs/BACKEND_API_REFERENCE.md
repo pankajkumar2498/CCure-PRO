@@ -1,7 +1,5 @@
 # Backend API Reference
 
-> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
-
 **CCure-Audit-PRO** — complete inventory of the FastAPI surface, derived from
 `Backend/main.py`'s router registration and the route decorators in each router
 module.
@@ -397,8 +395,8 @@ in Phase 9.3. **Public key material only**: each key is
 is the RFC 7638 thumbprint of the key. Every key in the `next`, `active` and
 `retired` states is listed. `Cache-Control: public, max-age=300`. Answers **503**
 when no signing keyset is configured. Verifiers (the gateway, IR) cache it and
-refetch only on an unknown `kid`. Tokens are still issued HS256 until Phase 9.4,
-so no issued token uses these keys yet.
+refetch only on an unknown `kid`. Every token the platform issues is ES256, signed
+with the `active` key and carrying its `kid`; a token with no `kid` is refused.
 
 ### `POST /auth/service-token`
 

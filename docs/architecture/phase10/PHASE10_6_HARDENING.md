@@ -229,7 +229,7 @@ It was never on a command line and never printed or written.
 Authenticated `/auth/me` latency, gateway vs direct: p50 53.57 / 44.44 ms and
 p95 58.79 / 49.26 ms. In 10.5 the gateway's p95 was 79.46.
 
-**One session held past its access token's lifetime** (13:24–13:55 IST, `observe_10_6.json`):
+**One session held past its access token's lifetime** (13:24–13:55 IST, `observe_10_6.json`, archived in `docs/archive/architecture/phase10/`):
 **6/6 PASS.**
 
 | Check                                                  | Result                                                                                                                                         |

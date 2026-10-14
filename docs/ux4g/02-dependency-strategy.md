@@ -10,7 +10,7 @@
 
 **Date:** 9 September 2026
 **Branch:** `feat/ux4g-spike`
-**Prior phases:** [`00-baseline.md`](00-baseline.md) · [`01-spike-report.md`](01-spike-report.md)
+**Prior phases:** [`00-baseline.md`](../archive/ux4g/00-baseline.md) · [`01-spike-report.md`](01-spike-report.md)
 **Recommendation: GO for Phase 3**, with one open item that is a decision for a
 person, not a build (§1).
 

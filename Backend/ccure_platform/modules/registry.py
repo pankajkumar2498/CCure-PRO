@@ -2,7 +2,7 @@
 The CCure module registry (Phase 11).
 
 The core service hosts three modules — Policy Pro, Audit and Rank — beside the
-shared platform (``docs/architecture/CCURE_PLATFORM_MODULAR_ARCHITECTURE.md``
+shared platform (``CCURE_PLATFORM_MODULAR_ARCHITECTURE.md``, the master plan, not versioned here
 §3.3, §4). This is the one list of them. ``main.py`` mounts what the enabled
 modules declare and ``core/celery_app.py`` loads their task modules and queues.
 

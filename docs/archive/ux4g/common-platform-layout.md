@@ -16,7 +16,7 @@ in `Frontend/src/design-system`. It keeps the pinned
 theme handling, and CSP-compatible React interactions. The npm version is
 distinct from the design-system version: upstream's README maps npm 2.1.0 to
 CDN UX4G 3.2.0, in the UX4G 3.x design family. See
-[the existing dependency strategy](02-dependency-strategy.md).
+[the existing dependency strategy](../../ux4g/02-dependency-strategy.md).
 
 Remaining administration presentation now uses shared tables, pagination,
 checkboxes, buttons, badges, and loading indicators. Role controls use the

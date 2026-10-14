@@ -161,4 +161,4 @@ The scope/delegability restrictions apply even to an administrator who holds the
 See [administration and governance](architecture/RBAC_ADMINISTRATION.md),
 [frontend authorization](architecture/RBAC_FRONTEND_AUTHORIZATION.md),
 [tenant scope](architecture/RBAC_SCOPE.md), and
-[phase verification and deployment limits](rbac/RBAC_HARDENING_REPORT.md).
+[phase verification and deployment limits](archive/rbac/RBAC_HARDENING_REPORT.md).

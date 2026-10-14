@@ -7,10 +7,10 @@
 > carries a **Fixed** note naming the code that closes it. One item, **S-5**,
 > was deliberately not implemented — see _Deferred_ at the end.
 >
-> Regression cover: [`Backend/tests/security/test_upload_validation.py`](../Backend/tests/security/test_upload_validation.py)
+> Regression cover: [`Backend/tests/security/test_upload_validation.py`](../../Backend/tests/security/test_upload_validation.py)
 > — 62 tests, all passing. Invariants recorded under **File uploads** in
-> [CLAUDE.md](../CLAUDE.md). Shared primitives in
-> [`Backend/core/upload_guard.py`](../Backend/core/upload_guard.py).
+> [CLAUDE.md](../../CLAUDE.md). Shared primitives in
+> [`Backend/core/upload_guard.py`](../../Backend/core/upload_guard.py).
 
 _Verified against source on 22 Aug 2026. Every line number was re-read; the
 first revision of this document cited line numbers from a stale checkout and

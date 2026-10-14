@@ -2,7 +2,7 @@
 
 **Date:** 9 September 2026
 **Branch:** `feat/ux4g-spike`
-**Baseline:** [`00-baseline.md`](00-baseline.md)
+**Baseline:** [`00-baseline.md`](../archive/ux4g/00-baseline.md)
 **Recommendation: GO**, with one Phase 2 action that is quantified below.
 
 ---

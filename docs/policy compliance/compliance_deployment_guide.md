@@ -1,101 +1,56 @@
 # CCure Audit PRO — Compliance Engine Deployment & Operations Guide
 
-This document defines the deployment sequence, environment variables, feature flags, monitoring metrics, rollback guidelines, and logging schemas for releasing the Policy Compliance Engine.
+How the Policy Compliance Engine is released and operated. It is part of CCure Audit,
+not a separately deployed service: it ships in the same backend image and runs in the
+same `api`, `worker` and `beat` containers. The release procedure, rollback and the
+deployed-version table are in [`CLAUDE.md`](../../CLAUDE.md), "Deployment: Linux VM" →
+"Releases"; this guide covers only what is specific to compliance.
 
 ---
 
-## 1. Production Release Sequence
+## 1. What a release does
 
-Deploy the compliance module to production in this strict sequence:
-
-1. **Step 1: DB Schema Migration**: Run Alembic migrations to create the 18 compliance tables.
+1. **Schema.** Every API start runs `alembic upgrade heads`, so a merged migration is
+   live at the next restart. The history has several heads: always `heads`, never
+   `head`. Back up first (`scripts/backup_db.sh`, and confirm a full dump from today).
+2. **Catalogues.** `main.py` seeds the framework catalogues at start when its bootstrap
+   condition finds one missing. To seed by hand, run inside the API container:
    ```bash
-   alembic upgrade heads
+   python -m scripts.seed_compliance                     # every catalogue
+   python -m scripts.seed_compliance --seed-file <path>  # one
    ```
-2. **Step 2: Seed Static Data**: Execute the seeding script to populate `compliance_frameworks` and the 93 `compliance_controls` for ISO 27001:2022.
-   ```bash
-   python -m scripts.seed_compliance --seed-file scripts/iso27001_2022_controls_seed.json
-   ```
-3. **Step 3: Deploy Worker & API Code**: Roll out the new backend package container images. Ensure the new `compliance` Celery queue configuration is registered.
-4. **Step 4: Enable Feature Flag**: Set the feature flag to `True` in environment variables and restart API pods.
+   The seed files are in `Backend/data/compliance_seeds/`. A seed file the bootstrap
+   cannot find makes its condition permanently true and re-runs the seeder on every
+   start; that is a slow boot, not an error.
+3. **Workers.** The `worker` service consumes `scanner,default,compliance`, and runs
+   only with `COMPOSE_PROFILES=container-scanner`. Exactly one `beat` runs; it drives
+   `compliance.run_scheduled_scans` every 60 s. If the `compliance` queue grows, the
+   worker is not running.
 
----
+## 2. Which frameworks are available
 
-## 2. Feature Flag Configuration
+A catalogue is available only if it is on the active list
+(`core/compliance_frameworks.py`, overridable with `COMPLIANCE_ACTIVE_FRAMEWORKS`) and
+enabled for the tenant. Parked catalogues stay seeded but are not offered, scannable or
+reportable. To change the list use
+`python -m scripts.set_active_frameworks --framework <id>` (dry run) and then `--apply`;
+see "Which frameworks are switched on" in `CLAUDE.md`.
 
-The compliance workspace is wrapped under the `COMPLIANCE_ENGINE_ENABLED` flag.
+## 3. Rollback
 
-- **Environment Variable**: `COMPLIANCE_ENGINE_ENABLED=true` (defaults to `false` in development).
-- **Router Gate**:
+There is no compliance feature flag. Roll back with the release procedure
+(`compose.sh --fallback`, previous release's images). No database change is involved
+unless the release says so; if one is, downgrade by revision or branch name
+(`alembic downgrade <revision-or-branch>@-1`), after a backup.
 
-  ```python
-  from config import AppConfig
-  from fastapi import HTTPException, status
+## 4. Monitoring
 
-  def verify_compliance_enabled():
-      if not AppConfig.COMPLIANCE_ENGINE_ENABLED:
-          raise HTTPException(
-              status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-              detail="Compliance Engine is currently disabled by system administrators."
-          )
-  ```
-
-  _(This dependency is applied to all routers inside `routers/marketplace.py`, `routers/findings.py`, etc.)_
-
----
-
-## 3. Rollback Guidelines
-
-### 3.1. Rollback Triggers
-
-Roll back the deployment if any of the following occur:
-
-- API container crash loops caused by database query blocks or missing ORM definitions.
-- Severe queue blocking on Celery workers due to memory exhaustion during bulk checks.
-- A sudden spikes in database CPU usage (>90%) that does not resolve within 5 minutes.
-
-### 3.2. Rollback Execution
-
-1. Set the feature flag to `false` (`COMPLIANCE_ENGINE_ENABLED=false`) and restart the API pods. This instantly hides the workspace and blocks requests.
-2. In case of schema issues, perform an Alembic downgrade:
-   ```bash
-   alembic downgrade <revision to roll back>@-1
-   ```
-
----
-
-## 4. Telemetry & Monitoring
-
-### 4.1. Prometheus Metrics
-
-The engine exports the following Prometheus telemetry counters:
-
-| Metric Name                          | Type      | Labels                      | Description                       |
-| ------------------------------------ | --------- | --------------------------- | --------------------------------- |
-| `compliance_scans_triggered_total`   | Counter   | `tenant_id`, `framework_id` | Cumulative compliance scan runs.  |
-| `compliance_scan_duration_seconds`   | Histogram | `tenant_id`, `framework_id` | Time spent executing scans.       |
-| `compliance_rule_evaluations_total`  | Counter   | `status` (`pass`/`fail`)    | Individual check verdicts.        |
-| `compliance_active_exceptions_count` | Gauge     | `tenant_id`                 | Active waivers currently granted. |
-
-### 4.2. Structured Logging Schema
-
-All events log as structured JSON payloads for ingestion by SIEM tools:
-
-```json
-{
-  "timestamp": "2026-07-04T02:30:00.123Z",
-  "level": "INFO",
-  "logger": "compliance.engine",
-  "event_type": "compliance.scan.completed",
-  "tenant_id": "org_cdackp2_in",
-  "user_id": "usr_defa_pankaj_x9v1",
-  "scan_run_id": "csr_org1_07may26_1a2b",
-  "framework_id": "cfw_iso27001_2022",
-  "duration_seconds": 12.45,
-  "findings_summary": {
-    "pass": 84,
-    "fail": 6,
-    "manual_review": 3
-  }
-}
-```
+- Scheduled scans and findings appear in the audit log and in the compliance scan
+  history; a scheduled framework that was uninstalled or parked is skipped.
+- A compliance run records its own state; a run that could not assess something reports
+  it as not assessed, never as passed.
+- The application exports no Prometheus metrics. Watch the `compliance` queue length in
+  Redis and the worker log.
+- Evidence uploads are scanned by ClamAV when `CLAMAV_HOST` is set
+  (`docker compose --profile av up -d clamav`); with a scanner configured and down,
+  uploads are refused with 503. See "File uploads" in `CLAUDE.md`.

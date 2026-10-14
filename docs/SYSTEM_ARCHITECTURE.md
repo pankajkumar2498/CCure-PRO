@@ -1,9 +1,5 @@
 # System Architecture
 
-> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
->
-> **The service table and diagram predate the Phase 10 gateway (live 30 Sep 2026).** Since then the `api` publishes no port and is reached only through `api-gateway` and `gateway-auth`. The table has no row for either, nor for `beat` (described below). Current topology: `CLAUDE.md`, "Since Phase 10.5" and "Deployment: Linux VM". Image and framework versions in this document were corrected on 9 Oct 2026 (PostgreSQL 18, Node 25, Vite 8). The diagram's Windows-host worker is the retired Windows deployment's (9 Oct 2026). Its `gateway` node is the plain-HTTP `alt-gateway` service, retired by Phase 10 decision D7 and removed from `docker-compose.yml` on 9 Oct 2026.
-
 **CCure-Audit-PRO** — network, web-application and compliance auditing platform.
 
 > This document is generated from a direct audit of the current source tree. Every
@@ -623,17 +619,18 @@ settings, and `Backend/.env` is the file it loads (`_selected_env_file()`:
 > **IMPORTANT:** The repository-root `.env` is for docker-compose only. A token
 > placed there is silently ignored by every Python script in `Backend/`.
 
-Config classes: `DatabaseConfig`, `JWTConfig`, `ScanConfig`, `CeleryConfig`,
+Config classes: `DatabaseConfig`, `JWTConfig` (token lifetimes, issuer, audience, MFA key), `ScanConfig`, `CeleryConfig`,
 `VulnIntelConfig`, `WebScanConfig`, `AdminConfig`, `EmailConfig`, and the
 aggregate `AppConfig`. Full variable table in
 [DEVELOPER_SETUP_GUIDE.md](DEVELOPER_SETUP_GUIDE.md).
 
 Two hard-fail guards worth knowing:
 
-- `auth/jwt_handler.py` raises `RuntimeError` at import if `JWT_SECRET_KEY` is one
-  of four known development defaults **and** `ENVIRONMENT == "production"`.
+- The API refuses to start without an `active` ES256 signing key in the platform
+  keyset (`tokens.assert_signing_ready`) and without `MFA_ENCRYPTION_KEY`
+  (`main.py`). There is no JWT secret and no HMAC fallback.
 - `docker-compose.yml` uses `${VAR:?message}` for `POSTGRES_USER`,
-  `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_SECRET_KEY` and
+  `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MFA_ENCRYPTION_KEY` and
   `COMPLIANCE_ENCRYPTION_KEY`, so the stack refuses to start without them. The
   last one must match `Backend/.env` on the host scanner worker; a mismatch made
   every credentialed scan silently complete as an unauthenticated audit.

@@ -163,7 +163,7 @@ The backend install now checks both packages against that minimum with
 fails the build. This also invalidates the old install instruction in same-day
 CI caches. The Python base digest, package sources, required browser dependency
 and vulnerability policy are unchanged. See
-[the release report](../rbac/RBAC_RELEASE_READINESS.md) for exact artifact scans,
+[the release report](../archive/rbac/RBAC_RELEASE_READINESS.md) for exact artifact scans,
 targeted tests and pending approvals.
 
 The browser coverage review found Playwright 1.63.0 separately downloaded

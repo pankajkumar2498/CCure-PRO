@@ -79,7 +79,7 @@ scratch DBA identity; verification and deliberate owner-scope tampering run as t
 restricted app role. Legacy records remain unhashed and cryptographically
 unverifiable. This proves the mechanics with synthetic history; it does not inspect
 or certify an installation's real historical data. Reproduction prerequisites are
-in [the backend test guide](../../Backend/tests/README.md).
+in [the backend test guide](../../../Backend/tests/README.md).
 
 ## MFA deployment decision required
 

@@ -13,15 +13,15 @@ Each phase audited its surface against the _running_ API before any UI was
 written, drove every operation including the refusals, and recorded what was
 left backend-only with the reason.
 
-| Phase                          | Surface                   | Operations | Outcome                                                                            |
-| ------------------------------ | ------------------------- | ---------: | ---------------------------------------------------------------------------------- |
-| [1](PHASE1_BASELINE.md)        | Credentialed scan results |          1 | the field-level baseline, and the measurement tool the later phases reuse          |
-| [2](PHASE2_REPORTS_EXPORT.md)  | Reports and export        |          3 | the whole export API, not two of its arms; found `severity[]=` silently unfiltered |
-| [3](PHASE3_SCAN_COMPARISON.md) | Scan comparison           |          1 | five classifications, and Phase 2's deferred baseline closed                       |
-| [4](PHASE4_SCAN_POLICY.md)     | Scan policies             |         11 | plus the immutable snapshot a completed scan actually used                         |
-| [5](PHASE5_REMEDIATION.md)     | Remediation and SLA       |         12 | the largest surface; no reference to `/remediation` existed before it              |
-| [6](PHASE6_CONFIG_AUDIT.md)    | Configuration audit       |          4 | started from partial coverage; 49 database checks were unreachable                 |
-| [7](PHASE7_MASTER_MATRIX.md)   | **every router**          |        237 | **206 reached**; 31 classified, 11 of them real gaps                               |
+| Phase                                                     | Surface                   | Operations | Outcome                                                                            |
+| --------------------------------------------------------- | ------------------------- | ---------: | ---------------------------------------------------------------------------------- |
+| [1](PHASE1_BASELINE.md)                                   | Credentialed scan results |          1 | the field-level baseline, and the measurement tool the later phases reuse          |
+| [2](../archive/api_ui_coverage/PHASE2_REPORTS_EXPORT.md)  | Reports and export        |          3 | the whole export API, not two of its arms; found `severity[]=` silently unfiltered |
+| [3](../archive/api_ui_coverage/PHASE3_SCAN_COMPARISON.md) | Scan comparison           |          1 | five classifications, and Phase 2's deferred baseline closed                       |
+| [4](../archive/api_ui_coverage/PHASE4_SCAN_POLICY.md)     | Scan policies             |         11 | plus the immutable snapshot a completed scan actually used                         |
+| [5](../archive/api_ui_coverage/PHASE5_REMEDIATION.md)     | Remediation and SLA       |         12 | the largest surface; no reference to `/remediation` existed before it              |
+| [6](../archive/api_ui_coverage/PHASE6_CONFIG_AUDIT.md)    | Configuration audit       |          4 | started from partial coverage; 49 database checks were unreachable                 |
+| [7](../archive/api_ui_coverage/PHASE7_MASTER_MATRIX.md)   | **every router**          |        237 | **206 reached**; 31 classified, 11 of them real gaps                               |
 
 ## The tools
 
@@ -36,7 +36,7 @@ both are meant to be re-run rather than trusted from this document.
 - [`scripts/audit/api_field_coverage.py`](../../scripts/audit/api_field_coverage.py) —
   **field level, across surfaces**: of every key a live response carries, which
   does the renderer reference? Drives
-  [`FIELD_LEVEL_AUDIT.md`](FIELD_LEVEL_AUDIT.md).
+  [`FIELD_LEVEL_AUDIT.md`](../archive/api_ui_coverage/FIELD_LEVEL_AUDIT.md).
 - [`scripts/audit/api_surface_inventory.py`](../../scripts/audit/api_surface_inventory.py)
   \+ [`api_ui_matrix.py`](../../scripts/audit/api_ui_matrix.py) —
   **operation level**: of every route the API serves, how many does the

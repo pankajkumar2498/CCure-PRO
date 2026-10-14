@@ -80,7 +80,7 @@ artifact validation remains required. Previous RBAC suites were not rerun.
 No prerelease driver, arbitrary executable override, advisory suppression or
 sandbox-policy weakening is introduced. Security-owner approval of the vendor
 browser change and existing sandbox/worker policy remains required. See
-[CONTAINER_IMAGES.md](../ci/CONTAINER_IMAGES.md) for the technical justification.
+[CONTAINER_IMAGES.md](../../ci/CONTAINER_IMAGES.md) for the technical justification.
 Manual hosted Images runs now retain their exact verified artifacts and checksums
 for coordinated promotion, rather than rebuilding after verification.
 
@@ -95,7 +95,7 @@ readiness probe now waits for TCP instead of the temporary Unix-only init server
 
 The new Chrome package requires runtime `wget` and libcurl. Its scan adds 40
 findings, including six High findings with no fixed version reported; their IDs
-and affected packages are recorded in [CONTAINER_IMAGES.md](../ci/CONTAINER_IMAGES.md).
+and affected packages are recorded in [CONTAINER_IMAGES.md](../../ci/CONTAINER_IMAGES.md).
 The gate passed under the existing policy, with no new exception or dependency
 removal. This is an additional security-owner decision, not a zero-vulnerability
 claim. Exact published reports retain all findings and the existing backlog.

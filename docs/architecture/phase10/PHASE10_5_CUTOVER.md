@@ -207,7 +207,7 @@ All 21 checks **PASS** through the gateway, most comparing the edge with `:8000`
   - refresh rotates the cookie;
   - logout revokes the session (refresh after logout = 401).
 
-The output, `cutover_valid_probe.json`, was checked:
+The output, `cutover_valid_probe.json` (archived in `docs/archive/architecture/phase10/`), was checked:
 
 - 0 JWT-shaped strings, no cookie values and no credential;
 - success bodies are kept as size + SHA-256 only.

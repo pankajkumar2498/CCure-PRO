@@ -1,47 +1,54 @@
 # CCure Audit PRO — Compliance Engine Developer Guide
 
-This guide is for backend and frontend developers working on or extending the Policy Compliance Engine.
+For developers working on or extending the Policy Compliance Engine, which is part of
+CCure Audit. The engine is an orchestration layer over the scan modules, not a scanner:
+`core/compliance_evidence.py` adapts scan output into normalised evidence,
+`core/compliance_tasks.py` evaluates rules against it, and machine verdicts and human
+attestations land in one finding model. The authoritative rules and the engineering
+record behind them are in the "Policy Compliance Engine" and "Which frameworks are
+switched on" sections of [`CLAUDE.md`](../../CLAUDE.md). Table definitions are in
+[`DATABASE_SCHEMA.md`](../DATABASE_SCHEMA.md) and routes in
+[`BACKEND_API_REFERENCE.md`](../BACKEND_API_REFERENCE.md); both are checked against the
+code by `Backend/tests/repo/test_docs_integrity.py`.
 
 ---
 
-## 1. Local Environment Setup
+## 1. Local environment
 
-### 1.1. Environment Variables
+There is no compliance feature flag; the engine is part of the API. Frameworks that are
+not switched on are parked (see section 4).
 
-Add the following keys to your local `Backend/.env` file:
-
-```bash
-COMPLIANCE_ENGINE_ENABLED=true
-COMPLIANCE_EPL_CACHE_TTL=300
-COMPLIANCE_QUEUE_CONCURRENCY=2
-```
-
-### 1.2. Database and Container Initialization
-
-1. Spin up the local database and Redis services:
-   ```bash
-   docker compose up -d db redis
-   ```
-2. Run database migrations and seed static frameworks:
+1. Start the database, Redis and API with the project's compose files. The `worker`
+   service consumes the `scanner`, `default` and `compliance` queues and runs only when
+   `COMPOSE_PROFILES=container-scanner` is set. If the `compliance` queue grows, that
+   worker is not running.
+2. Apply migrations. The history has several heads, so always use `heads`:
    ```bash
    cd Backend
-   poetry run alembic upgrade heads
-   python -m scripts.seed_compliance --seed-file scripts/iso27001_2022_controls_seed.json
+   alembic upgrade heads
    ```
-3. Start the Celery workers explicitly monitoring the compliance queue:
+   The API also runs this at every start.
+3. Seed the catalogues. With no argument the seeder loads every
+   `Backend/data/compliance_seeds/*_controls_seed.json`; resolve the directory through
+   `core/compliance_seeds.py`, never by hand:
    ```bash
-   poetry run celery -A main.celery_app worker -Q compliance -c 2 -l info
+   python -m scripts.seed_compliance                    # all catalogues
+   python -m scripts.seed_compliance --seed-file <path> # one catalogue
    ```
+   On the VM, run these inside the `ccure-api` container.
+
+**Back up before any destructive operation** and never run the test suite against the
+live database. Read the "Running the test suite" section of `CLAUDE.md` first.
 
 ---
 
-## 2. Walkthrough: Writing a Custom Compliance Rule
+## 2. Writing a rule
 
-To introduce a new rule, follow these steps:
-
-### Step 1: Define the Rule JSON Pack
-
-Add a rule JSON configuration block matching the criteria format. Below is an example checking for password complexity configuration:
+A rule is a row in `compliance_rules` (`check_type`, `evidence_source`, `target_platform`,
+`check_definition`, `severity`, lifecycle `draft` → `active` → `archived`) linked to
+controls through `compliance_rule_controls`. Rules are crosswalked across frameworks, so
+a rule resolves to a control _within the scan's framework_ with
+`resolve_controls_for_rule(db, rule_id, framework_id)`.
 
 ```json
 {
@@ -60,62 +67,49 @@ Add a rule JSON configuration block matching the criteria format. Below is an ex
 }
 ```
 
-### Step 2: Implement matching operator logic
+- **The evidence key must be one an adapter actually emits.**
+  `Backend/tests/compliance/test_compliance_rule_wiring.py` checks this statically.
+- **Comparison operators have one implementation,**
+  `core/config_audit/operators.py`. `core/compliance_tasks._evaluate_operator` delegates
+  to it. Do not add a second evaluator; extend the shared vocabulary and its truth-table
+  test (`tests/scans/test_config_audit_operators.py`).
+- Rules whose `check_definition.config_check` is set are configuration rules evaluated
+  by the configuration audit, not by the compliance scan. See `CLAUDE.md`,
+  "Configuration audit engine".
 
-If a new comparison operator is required, add a handler inside the `evaluate_operator` method in `compliance/services/engine.py`:
+## 3. Adding an evidence key
 
-```python
-elif operator == "regex_match":
-    return bool(re.search(str(expected), str(actual)))
-```
+Adapters live in `core/compliance_evidence.py` (`ComplianceEvidenceProvider`).
 
----
+- Put the key in the returned dict _literal_, because the wiring test reads the key
+  surface statically.
+- Drop `None` values at the end, so a key that was not collected is absent and the
+  engine reports it as not assessed. Never synthesise a default.
+- A credentialed evidence source must be listed in `CREDENTIALED_EVIDENCE_SOURCES`.
 
-## 3. Walkthrough: Writing a New Evidence Provider Adapter
+## 4. Adding or switching on a framework
 
-To ingest data from a new scan module, register it in the EPL:
+1. Add `Backend/data/compliance_seeds/<name>_controls_seed.json`. Seed ids and the
+   standard's own control numbers are distinct; catalogues that use the standard's
+   numbering are listed in `EXPLICIT_NUMBER_FRAMEWORKS` (`scripts/seed_compliance.py`).
+2. A new control `theme` must be added to `CONTROL_THEMES` in
+   `Backend/db/models/compliance.py` and to a migration; it is the single theme list.
+3. Rules for a catalogue are generated by `scripts/seed_real_rules.py`; edit the
+   enrichment scripts, not the generated JSON.
+4. Switching a catalogue on is one entry in `core/compliance_frameworks.py` (or
+   `COMPLIANCE_ACTIVE_FRAMEWORKS`) plus a dry run of
+   `python -m scripts.set_active_frameworks --framework <id>`, then `--apply`.
+   Never delete or un-seed a parked catalogue.
+5. Hardening benchmarks (`cfw_bm_…`) are loaded from `pack.json` files, not seeded; see
+   `Backend/data/benchmarks/README.md`.
 
-### Step 1: Implement the Adapter function
+## 5. Tests
 
-Create the translation logic in `compliance/services/evidence.py`:
-
-```python
-class EDRScannerAdapter:
-    @staticmethod
-    def get_evidence(asset_id: str, db_session: Session) -> Dict[str, Any]:
-        # Query EDR tables
-        edr_log = db_session.execute(
-            "SELECT active_threats_count FROM edr_findings WHERE asset_id = :asset_id",
-            {"asset_id": asset_id}
-        ).fetchone()
-
-        return {
-            "threats_detected": edr_log["active_threats_count"] > 0 if edr_log else False,
-            "agent_running": edr_log is not None
-        }
-```
-
-### Step 2: Register the Source
-
-Map the provider to the `EPL_ADAPTER_MAP` dispatcher dictionary in `evidence.py`:
-
-```python
-EPL_ADAPTER_MAP = {
-    "vulnerability_audit": VulnerabilityAuditAdapter.get_evidence,
-    "edr_generic": EDRScannerAdapter.get_evidence
-}
-```
-
----
-
-## 4. Running Verification Tests Locally
-
-Execute the test suites via `pytest`:
+Compliance tests are in `Backend/tests/compliance/`. They run only against a disposable
+database named by `TEST_DATABASE_URL` (`ccure_pytest_db` in compose). **Never assign
+`DATABASE_URL` in a test module.** A parked framework's tests activate it with the
+`activate_frameworks` fixture.
 
 ```bash
-# Run unit tests verifying scoring calculations and rule evaluator logic
-poetry run pytest tests/unit/compliance/
-
-# Run integration tests verifying API routers and EPL caching
-poetry run pytest tests/integration/compliance/
+docker exec -w /app ccure-api pytest tests/compliance/ -q
 ```

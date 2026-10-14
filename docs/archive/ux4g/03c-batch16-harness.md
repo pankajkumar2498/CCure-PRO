@@ -9,7 +9,7 @@ any Batch 16 change.
 This is a new harness written for the same purpose. It is **not** the
 batch 6–14 instrument, and none of that instrument's figures should be read as
 comparable. Its usage is in
-[`Frontend/scripts/ux4g-harness/README.md`](../../Frontend/scripts/ux4g-harness/README.md).
+[`Frontend/scripts/ux4g-harness/README.md`](../../../Frontend/scripts/ux4g-harness/README.md).
 
 ---
 

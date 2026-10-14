@@ -3,7 +3,7 @@
 A CCure core module, owned by the Ccure Rank team. **Nothing is built here
 yet**: Phase 11 of the modular-platform programme created the structure, the
 registration and the guardrails, and the team builds the module.
-Architecture: `docs/architecture/CCURE_PLATFORM_MODULAR_ARCHITECTURE.md` §3.3–3.4,
+Architecture: `CCURE_PLATFORM_MODULAR_ARCHITECTURE.md` (the master plan, not versioned in this repository) §3.3–3.4,
 and `docs/architecture/PHASE11_MODULE_FOLDERS.md`.
 
 ## Identity (owned by the platform)

@@ -121,4 +121,4 @@ Grantability reflects the current actor's delegation ceiling at each scope. Poli
 and Rank declare no implemented permissions here; IR requires separate service verification.
 
 See [current permission inventory](../RBAC_Management_Permissions.md) and
-[hardening verification report](../rbac/RBAC_HARDENING_REPORT.md).
+[hardening verification report](../archive/rbac/RBAC_HARDENING_REPORT.md).

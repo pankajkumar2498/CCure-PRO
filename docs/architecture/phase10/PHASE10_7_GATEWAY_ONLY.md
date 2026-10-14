@@ -3,7 +3,7 @@
 |                 |                                                                                                                                                                                                                                                                                      |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Status**      | **Live since 30 Sep 2026, 16:08:55 IST.** The published and direct ingress paths to the API are removed. `:443` → host nginx → api-gateway → gateway-auth → API is the only production ingress. **M3 and V-N1 were still running at commit time and are not claimed complete** (§8). |
-| **Plan**        | [`PHASE10_7_PLAN.md`](PHASE10_7_PLAN.md), approved by the owner on 30 Sep 2026. It was followed step by step; the one change of order is recorded in §6.                                                                                                                             |
+| **Plan**        | [`PHASE10_7_PLAN.md`](../../archive/architecture/phase10/PHASE10_7_PLAN.md), approved by the owner on 30 Sep 2026. It was followed step by step; the one change of order is recorded in §6.                                                                                          |
 | **Not claimed** | This is **not** absolute gateway-only API reachability. A host process can still dial the API's internal address, `172.31.254.20:8000`, as an **untrusted** client (§2). That residual is deferred to optional **Phase 10.8** and is not implemented here.                           |
 | **Unchanged**   | X2-a, X6-a (`/api/ir/*` 404), token policy and keys, certificates and CA, host nginx (both files, the socket edge, request buffering), the gateway and gateway-auth, the database, F10-3, O14, and the stale `Backend/openapi.json`.                                                 |
 
@@ -138,7 +138,7 @@ The 9 gateway 5xx responses since the change are all 502s between 16:08:46 and
   - **the edge side is 571 / 571 identical**;
   - the direct side is 567 identical, with 2 differing only in the `Location`
     of the trailing-slash 307s, which now name the new reference address.
-- **V-L3 — observation:** **27/27 PASS** (`observe_10_7*.json`, owner's account).
+- **V-L3 — observation:** **27/27 PASS** (`observe_10_7*.json`, archived in `docs/archive/architecture/phase10/`; owner's account).
 
   - The 21-check battery, run again.
   - One session held past the real 30-minute expiry:

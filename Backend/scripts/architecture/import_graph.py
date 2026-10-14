@@ -8,7 +8,7 @@ marked *lazy* when the import sits inside a function. Lazy imports count as real
 dependencies: they are how this codebase hides its cycles from the interpreter,
 and a dependency that only resolves at call time is still a dependency.
 
-This is the measurement behind ``docs/architecture/MODULE_INDEPENDENCE_BASELINE.md``
+This is the measurement behind ``MODULE_INDEPENDENCE_BASELINE.md`` (not versioned in this repository)
 and the input to ``tests/repo/test_architecture_guardrails.py``.
 
     python -m scripts.architecture.import_graph            # summary

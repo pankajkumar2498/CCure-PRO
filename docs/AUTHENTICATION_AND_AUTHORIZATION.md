@@ -1,7 +1,5 @@
 # Authentication and Authorization
 
-> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
-
 **CCure-Audit-PRO** — an end-to-end trace of identity, session and access
 control, read from `Backend/auth/`, `Backend/db/models/users.py`,
 `Backend/db/models/rbac.py` and `Frontend/src/`.
@@ -61,36 +59,36 @@ account.
 
 ## 3. Token model
 
-Five token types, all HS256-signed with `JWTConfig.SECRET_KEY` and distinguished
-by a `type` claim that every consumer checks.
+Four user token kinds, all ES256-signed by `tokens.sign()`
+(`ccure_platform/identity/tokens.py`) with the `active` key of the platform keyset
+and carrying its `kid`. `tokens.sign()` itself sets `iss`, `aud`, `ptype`, `nbf`
+and `jti`; callers supply the rest. Consumers verify with
+`tokens.verify(token, expected_kind=…)`, which requires the kind, so one kind
+cannot be accepted as another. Service identities use a fifth kind,
+`service_access`, issued only at `POST /auth/service-token`. There is no
+symmetric secret, no `JWT_SECRET_KEY` and no HS256 path; a token with no `kid`
+is refused as `missing_kid`. Public keys are published at `/auth/jwks.json`.
 
 | `type`          | Lifetime                                           | Claims                                                    | Transport                         | Minted by                    |
 | --------------- | -------------------------------------------------- | --------------------------------------------------------- | --------------------------------- | ---------------------------- |
-| `access`        | `ACCESS_TOKEN_EXPIRES_MINUTES`, default **30 min** | `sub`, `username`, `type`, `role`, `org_id`, `iat`, `exp` | `Authorization: Bearer`           | `create_access_token`        |
+| `access`        | `ACCESS_TOKEN_EXPIRES_MINUTES`, default **30 min** | `sub`, `username`, `type`, `org_id` (+ signer-set claims) | `Authorization: Bearer`           | `create_access_token`        |
 | `refresh`       | `REFRESH_TOKEN_EXPIRES_DAYS`, default **7 days**   | `sub`, `type`, `jti`, `iat`, `exp`                        | HttpOnly cookie (or request body) | `create_refresh_token`       |
-| `mfa_challenge` | **5 minutes**                                      | `sub`, `username`, `type`, `role`, `org_id`               | Response body → next request body | `create_mfa_challenge_token` |
+| `mfa_challenge` | **5 minutes**                                      | `sub`, `username`, `type`, `org_id`                       | Response body → next request body | `create_mfa_challenge_token` |
 | `ticket`        | **60 seconds**                                     | `sub`, `username`, `type`                                 | `?ticket=` query parameter        | `create_download_ticket`     |
 
 `decode_token()` returns `None` on any `JWTError`; callers treat `None` and a
 wrong `type` identically. Checking `type` is what prevents a refresh token being
 replayed as an access token.
 
-### Secret-key guard
+### Signing-key guard
 
-At import, `jwt_handler` compares `SECRET_KEY` against four known development
-defaults:
-
-```
-dev-secret-key-change-in-production
-ccure-dev-only-secret-change-me
-ccure-super-secret-change-in-production
-your-super-secret-jwt-key-change-in-production
-```
-
-A match raises `RuntimeError` when `ENVIRONMENT == "production"`, and logs a
-warning otherwise. `docker-compose.yml` independently refuses to start any of
-`api`, `worker` or `web-worker` without `JWT_SECRET_KEY` set
-(`${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}`).
+The API refuses to start unless the platform keyset holds an `active` ES256 key
+(`tokens.assert_signing_ready`); it does not fall back to another algorithm. Keys
+live in `CCURE_TOKEN_KEYS_HOST_DIR`, mounted read-only into the `api` only, and are
+managed with `scripts/security/manage_token_keys.py`. The workers hold no signing
+or MFA secret. `docker-compose.yml` refuses to start the `api` without
+`MFA_ENCRYPTION_KEY` (`${MFA_ENCRYPTION_KEY:?…}`). Design and runbook:
+`docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md`.
 
 ### Refresh cookie
 
@@ -197,9 +195,9 @@ stateDiagram-v2
 | —    | `POST /auth/mfa/disable` | Requires the account password; clears secret, backup codes and pending OTP; deletes every refresh session; audits `user.mfa_disabled`                                                                                                                         |
 
 Encryption uses `AppConfig.MFA_KEY` — a urlsafe-base64 SHA-256 digest of
-`MFA_ENCRYPTION_KEY`, which itself defaults to `JWT_SECRET_KEY`. Rotating
-`JWT_SECRET_KEY` without setting `MFA_ENCRYPTION_KEY` therefore makes every
-enrolled TOTP secret undecryptable.
+`MFA_ENCRYPTION_KEY`. The setting is required and has no fallback (the API
+refuses to start without it). It must never change: every stored TOTP secret
+would become undecryptable.
 
 ### Verification
 
@@ -648,7 +646,7 @@ Only mechanisms verified in the current code.
 | Path-traversal guard (keys)    | `key_path` must resolve under `SCAN_KEY_DIR`                 | `routers/credentialed.py`                |
 | Path-traversal guard (reports) | `os.path.commonpath` against `Backend/reports/`              | `routers/reports.py`                     |
 | Credential encryption at rest  | AES-256-GCM, key resolved on first use                       | `core/security_crypto.py`                |
-| Weak-JWT-key guard             | `RuntimeError` in production                                 | `jwt_handler` import                     |
+| Signing-key guard              | API refuses to start with no `active` ES256 key              | `tokens.assert_signing_ready`            |
 | Startup secret enforcement     | `${VAR:?...}` for 5 variables                                | `docker-compose.yml`                     |
 | Short-lived download/WS grants | 60-second `ticket` tokens                                    | `create_download_ticket`                 |
 | Static security analysis       | Bandit `-lll` in CI and pre-commit                           | `.github/workflows/ci.yml`               |
@@ -663,7 +661,6 @@ Only mechanisms verified in the current code.
 | `REFRESH_COOKIE_SECURE` defaults to `false`                                                                  | Refresh cookie can traverse plain HTTP unless configured                                                                      | `auth/router.py`                         |
 | WebSocket ticket check omits `is_active` / `is_deleted` / org status                                         | A user deactivated within the last 60 s can still open a progress socket                                                      | `scans/router.py::_get_websocket_user`   |
 | `permissions.js` honours a `resource:manage` wildcard with no backend counterpart                            | Dead branch today; would silently widen client gating if such an atom were ever seeded                                        | `Frontend/src/shell/auth/permissions.js` |
-| `MFA_ENCRYPTION_KEY` defaults to `JWT_SECRET_KEY`                                                            | Rotating the JWT key orphans every enrolled TOTP secret                                                                       | `config.py::JWTConfig`                   |
 
 ---
 

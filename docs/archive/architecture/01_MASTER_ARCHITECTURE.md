@@ -1,7 +1,7 @@
 # Master System Architecture & Container/Deployment Architecture
 
 > Part of the CCure Audit PRO architecture documentation package. See
-> [README.md](README.md) for the package index. Component-level detail and
+> [README.md](../../architecture/README.md) for the package index. Component-level detail and
 > citations live in [00_INVENTORY.md](00_INVENTORY.md); this document is the
 > diagrams built on top of that inventory.
 

@@ -5,7 +5,7 @@
 | **Review**             | **Approved 26 Sep 2026** as the architectural baseline for CCurePro module integration, with the clarifications in §14.1.                                                                 |
 | **Status**             | **Draft for review.** Definitions only: no route serves these contracts, no task emits them, no production behaviour has changed.                                                         |
 | **Date**               | 25 Sep 2026                                                                                                                                                                               |
-| **Programme**          | Modular-platform programme, Phase 4 (plan: `docs/architecture/CCURE_PLATFORM_MODULAR_ARCHITECTURE.md` §7–§8)                                                                              |
+| **Programme**          | Modular-platform programme, Phase 4 (plan: `CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`, not versioned in this repository §7–§8)                                                              |
 | **Machine definition** | `Backend/ccure_contracts/` — Pydantic models, generated JSON Schemas, worked examples                                                                                                     |
 | **Guarded by**         | `Backend/tests/repo/test_integration_contracts.py`, and the `contracts-are-leaves` rule in `Backend/scripts/architecture/layer_rules.py`                                                  |
 | **Requirements**       | _SRS for CcurePro Platform v1.0_ §7.6 (inter-module interfaces), §7.3 (Audit), §7.2 (Policy Pro), §7.4 (IR), §7.5 (Rank); _Design Document for CcurePro Platform v1.0_ §3 (interface map) |

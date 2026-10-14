@@ -1,7 +1,7 @@
 # Architecture Inventory
 
 > Part of the CCure Audit PRO architecture documentation package. See
-> [README.md](README.md) for the full package index and methodology.
+> [README.md](../../architecture/README.md) for the full package index and methodology.
 >
 > Every row below was verified against source on 2026-08-27: `docker-compose.yml`,
 > `Backend/main.py`, `Backend/config.py`, `Backend/core/celery_app.py`, the 20

@@ -1745,15 +1745,19 @@ describe("CredentialedResults — contract", () => {
       const app = readFileSync(path.join(SRC, "App.jsx"), "utf8");
       const base = app.indexOf("<Route element={<PrivateRoute />}>");
       const firstGate = app.indexOf("requiredPermission", base);
+      /* Updated 14 Oct 2026. The legacy address now mounts a redirect that
+         carries its id to `/scan/credentialed/results?scan_id=…` instead of
+         the page itself, which ignored the id and sent the reader to a new
+         scan. Both addresses stay behind the base sign-in check only. */
       for (const re of [
         /path="\/scan\/credentialed\/results"\s+element=\{<CredentialedResults \/>\}/,
-        /path="\/scan\/:scanId\/credentialed-results"\s+element=\{<CredentialedResults \/>\}/,
+        /path="\/scan\/:scanId\/credentialed-results"\s+element=\{<CredentialedResultsRedirect \/>\}/,
       ]) {
         const at = app.search(re);
         expect(at).toBeGreaterThan(base);
         expect(at).toBeLessThan(firstGate);
       }
-      expect(app.match(/<CredentialedResults\b/g)).toHaveLength(2);
+      expect(app.match(/<CredentialedResults\b/g)).toHaveLength(1);
       const page = readFileSync(
         path.join(AUDIT_SRC, "pages/scan/CredentialedResults.jsx"),
         "utf8",

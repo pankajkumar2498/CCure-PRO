@@ -305,20 +305,21 @@ or `postLoginRedirect` after a session expiry), which wins.
 
 ### Protected — Audit scan pipeline
 
-| Path                                                   | Component                                           |
-| ------------------------------------------------------ | --------------------------------------------------- |
-| `/scan/new`                                            | `scan/NewScan`                                      |
-| `/scan/active/:scanId`                                 | `scan/NewScan`                                      |
-| `/scan/host-discovery`                                 | `scan/Phase1Results`                                |
-| `/scan/asset-discovery`                                | `scan/Phase2Results`                                |
-| `/scan/vulnerability-audit`                            | `scan/Phase3Results`                                |
-| `/scan/advanced-scan`                                  | → redirect to `/scan/vulnerability-audit`           |
-| `/scan/comparison`                                     | `scan/ScanComparison`                               |
-| `/scan/credentialed`                                   | `scan/CredentialedScan`                             |
-| `/scan/credentialed/results`                           | `scan/CredentialedResults`                          |
-| `/scan/:scanId/phase1` · `/phase2` · `/phase3`         | `Phase1Results` · `Phase2Results` · `Phase3Results` |
-| `/scan/:scanId/credentialed` · `/credentialed-results` | `CredentialedScan` · `CredentialedResults`          |
-| `/scan/topology-map` · `/scan/:scanId/topology-map`    | `scan/NetworkMap`                                   |
+| Path                                                | Component                                           |
+| --------------------------------------------------- | --------------------------------------------------- |
+| `/scan/new`                                         | `scan/NewScan`                                      |
+| `/scan/active/:scanId`                              | `scan/NewScan`                                      |
+| `/scan/host-discovery`                              | `scan/Phase1Results`                                |
+| `/scan/asset-discovery`                             | `scan/Phase2Results`                                |
+| `/scan/vulnerability-audit`                         | `scan/Phase3Results`                                |
+| `/scan/advanced-scan`                               | → redirect to `/scan/vulnerability-audit`           |
+| `/scan/comparison`                                  | `scan/ScanComparison`                               |
+| `/scan/credentialed`                                | `scan/CredentialedScan`                             |
+| `/scan/credentialed/results`                        | `scan/CredentialedResults`                          |
+| `/scan/:scanId/phase1` · `/phase2` · `/phase3`      | `Phase1Results` · `Phase2Results` · `Phase3Results` |
+| `/scan/:scanId/credentialed`                        | `scan/CredentialedScan`                             |
+| `/scan/:scanId/credentialed-results`                | → redirect to `/scan/credentialed/results?scan_id=` |
+| `/scan/topology-map` · `/scan/:scanId/topology-map` | `scan/NetworkMap`                                   |
 
 ### Protected — permission-gated administration (shared, `shell/admin/pages/`; AMT is Audit's)
 

@@ -20,7 +20,14 @@
  */
 
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import PrivateRoute from "@shell/auth/PrivateRoute";
 import { AccessFallbackProvider } from "@shell/auth/accessFallback";
 import { AUDIT_ACCESS_FALLBACKS } from "@audit/config/accessFallbacks";
@@ -107,6 +114,25 @@ function AuditDashboardRedirect() {
   return (
     <Navigate
       to={{ pathname: "/audit-dashboard", search, hash }}
+      state={state}
+      replace
+    />
+  );
+}
+
+// /scan/:scanId/credentialed-results → /scan/credentialed/results?scan_id=…
+//
+// The legacy address was declared in May 2026 and never linked from any
+// version of the code, but it may be typed or bookmarked. The page reads its
+// scan from ?scan_id= only, so the address dropped the reader on an empty
+// scan form; it now carries the id (and any router state) to the page.
+function CredentialedResultsRedirect() {
+  const { scanId } = useParams();
+  const { hash, state } = useLocation();
+  const search = `?scan_id=${encodeURIComponent(scanId || "")}`;
+  return (
+    <Navigate
+      to={{ pathname: "/scan/credentialed/results", search, hash }}
       state={state}
       replace
     />
@@ -260,7 +286,7 @@ export default function App() {
               />
               <Route
                 path="/scan/:scanId/credentialed-results"
-                element={<CredentialedResults />}
+                element={<CredentialedResultsRedirect />}
               />
 
               {/* Network Topology Map */}

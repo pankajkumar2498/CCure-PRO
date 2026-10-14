@@ -452,6 +452,9 @@ unreachable (both themes), error and denied views.
   long as the page is open, and the socket is never reopened.
 - **`/scan/:scanId/credentialed-results` ignores its path id.** Nothing links
   to it, and without `?scan_id=` it redirects to a new scan. (pinned)
+  _Resolved 14 Oct 2026:_ `App.jsx` now mounts a redirect there that carries the
+  id to `/scan/credentialed/results?scan_id=…`. The page's own contract — it
+  reads `?scan_id=` only — is unchanged and still pinned.
 - **A router-state report marked unreachable** is shown as an unreachable host
   although it carries a report. (pinned)
 - **The page checks no permission**; a user without `scans:read` sees the

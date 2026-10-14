@@ -412,6 +412,39 @@ describe("every other Audit address is unchanged", () => {
     visit(from);
     expect(where().pathname).toBe(to);
   });
+
+  // Kept for compatibility, and made to work: the page reads its scan from
+  // ?scan_id= only, so this address used to drop the reader on an empty
+  // credentialed-scan form with the id discarded.
+  it("/scan/:id/credentialed-results opens that scan's credentialed results", () => {
+    visit("/scan/scn_17%2Fx/credentialed-results#coverage");
+    expect(page()).toBe("CredentialedResults");
+    expect(where()).toMatchObject({
+      pathname: "/scan/credentialed/results",
+      search: "?scan_id=scn_17%2Fx",
+      hash: "#coverage",
+    });
+  });
+
+  it("the legacy address carries router state to the page", () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/scan/s-9/credentialed-results",
+            state: { from: { pathname: "/history" } },
+          },
+        ]}
+      >
+        <App />
+        <Probe />
+      </MemoryRouter>,
+    );
+    expect(where()).toMatchObject({
+      pathname: "/scan/credentialed/results",
+      from: "/history",
+    });
+  });
 });
 
 describe("D12-8 — authentication and authorisation are unchanged", () => {

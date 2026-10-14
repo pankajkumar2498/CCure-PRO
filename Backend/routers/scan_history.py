@@ -103,22 +103,25 @@ def _record_scan_lifecycle(
 
 
 def _purge_footprint(db: Session, scan_id: str) -> dict:
-    """What permanently deleting a scan removes with it, counted before it goes.
+    """What permanently deleting a scan does to the rows that point at it,
+    counted before it goes.
 
-    Its findings, phases and services are deleted by ON DELETE CASCADE, so
-    nothing else records them afterwards. ``services`` matters most: the rows
-    are an asset's *current* service inventory, re-pointed to whichever scan
-    last saw them, so purging that scan empties the inventory of an asset that
-    is kept (both test assets' 104 rows on 14 Oct 2026, noticed only after
-    the fact).
+    Its findings and phases are deleted by ON DELETE CASCADE, so nothing else
+    records them afterwards. Its services are not: they are the asset's
+    *current* inventory and are only detached (``scan_id`` set NULL) until the
+    next scan re-points them. Until migration d5e7f9a1b3c6 they were deleted
+    too, which emptied both test assets' inventories (104 rows) on
+    14 Oct 2026.
     """
     count = lambda model: (  # noqa: E731
         db.query(func.count(model.id)).filter(model.scan_id == scan_id).scalar() or 0
     )
     return {
-        "findings": count(AssetVulnerability),
-        "phases": count(ScanPhase),
-        "services": count(Service),
+        "removed": {
+            "findings": count(AssetVulnerability),
+            "phases": count(ScanPhase),
+        },
+        "services_detached": count(Service),
     }
 
 
@@ -1120,7 +1123,7 @@ def purge_scan(
         created_at=_as_utc_iso(scan.created_at),
         completed_at=_as_utc_iso(scan.completed_at),
         recycled_at=_as_utc_iso(scan.deleted_at),
-        removed=_purge_footprint(db, scan.id),
+        **_purge_footprint(db, scan.id),
     )
     db.delete(scan)
     db.commit()

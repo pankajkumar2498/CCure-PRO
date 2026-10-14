@@ -145,9 +145,11 @@ class Scan(Base):
         cascade="all, delete-orphan",
         order_by="ScanPhase.phase_order.asc()",
     )
-    services = relationship(
-        "Service", back_populates="scan", cascade="all, delete-orphan"
-    )
+    # No delete cascade: a service row is the asset's current inventory and
+    # outlives the scan that last saw it. passive_deletes leaves the unlink
+    # to the database's ON DELETE SET NULL instead of loading every row to
+    # null it in Python.
+    services = relationship("Service", back_populates="scan", passive_deletes=True)
     vulnerabilities = relationship(
         "AssetVulnerability",
         back_populates="scan",

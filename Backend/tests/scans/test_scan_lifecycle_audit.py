@@ -156,7 +156,11 @@ def test_recycling_restoring_and_purging_each_leave_one_event(world):
     purged = events[-1].changes
     assert purged["scan_no"] == 7 and purged["target"] == "192.0.2.45"
     # What the cascade took with it is on the record, counted before it went.
-    assert purged["removed"] == {"findings": 0, "phases": 0, "services": 1}
+    assert purged["removed"] == {"findings": 0, "phases": 0}
+    # The asset's service inventory is detached, not deleted (d5e7f9a1b3c6).
+    assert purged["services_detached"] == 1
+    (kept,) = db.query(Service).filter(Service.asset_id == asset.id).all()
+    assert kept.scan_id is None
     assert purged["recycled_at"]
 
     for event in events:
@@ -207,3 +211,23 @@ def test_events_are_filed_under_the_scans_organisation_not_the_actors(world):
 
     (event,) = _events(db, foreign.id)
     assert event.org_id == world["other"].id != actor.org_id
+
+
+def test_a_purge_detaches_services_in_the_model_the_orm_and_the_database(db_session):
+    # Each half alone still deletes the inventory: the ORM's delete cascade
+    # removes loaded rows before the database is asked, and a CASCADE foreign
+    # key removes them however the ORM is configured. Alembic's drift check
+    # does not compare ON DELETE rules, so this pins all three.
+    from sqlalchemy import text
+
+    column = Service.__table__.c.scan_id
+    (foreign_key,) = column.foreign_keys
+    assert (foreign_key.ondelete, column.nullable) == ("SET NULL", True)
+    assert not Scan.services.property.cascade.delete
+    definition = db_session.execute(
+        text(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conname = 'services_scan_id_fkey'"
+        )
+    ).scalar()
+    assert "ON DELETE SET NULL" in definition

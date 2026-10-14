@@ -195,10 +195,16 @@ class Service(Base):
 
     # Stripe-style readable ID: "svc_192.168.1.5_22_tcp"
     id = Column(String(200), primary_key=True)
+    #: The scan that last observed this service. A row is the asset's
+    #: *current* inventory, re-pointed by every scan that sees it, so deleting
+    #: that scan must not delete the inventory: it was ON DELETE CASCADE, and
+    #: purging 25 test scans on 14 Oct 2026 emptied two kept assets' service
+    #: lists (104 rows). NULL now means "no surviving scan saw it last";
+    #: the next scan of the asset re-points it (migration d5e7f9a1b3c6).
     scan_id = Column(
         String(100),
-        ForeignKey("scans.id", ondelete="CASCADE", onupdate="CASCADE"),
-        nullable=False,
+        ForeignKey("scans.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
         index=True,
     )
     asset_id = Column(

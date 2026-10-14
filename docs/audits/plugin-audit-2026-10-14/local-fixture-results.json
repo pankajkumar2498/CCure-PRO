@@ -1,0 +1,36 @@
+{
+  "weak": {
+    "finding_ids": [
+      "CCURE-CHK-HTTP-MISSING-SECURITY-HEADERS",
+      "CCURE-CHK-HTTP-SENSITIVE-PATH-EXPOSED",
+      "CCURE-CHK-TLS-CERTIFICATE-SELF-SIGNED",
+      "CCURE-CHK-TLS-CERTIFICATE-HOSTNAME-MISMATCH",
+      "CCURE-CHK-TLS-OCSP-STAPLING-ABSENT",
+      "CCURE-CHK-NUCLEI-CCURE-AUDIT-SYNTHETIC-ENV"
+    ],
+    "http_findings": [
+      "CCURE-CHK-HTTP-MISSING-SECURITY-HEADERS",
+      "CCURE-CHK-HTTP-SENSITIVE-PATH-EXPOSED"
+    ],
+    "nuclei_findings": [
+      "CCURE-CHK-NUCLEI-CCURE-AUDIT-SYNTHETIC-ENV"
+    ],
+    "nuclei_templates_run": true,
+    "tls_endpoints": 1,
+    "risk": "High",
+    "verified_count": 6
+  },
+  "hardened": {
+    "finding_ids": [
+      "CCURE-CHK-TLS-CERTIFICATE-SELF-SIGNED",
+      "CCURE-CHK-TLS-CERTIFICATE-HOSTNAME-MISMATCH",
+      "CCURE-CHK-TLS-OCSP-STAPLING-ABSENT"
+    ],
+    "http_findings": [],
+    "nuclei_findings": [],
+    "nuclei_templates_run": true,
+    "tls_endpoints": 1,
+    "risk": "Medium",
+    "verified_count": 3
+  }
+}

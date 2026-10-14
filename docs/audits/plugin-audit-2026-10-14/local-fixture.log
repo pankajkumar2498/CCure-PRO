@@ -1,0 +1,438 @@
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 42980)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 43010)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 43044)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 43058)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 43060)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 46980)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ssl.SSLError: [SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] ssl/tls alert handshake failure (_ssl.c:2590)
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 46992)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 47004)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+/home/ccure/.local/lib/python3.11/site-packages/sslyze/plugins/certificate_info/trust_stores/trust_store.py:55: CryptographyDeprecationWarning: Parsed a serial number which wasn't positive (i.e., it was negative or zero), which is disallowed by RFC 5280. Loading this certificate will cause an exception in a future release of cryptography.
+  self._x509_store = Store(load_pem_x509_certificates(self.path.read_bytes()))
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 48180)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 48204)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 48228)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 48244)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 48252)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 52406)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ssl.SSLError: [SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] ssl/tls alert handshake failure (_ssl.c:2590)
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 52420)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 52446)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/local/lib/python3.11/socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/local/lib/python3.11/socketserver.py", line 755, in __init__
+    self.handle()
+  File "/usr/local/lib/python3.11/http/server.py", line 440, in handle
+    self.handle_one_request()
+  File "/usr/local/lib/python3.11/http/server.py", line 408, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+{
+  "weak": {
+    "finding_ids": [
+      "CCURE-CHK-HTTP-MISSING-SECURITY-HEADERS",
+      "CCURE-CHK-HTTP-SENSITIVE-PATH-EXPOSED",
+      "CCURE-CHK-TLS-CERTIFICATE-SELF-SIGNED",
+      "CCURE-CHK-TLS-CERTIFICATE-HOSTNAME-MISMATCH",
+      "CCURE-CHK-TLS-OCSP-STAPLING-ABSENT",
+      "CCURE-CHK-NUCLEI-CCURE-AUDIT-SYNTHETIC-ENV"
+    ],
+    "http_findings": [
+      "CCURE-CHK-HTTP-MISSING-SECURITY-HEADERS",
+      "CCURE-CHK-HTTP-SENSITIVE-PATH-EXPOSED"
+    ],
+    "nuclei_findings": [
+      "CCURE-CHK-NUCLEI-CCURE-AUDIT-SYNTHETIC-ENV"
+    ],
+    "nuclei_templates_run": true,
+    "tls_endpoints": 1,
+    "risk": "High",
+    "verified_count": 6
+  },
+  "hardened": {
+    "finding_ids": [
+      "CCURE-CHK-TLS-CERTIFICATE-SELF-SIGNED",
+      "CCURE-CHK-TLS-CERTIFICATE-HOSTNAME-MISMATCH",
+      "CCURE-CHK-TLS-OCSP-STAPLING-ABSENT"
+    ],
+    "http_findings": [],
+    "nuclei_findings": [],
+    "nuclei_templates_run": true,
+    "tls_endpoints": 1,
+    "risk": "Medium",
+    "verified_count": 3
+  }
+}

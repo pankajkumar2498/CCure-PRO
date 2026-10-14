@@ -157,6 +157,12 @@ staged. Baseline report links and the inventory renderer's input JSON remain
 available in the working tree and require the baseline audit to be committed
 separately for those historical artifacts to be available in a clean checkout.
 
+_Note, 15 Oct 2026:_ the baseline audit has since been committed separately.
+`regression-tests.xml` is stored as `regression-tests.xml.gz` (gzip of the
+unchanged original, which decompresses to the same 666,592 bytes), and its
+logs are committed despite the repository's `*.log` ignore rule, as this
+folder's evidence logs are.
+
 Independent vendor/lab runtime verification, production acceptance and Nessus
 parity remain unverified as documented in [REPORT.md](REPORT.md). Existing
 accepted dependency advisories remain. No deployment readiness claim is made.

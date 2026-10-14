@@ -1,0 +1,31 @@
+test_D01_https_analyzer_not_dispatched (__main__.CurrentBehavior.test_D01_https_analyzer_not_dispatched) ... ok
+test_D02_default_auth_not_dispatched_for_http (__main__.CurrentBehavior.test_D02_default_auth_not_dispatched_for_http) ... ok
+test_D03_port_selection_ignores_protocol (__main__.CurrentBehavior.test_D03_port_selection_ignores_protocol) ... ok
+test_D04_late_udp_discovery_does_not_trigger_dns (__main__.CurrentBehavior.test_D04_late_udp_discovery_does_not_trigger_dns) ... ok
+test_D05_ssh_mac_is_wrong_name_list (__main__.CurrentBehavior.test_D05_ssh_mac_is_wrong_name_list) ... ok
+test_D06_dns_success_without_zone_is_vulnerable (__main__.CurrentBehavior.test_D06_dns_success_without_zone_is_vulnerable) ... ok
+test_D07_ldap_claims_content_without_search_result (__main__.CurrentBehavior.test_D07_ldap_claims_content_without_search_result) ... ok
+test_D07_ldaps_uses_plain_socket (__main__.CurrentBehavior.test_D07_ldaps_uses_plain_socket) ... ok
+test_D08_mongodb_error_with_ok_field_claims_no_auth (__main__.CurrentBehavior.test_D08_mongodb_error_with_ok_field_claims_no_auth) ... ok
+test_D09_parallel_exception_is_empty_success_shape (__main__.CurrentBehavior.test_D09_parallel_exception_is_empty_success_shape) ... ok
+test_D10_endpoint_evidence_is_lost_in_dedup (__main__.CurrentBehavior.test_D10_endpoint_evidence_is_lost_in_dedup) ... ok
+test_D11_heartbleed_skips_supported_ports (__main__.CurrentBehavior.test_D11_heartbleed_skips_supported_ports) ... ok
+test_D12_smb_negotiate_declared_lengths_are_wrong (__main__.CurrentBehavior.test_D12_smb_negotiate_declared_lengths_are_wrong) ... FAIL
+test_D13_invalid_credential_scope_becomes_global (__main__.CurrentBehavior.test_D13_invalid_credential_scope_becomes_global) ... /home/ccure/.local/lib/python3.11/site-packages/pydantic/_internal/_config.py:284: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.7/migration/
+  warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+Credentialed enrichment: ignoring unparseable scope 'not-a-network'
+ok
+test_D14_nuclei_exit_one_can_be_marked_complete (__main__.CurrentBehavior.test_D14_nuclei_exit_one_can_be_marked_complete) ... ok
+
+======================================================================
+FAIL: test_D12_smb_negotiate_declared_lengths_are_wrong (__main__.CurrentBehavior.test_D12_smb_negotiate_declared_lengths_are_wrong)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/ccure-plugin-audit-source/characterize.py", line 140, in test_D12_smb_negotiate_declared_lengths_are_wrong
+    self.assertNotEqual(int.from_bytes(frame[1:4], "big"), len(frame) - 4)
+AssertionError: 133 == 133
+
+----------------------------------------------------------------------
+Ran 15 tests in 1.864s
+
+FAILED (failures=1)

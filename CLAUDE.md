@@ -792,34 +792,10 @@ each folder's `README.md` says what belongs in it.
     built; they have no shell yet and load no Audit state.
   - **Guarded by** `__tests__/shell/navigationIsolation.test.jsx`. Record and
     follow-ups: `docs/architecture/PLATFORM_SHARED_NAVIGATION.md` §8.
-- **The VM runs backend `15f8c7c`** since 7 Oct 2026 (23:24–23:25 IST), deployed
-  with the same compose files and variables as 6 Oct (below, "Deployed 6 Oct
-  2026"), **and frontend `87d998b`** since 8 Oct 2026 (20:49 IST). The image
-  was built and tagged as `902614f`, that commit's id until 9 Oct 2026, when its
-  message was reworded to remove an AI co-author trailer; the tree is identical.
-  - frontend `ccure-audit-pro-frontend:902614f` = `:87d998b` = `:latest` (`2f817b54d9bf`):
-    UX4G 3.0.2 with the B.12 Audit restoration and the B.13 page standard.
-    - **Gates:** Trivy (0 fixable critical/high), the image smoke test, unit
-      3,128 and browser 198/198 in each of three engines.
-    - **How it was started:** `docker compose up -d --no-deps --force-recreate
-frontend` with the base file, as the container had been created. The
-      development overlay changes only the frontend's build context, and plain
-      `up -d` answered `Running` without recreating.
-    - **Before it:** from 19:57 IST a build of the uncommitted tree ran
-      (`77016afbbaa5`, tagged `uncommitted-20261008-1957`). It serves
-      byte-identical files.
-  - backend `ccure-audit-pro-backend:15f8c7c` = `:latest` (`94ff785bcd29`) on
-    `api`, `worker`, `beat` and `web-worker`. **The first backend image rebuild
-    since 16 Sep** (`4de065370b9b`): every deploy in between reused that image
-    because the code is bind-mounted. It carries the 24 Sep image restructuring,
-    the 7 Oct security patches and the unpinned transitive dependencies resolved
-    since (scapy 2.8.0, billiard 4.3.1, …). Validated by the full backend suite
-    run inside the image against a disposable database;
-  - `gateway-auth` unchanged (`ccure-gateway-auth:10.5`); no database change.
-  - **Rollback, frontend:** `pre-902614f` (`9a5fe2ce5bd4`, the 7 Oct `15f8c7c`
-    image) plus `git revert 87d998b`.
-  - **Rollback, backend:** the `pre-redeploy-20261007` tag (`4de065370b9b`) plus
-    `git revert`. Backup `backups/ccure_db_20261007_230801_ops.dump`.
+- **What the VM runs is recorded in "Deployment: Linux VM" → "Releases"**,
+  not here. The record that stood here (backend `15f8c7c` from 7 Oct, frontend
+  `87d998b` from 8 Oct, both on the bind-mounted layout) is history; git keeps
+  it.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 
@@ -905,11 +881,12 @@ section is the VM's answer.
 
 - **The scanner worker runs in Docker with `network_mode: host` and
   `NET_ADMIN`/`NET_RAW`** — the Linux equivalent of the Windows host worker,
-  for the reasons in the compose file. Restart it after changing anything
-  under `core/`, `scans/` or `orchestrator/`: `docker compose restart worker`.
-  The Windows start scripts were retired on 9 Oct 2026; the stack is
-  `docker compose up -d` / `down`, and every service is `restart:
-unless-stopped` so a reboot brings it all back together.
+  for the reasons in the compose file. **Since 13 Oct 2026 its code is baked
+  into the image** (see "Releases" below): a change under `core/`, `scans/` or
+  `orchestrator/` reaches it only through a release, and restarting the
+  container restarts the same code. The Windows start scripts were retired on
+  9 Oct 2026; every service is `restart: unless-stopped` so a reboot brings it
+  all back together.
 
 - **`docker-compose.yml` sizes PostgreSQL for this VM** — `shared_buffers=2GB`,
   `effective_cache_size=6GB`, `work_mem=16MB`, `shm_size: 1gb`. The `shm_size`
@@ -947,8 +924,24 @@ unless-stopped` so a reboot brings it all back together.
     at 5432 is talking to the _old_ Windows database without any error saying
     so.
 
-  Role `ccure_user`, password `POSTGRES_PASSWORD` in the VM's `.env`.
-  `sslmode=disable` on the client side, per the TLS decision above.
+  Role `ccure_user`, password `POSTGRES_PASSWORD` in the VM's root `.env`
+  (`Backend/.env` repeats it in `POSTGRES_PASSWORD` and `DATABASE_URL`; the
+  compose file builds every service's `DATABASE_URL` and `TEST_DATABASE_URL`
+  from the root value). The `ccure-db` container's own `POSTGRES_PASSWORD` is
+  the bootstrap superuser's, fed from `POSTGRES_SUPERUSER_PASSWORD`, and is a
+  different value. `sslmode=disable` on the client side, per the TLS decision
+  above.
+
+  **Rotated 14 Oct 2026, 07:59 UTC**, because it had been printed into six
+  local assistant session transcripts (and so sent off-host with them); it was
+  in no repository file, git history, backup or container log. The role now
+  holds a SCRAM verifier computed client-side, passed over stdin, so the
+  plaintext reached no command line or server log. Old `.env` files and the
+  old verifier are in `~/ccure-secret-backups/rotation-20261014_132850/` (700)
+  for rollback. **Clients outside the VM — pgAdmin and DBeaver on the
+  workstation — need the new value from the root `.env`.** The `ccure-db`
+  container still carries the old value as `CCURE_APP_PASSWORD`, which only
+  initdb reads; it updates the next time that container is recreated.
 
   **`vuln_intel` is read-only from that entry, by design.** Its 22 tables are
   owned by `admin` — the role the feed sync scripts and the application's
@@ -988,6 +981,121 @@ unless-stopped` so a reboot brings it all back together.
   worker and web-worker. The PG15 `pgdata` volume and the anonymous leftovers
   were removed on 17 Sep 2026 once a verified full dump existed; nothing
   outside compose-declared volumes holds state.
+
+### Releases (since 13 Oct 2026)
+
+Since release `48879df` (13 Oct 2026, 03:35–03:39 UTC, a 264 s outage) the
+application runs from **images, not bind-mounted source**: editing `Backend/`
+or `Frontend/` changes nothing live, and a change reaches the VM only as a
+release. That release's own record is
+`backups/rbac-release-48879df…/development-update-plan.md`.
+
+- **A release is a directory** `backups/release-<rev>-<name>/` (mode 700):
+  `compose.sh`, `artifact-inputs.env` (the image IDs), `fallback-artifact-inputs.env`
+  (the previous release's), `current-runtime-settings.review.json`,
+  `development-artifacts.compose.yml`, and `support` → the frozen compose and
+  docs in `backups/rbac-release-48879df…/support`. `compose.sh` reads the root
+  `.env`. **Never deploy with a plain `docker compose up`**: it reattaches the
+  source mounts or builds a different candidate.
+- **Building.** The backend is an overlay on the verified base image
+  `ccure-audit-pro-backend:48879df…`: `/app` replaced from
+  `git archive HEAD Backend`, dependencies, tools and browsers unchanged. The
+  frontend is a full build of `git archive HEAD Frontend` with
+  `VITE_API_BASE_URL=/api`. Build from a committed HEAD only.
+- **Deploying.** Backup (`scripts/backup_db.sh`, and confirm a full dump from
+  today), confirm both workers idle (`celery inspect active`) and no scan
+  running or queued, then
+  `compose.sh up --no-start --no-deps --no-build --pull never --force-recreate api worker web-worker beat frontend`,
+  `compose.sh start api`, wait for `https://ccurepro.cdac.in/api/` to answer
+  200, then `compose.sh start frontend worker web-worker beat`. Exactly one
+  beat. A frontend-only release recreates `frontend` alone.
+- **Rollback** is the same with `compose.sh --fallback`, which uses the
+  previous release's images. No database change is involved unless a release
+  says so.
+
+| Release directory                   | Backend (image)           | Frontend (image)          | Live (UTC)         | Outage |
+| ----------------------------------- | ------------------------- | ------------------------- | ------------------ | ------ |
+| `rbac-release-48879df…`             | `48879df` (`d40f93451400`) | `48879df` (`051f9feac0b7`) | 13 Oct 03:39       | 264 s  |
+| `release-5c062d5-e2e-fixes`         | `5c062d5` (`ea8746c86d0e`) | `5c062d5` (`c98838e696be`) | 13 Oct 08:44       | 32 s   |
+| `release-26a877c-e2e-fixes2`        | `26a877c` (`c007fed58b80`) | `26a877c` (`3c21462f8678`) | 13 Oct 09:42       | 25 s   |
+| `release-fbf72ba-ui`                | `26a877c` (`c007fed58b80`) | `fbf72ba` (`94b412011ddd`) | 13 Oct 11:30       | ~1 s   |
+| `release-d77b50e-followups`         | `d77b50e` (`9dd7649fc559`) | `d77b50e` (`a21479ea76c8`) | 14 Oct 07:59       | 38 s   |
+| **`release-6d816e2-finalize`**      | `6d816e2` (`e19b9b49c73c`) | `d77b50e` (`a21479ea76c8`) | **14 Oct 08:43**   | 25 s   |
+
+`gateway-auth` (`40b686e08a4a`) and `api-gateway` are unchanged throughout.
+The `ccure_user` password was rotated in the `d77b50e` window (see the
+PostgreSQL bullet above).
+`5c062d5` applied migration `a7c9e1b3d5f8` (one finding row per CVE per
+product) at API start; no other release changed the schema.
+
+What the 13–14 Oct releases changed (each commit names its measurement and
+its test):
+
+- `5c062d5`: the end-to-end validation's fixes (SNMP BER decoding, NUL-safe
+  sync, OSV source binding and the withdrawn-advisory purge, per-product
+  finding rows, `ruled_out`, report and viewer corrections).
+- `26a877c`: forked Celery children no longer share the parent's database
+  connection (`75aab31`); Nuclei finds the image's templates (`1cf7d24`); a
+  failed feed lookup is reported as not assessed, OSV ranges compare the
+  source version, the OSV row cap is explicit, only the running kernel is
+  assessed.
+- `fbf72ba`: the credentialed page renders absent fields as not recorded.
+- `d77b50e`: unauthenticated candidate truncation is recorded and reported,
+  OS CPEs are searched per host, an SNMP `sysDescr` is never a search term
+  (`959c3ec`); a CVE shared by several packages names each (`50f29ea`); the
+  legacy credentialed-results address redirects (`2f8337d`); an
+  unauthenticated rescan no longer retires credentialed findings (`d77b50e`).
+- `6d816e2`: a scan reads complete only after its findings are written, and
+  `completed_at` follows them.
+
+Verified live after `d77b50e`/`6d816e2` with credentialed and unauthenticated
+scans of 10.180.6.45 and 10.180.6.30, run concurrently: payload, database,
+findings API, CSV and export agree on every scan; the credentialed findings
+of the first pair stayed open after the unauthenticated pair; the kernel
+search's truncation is in the stored host record, the technical PDF and the
+export summary; no row of the final scan was written after its `completed_at`;
+no target, application or database password appears in any log, report,
+export, database row or UI capture.
+
+**Test data removed 14 Oct 2026** (approved): the 25 validation scans and the
+two `e2e-*` stored credentials, through the application's own recycle/purge
+and credential-delete routes. Evidence first: `backups/e2e-evidence-20261013/`
+(API payloads, findings, PDF/CSV/XLSX/JSON exports, database rows,
+`MANIFEST.sha256`); restore point `backups/ccure_db_20261014_153304_full.dump`.
+The two asset records were kept; their `services` rows went with the scans
+(see the open issues).
+
+**Pending:**
+
+- **Nuclei base-image rebuild.** `61bf9ca` makes the templates readable by the
+  image's own user (they were `0700`, so as `ccure` Nuclei finds none; the
+  workers run as root, which is the only reason scans read them). It is in
+  `Backend/Dockerfile`, so it takes effect only when the base image is
+  rebuilt — overlays never touch it. Rebuild, run the suite inside the image
+  (see "Test the backend image"), and verify as non-root that
+  `nuclei -templates /opt/nuclei-templates` loads templates.
+
+**Open issues (known, not fixed):**
+
+- OpenSSH on an Ubuntu host that Nmap tags only with `cpe:/o:linux:linux_kernel`
+  (no application CPE, no banner) gets no OpenSSH CVE search on an
+  unauthenticated scan. A product-name search was rejected: name-matching
+  product strings is the defect removed for SNMP.
+- 2,181 of 2,300 package matches on the Ubuntu desktop are Ubuntu "affected,
+  no fix released" records, reported by design; whether to show them
+  separately is a product decision.
+- `/scan/:scanId/credentialed-results` is kept as a compatibility redirect;
+  nothing generates it.
+- **Purging a scan deletes the asset's current services.**
+  `services.scan_id` is `ON DELETE CASCADE`, and `services` is a current-state
+  projection whose rows point at the last scan that saw them, so deleting
+  that scan erases the asset's service inventory (99 rows on 14 Oct 2026).
+  `asset_change_log` and `assets.last_scan_id` are `SET NULL`, which is the
+  shape `services` needs too.
+- **Recycling and purging a scan write no audit event**
+  (`routers/scan_history.py`), unlike deleting a credential.
+- The workstation's pgAdmin and DBeaver entries need the rotated
+  `ccure_user` password.
 
 ### Backups on the VM
 
@@ -1050,14 +1158,17 @@ dump": up to six hours of operational data.
 
 ## Architecture
 
-- **API** — `ccure-api` container, mounts `./Backend` (restart picks up Python
-  changes; no rebuild needed). On the VM since Phase 10.7 it publishes no port
+- **API** — `ccure-api` container. **Since 13 Oct 2026 the code is baked into
+  the image** and only data paths are mounted (`Backend/reports`, `logs`,
+  `data/feeds`, `data/compliance_evidence`, `db/cves.db`, `Backend/.env`,
+  `backups/`); a code change needs a release ("Deployment: Linux VM" →
+  "Releases"). On the VM since Phase 10.7 it publishes no port
   and listens on `172.31.254.20:8000` only; reach it through
   `https://10.180.22.127/api/` (the gateway), or at that address from the host
   for tooling.
 - **Frontend** — `ccure-frontend`, `localhost:3200`. Assets are **baked at build
-  time**; JSX changes need `docker compose build frontend && docker compose up -d
---no-deps frontend`.
+  time**; a JSX change ships as a release ("Deployment: Linux VM" →
+  "Releases"), built with `VITE_API_BASE_URL=/api`.
 - **Scanner worker** _(Windows deployment, history; on the VM the worker is a
   container with `network_mode: host`, see "Deployment: Linux VM")_ — Celery on the **Windows host**, not in Docker, so Nmap and
   Scapy get raw-socket access to the physical network. It was started with
@@ -3359,6 +3470,12 @@ fixed_at > T)`, and a baseline scan is just a T. A row per finding per scan
   NOT_APPLICABLE establish nothing). A scan with no recorded scope can never
   report a fix; the finding lands in `NOT_ASSESSED`, which is counted and named
   in the summary rather than quietly dropped.
+  **A credentialed finding is retired only by a scan whose credentialed audit
+  assessed it** (`core.findings.credentialed_scope`): the pipeline filed its
+  credentialed findings under `network_service`, so an unauthenticated rescan
+  marked all 2,281 of one audit's findings fixed (13 Oct 2026, fixed in
+  `d77b50e`). Package CVEs need an inventory matched without a lookup failure;
+  configuration findings need their check's verdict.
 
 - **`record_assessment_scope` writes into `scans.options`** — JSONB, already
   carrying `options.origin`, client-visible, so no secret may go near it. It
@@ -3375,6 +3492,10 @@ fixed_at > T)`, and a baseline scan is just a T. A row per finding per scan
   scan's completion. Measured: baseline completed 18:48:44, its earliest finding
   first seen 18:48:45, and the comparison duly reported **50 new, 0 unchanged**
   on two scans of an almost unchanged host. Do not move it back.
+  The pipeline's `update_scan_phase` broke the same rule until `6d816e2`
+  (14 Oct 2026): it stamped `completed_at` and "complete" before its inline
+  findings sync, so all 2,270 findings one credentialed audit first found were
+  dated after its own completion (`tests/scans/test_scan_duration.py`).
 
 - **`updated_at` is not a scan boundary.** It carries `onupdate=utcnow`, so it
   moves whenever the row is touched — the same property that once corrupted the

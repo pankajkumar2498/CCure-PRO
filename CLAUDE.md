@@ -940,7 +940,14 @@ section is the VM's answer.
   holds a SCRAM verifier computed client-side, passed over stdin, so the
   plaintext reached no command line or server log. Old `.env` files and the
   old verifier are in `~/ccure-secret-backups/rotation-20261014_132850/` (700)
-  for rollback. **Clients outside the VM — pgAdmin and DBeaver on the
+  for rollback. The old value survives, inert, in those files, in two JSON files of
+  `backups/native_clean_reset_20261004/` (600), in the `ccure-db` container's
+  `CCURE_APP_PASSWORD`, in `~/ccure-migration/restore*.sh`, and in local
+  Claude and Codex session transcripts; it is in no repository file, git
+  history or dump (checked 14 Oct 2026). `~/ccure-migration/` (17 Sep) was
+  664 with `.env` backups holding the still-live `SMTP_PASSWORD` and
+  `VULN_DB_PASSWORD`; it is 700 now and the `.env` backups are in
+  `~/ccure-secret-backups/migration-20260917/`. **Clients outside the VM — pgAdmin and DBeaver on the
   workstation — need the new value from the root `.env`.** The `ccure-db`
   container still carries the old value as `CCURE_APP_PASSWORD`, which only
   initdb reads; it updates the next time that container is recreated.
@@ -1022,13 +1029,24 @@ release. That release's own record is
 | `release-26a877c-e2e-fixes2`        | `26a877c` (`c007fed58b80`) | `26a877c` (`3c21462f8678`) | 13 Oct 09:42       | 25 s   |
 | `release-fbf72ba-ui`                | `26a877c` (`c007fed58b80`) | `fbf72ba` (`94b412011ddd`) | 13 Oct 11:30       | ~1 s   |
 | `release-d77b50e-followups`         | `d77b50e` (`9dd7649fc559`) | `d77b50e` (`a21479ea76c8`) | 14 Oct 07:59       | 38 s   |
-| **`release-6d816e2-finalize`**      | `6d816e2` (`e19b9b49c73c`) | `d77b50e` (`a21479ea76c8`) | **14 Oct 08:43**   | 25 s   |
+| `release-6d816e2-finalize`          | `6d816e2` (`e19b9b49c73c`) | `d77b50e` (`a21479ea76c8`) | 14 Oct 08:43       | 25 s   |
+| **`release-72eb2bb-followups2`**    | `72eb2bb` (`17989e0eebef`) | `72eb2bb` (`12cd34b5bb79`) | **14 Oct 14:13**   | 28 s   |
 
 `gateway-auth` (`40b686e08a4a`) and `api-gateway` are unchanged throughout.
 The `ccure_user` password was rotated in the `d77b50e` window (see the
 PostgreSQL bullet above).
 `5c062d5` applied migration `a7c9e1b3d5f8` (one finding row per CVE per
-product) at API start; no other release changed the schema.
+product) at API start; `72eb2bb` applied `c4d6e8f0a2b4` (`fix_state`) and
+`d5e7f9a1b3c6` (services outlive their scan). No other release changed the
+schema.
+
+**`72eb2bb` is a full base-image build, not an overlay.** Its backend image
+was built from `Backend/Dockerfile` at that commit, so it carries `61bf9ca`'s
+template permissions; later overlays should use it as their base. The rebuild
+moved two Python packages (`playwright` 1.63.0 → 1.64.0, `wrapt` 2.5.0 →
+2.5.1). Built on the VM, not by the hosted Images workflow: the full suite ran
+inside the image, CI's `scripts/ci/smoke_backend.sh` and
+`check_browser_runtime.py` passed, and Trivy was not run here.
 
 What the 13–14 Oct releases changed (each commit names its measurement and
 its test):
@@ -1049,6 +1067,10 @@ its test):
   unauthenticated rescan no longer retires credentialed findings (`d77b50e`).
 - `6d816e2`: a scan reads complete only after its findings are written, and
   `completed_at` follows them.
+- `72eb2bb`: the Nuclei base-image rebuild; every CPE nmap reports reaches the
+  scan (`0178fdf`); recycle, restore and purge of a scan are audited
+  (`204bb92`); `fix_state` and the "No fix released" filter (`969b1d9`);
+  purging a scan detaches rather than deletes services (`be0aa48`).
 
 Verified live after `d77b50e`/`6d816e2` with credentialed and unauthenticated
 scans of 10.180.6.45 and 10.180.6.30, run concurrently: payload, database,
@@ -1059,45 +1081,49 @@ export summary; no row of the final scan was written after its `completed_at`;
 no target, application or database password appears in any log, report,
 export, database row or UI capture.
 
+Verified live after `72eb2bb` (14 Oct 2026, scans #1–#4 of `org_development`,
+kept): as `ccure`, the image lists 13,831 Nuclei templates (the previous
+image: none) and its Nuclei probe finds both planted exposures with no
+network; an unauthenticated audit of 10.180.6.45 now records
+`cpe:/a:openbsd:openssh:9.6p1` on 22/tcp and reports 17 OpenSSH CVEs as
+Potential (before: 0); the credentialed audit stores 2,241
+`no_fix_released`, 114 `fix_released` and 34 unrecorded findings, which the
+API's `fix_state` filter returns exactly, severities untouched; recycle,
+restore and purge each wrote one event in the scan's organisation and the
+audit chain verifies; payload, database, CSV and export agree on every scan;
+no application or target password appears in any log, report, export or
+database row. The credentialed rescans rebuilt the two assets' service
+inventory: 96 of the 104 purged rows came back identical, the other 8 are
+ports no longer listening (7070 closed, 502 and 56238 not in the host's own
+socket table) or ephemeral loopback ports that moved.
+
 **Test data removed 14 Oct 2026** (approved): the 25 validation scans and the
 two `e2e-*` stored credentials, through the application's own recycle/purge
 and credential-delete routes. Evidence first: `backups/e2e-evidence-20261013/`
 (API payloads, findings, PDF/CSV/XLSX/JSON exports, database rows,
 `MANIFEST.sha256`); restore point `backups/ccure_db_20261014_153304_full.dump`.
-The two asset records were kept; their `services` rows went with the scans
-(see the open issues).
-
-**Pending:**
-
-- **Nuclei base-image rebuild.** `61bf9ca` makes the templates readable by the
-  image's own user (they were `0700`, so as `ccure` Nuclei finds none; the
-  workers run as root, which is the only reason scans read them). It is in
-  `Backend/Dockerfile`, so it takes effect only when the base image is
-  rebuilt — overlays never touch it. Rebuild, run the suite inside the image
-  (see "Test the backend image"), and verify as non-root that
-  `nuclei -templates /opt/nuclei-templates` loads templates.
+The two asset records were kept; their 104 `services` rows went with the
+scans, which `be0aa48` makes impossible and the rescans above rebuilt.
 
 **Open issues (known, not fixed):**
 
-- OpenSSH on an Ubuntu host that Nmap tags only with `cpe:/o:linux:linux_kernel`
-  (no application CPE, no banner) gets no OpenSSH CVE search on an
-  unauthenticated scan. A product-name search was rejected: name-matching
-  product strings is the defect removed for SNMP.
-- 2,181 of 2,300 package matches on the Ubuntu desktop are Ubuntu "affected,
-  no fix released" records, reported by design; whether to show them
-  separately is a product decision.
 - `/scan/:scanId/credentialed-results` is kept as a compatibility redirect;
   nothing generates it.
-- **Purging a scan deletes the asset's current services.**
-  `services.scan_id` is `ON DELETE CASCADE`, and `services` is a current-state
-  projection whose rows point at the last scan that saw them, so deleting
-  that scan erases the asset's service inventory (99 rows on 14 Oct 2026).
-  `asset_change_log` and `assets.last_scan_id` are `SET NULL`, which is the
-  shape `services` needs too.
-- **Recycling and purging a scan write no audit event**
-  (`routers/scan_history.py`), unlike deleting a credential.
 - The workstation's pgAdmin and DBeaver entries need the rotated
-  `ccure_user` password.
+  `ccure_user` password. Not verifiable from the VM: no failed `ccure_user`
+  login since the rotation, `log_connections` is off, and no pgAdmin or
+  DBeaver session or tunnel was open on 14 Oct 2026.
+- **The web worker's start-up self-check reports `playwright_chromium`
+  missing** (`core/web/self_check.py`): it looks for a bundled Chromium under
+  `/opt/playwright`, which the image deliberately replaced with Chrome Stable
+  (`CCURE_BROWSER_CHANNEL=chrome`). Every image since at least `6d816e2` logs
+  it; it gates nothing, but the log line says scans "must not be read as
+  clean".
+- **`nuclei_probe` reports `nuclei_templates_run: True` when Nuclei loaded no
+  template** — the shape that hid the unreadable templates. Measured on the
+  `6d816e2` image as `ccure`: 0 findings in 0 s, `ran: True`.
+- RHEL's OpenSSH banner names no distribution, so an unauthenticated RHEL
+  finding is graded against the upstream version (memory note, unchanged).
 
 ### Backups on the VM
 
@@ -1827,6 +1853,11 @@ backend auto-chains the later phases.
 - **Phase 2** — `core/nmap/wrapper.py` via `engines/port/port_engine.py`. Normal
   intensity scans ports 1-1024 plus a curated high-port list from
   `PORT_DB` (~1,127 ports), with OT ports excluded by default.
+  **python-nmap keeps only a service's last `<cpe>`**, and nmap lists the
+  application before the OS it inferred, so Ubuntu's OpenSSH arrived as
+  `cpe:/o:linux:linux_kernel` alone and got no OpenSSH CVE search.
+  `_service_cpes_by_port` reads every CPE back from python-nmap's raw XML
+  (`0178fdf`); never read a port's identity from python-nmap's `cpe` field.
 - **Enrichment** — `core/discovery/enrichment.py`. When adding a probe, pass the
   real transport to `_register_open_port(..., protocol="udp")`. SNMP, mDNS and
   NetBIOS-NS are UDP; recording them as TCP claims an open TCP port that is
@@ -3657,6 +3688,23 @@ never had (below).
   is `gen_service_id(asset, port, protocol)`, so re-scanning re-points rows
   rather than adding a generation. Point-in-time results live in
   `scan_phases.summary`, which the scan-detail API and reports read back.
+  **Deleting a scan must not delete the inventory**: `services.scan_id` is
+  nullable and ON DELETE SET NULL, and `Scan.services` has no delete cascade
+  (migration `d5e7f9a1b3c6`). Both halves matter — the ORM's cascade deletes
+  loaded rows before the database is asked — and Alembic's drift check does not
+  compare ON DELETE rules, so `test_scan_lifecycle_audit` pins model, ORM and
+  database together. Until then a purge emptied the inventory of every asset
+  the purged scan was the latest to see (104 rows, 14 Oct 2026).
+- **`asset_vulnerabilities.fix_state` is the matched advisory's own answer**:
+  `fix_released`, `no_fix_released`, or NULL (not established). An empty
+  `component_fixed_version` cannot say it — "Ubuntu has released no fix" and
+  "no fixed version was recorded" both leave it NULL. `core.findings.fix_state`
+  decides it for both credentialed writers. `no_fix_released` is only ever a
+  distribution's statement, and only for ecosystems in
+  `OPEN_RANGE_MEANS_NO_FIX` (Ubuntu): `sync_osv` stores a `last_affected` range
+  as an open window, so an open range means "no fix" only in a feed measured to
+  use no `last_affected`. It never changes status or severity. The API filter
+  value for NULL is `not_recorded`, never folded into `no_fix_released`.
 - `assets` is keyed by `(org_id, ip_address)` and `(org_id, mac_address)`.
   Re-scans update in place; `first_seen_at` is preserved and per-field
   provenance is tracked in `custom_attributes.provenance`.

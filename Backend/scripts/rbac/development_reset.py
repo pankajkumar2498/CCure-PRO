@@ -35,8 +35,14 @@ MANIFEST = (
 # columns, and after a7c9e1b3d5f8 (13 Oct 2026) widened only the unique key of
 # asset_vulnerabilities to include component — no RBAC, identity, audit-log or
 # catalogue table, and nothing this reset preserves or removes changes shape.
+# Reviewed again for c4d6e8f0a2b4 (a nullable asset_vulnerabilities.fix_state)
+# and d5e7f9a1b3c6 (services.scan_id ON DELETE SET NULL), 14 Oct 2026: neither
+# touches an RBAC, identity, audit-log or catalogue table. The reset still
+# empties `services`: it deletes `assets`, and services.asset_id remains ON
+# DELETE CASCADE, so no service row survives the scans it no longer cascades
+# from — and the child-table check below refuses the reset if one did.
 # Never derive this allowlist from the current migration tree.
-HEADS = {"a7c9e1b3d5f8", "policy_pro_0001", "rank_0001"}
+HEADS = {"d5e7f9a1b3c6", "policy_pro_0001", "rank_0001"}
 SERVICES = ("ccure-api", "ccure-worker", "ccure-web-worker", "ccure-beat")
 NATIVE = (
     "rbac_roles",

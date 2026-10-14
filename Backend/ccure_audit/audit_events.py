@@ -27,6 +27,15 @@ AUDIT_EVENT_SEVERITIES: dict[str, str] = {
     "scan.completed": INFO,
     "scan.failed": MEDIUM,
     "scan.cancelled": LOW,
+    # A scan's lifecycle after it ran. Moving one to the recycle bin hides an
+    # assessment from every list, report and comparison until somebody
+    # restores it. Purging is irreversible and takes the scan's findings,
+    # phases and the services it last saw with it, so it is rated with the
+    # other deletions of assessment evidence ("delete_evidence": HIGH). Both
+    # had no event at all before 14 Oct 2026, unlike deleting a credential.
+    "scan.recycled": MEDIUM,
+    "scan.restored": LOW,
+    "scan.purged": HIGH,
     # ── Web application scanning ────────────────────────────────────────────
     # Launching a web scan sends sqlmap, ffuf and nuclei at a URL the caller
     # names — active attack traffic from this host against somebody's

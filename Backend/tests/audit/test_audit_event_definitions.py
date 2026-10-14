@@ -38,6 +38,14 @@ PRE_SPLIT_FINGERPRINT = (
 )
 #: The action that was emitted but unclassified, and took the default.
 NEWLY_NAMED = {"service.token_issued": "medium"}
+#: Events added after the split. They change nothing the fingerprint covers;
+#: each is pinned here so a later edit to its severity is a visible decision.
+ADDED_AFTER_SPLIT = {
+    # 14 Oct 2026: a scan's recycle-bin lifecycle had no audit event at all.
+    "scan.recycled": "medium",
+    "scan.restored": "low",
+    "scan.purged": "high",
+}
 
 
 def _registered_by_rbac() -> set[str]:
@@ -63,11 +71,18 @@ def test_every_pre_split_severity_is_unchanged():
     merged = {
         k: v
         for k, v in taxonomy.all_severities().items()
-        if k not in NEWLY_NAMED and k not in _registered_by_rbac()
+        if k not in NEWLY_NAMED
+        and k not in ADDED_AFTER_SPLIT
+        and k not in _registered_by_rbac()
     }
     assert len(merged) == 109
     digest = hashlib.sha256(json.dumps(sorted(merged.items())).encode()).hexdigest()
     assert digest == PRE_SPLIT_FINGERPRINT
+
+
+def test_events_added_after_the_split_keep_their_severity():
+    severities = taxonomy.all_severities()
+    assert {k: severities.get(k) for k in ADDED_AFTER_SPLIT} == ADDED_AFTER_SPLIT
 
 
 def test_the_newly_named_action_has_the_severity_it_already_took():
@@ -82,7 +97,8 @@ def test_platform_and_audit_events_are_disjoint_and_complete():
     from ccure_audit.audit_events import AUDIT_EVENT_SEVERITIES
 
     platform = taxonomy.SEVERITY_BY_ACTION
-    assert len(platform) == 47 and len(AUDIT_EVENT_SEVERITIES) == 63
+    assert len(platform) == 47
+    assert len(AUDIT_EVENT_SEVERITIES) == 63 + len(ADDED_AFTER_SPLIT)
     assert not set(platform) & set(AUDIT_EVENT_SEVERITIES)
     assert set(platform) | set(AUDIT_EVENT_SEVERITIES) == (
         set(taxonomy.all_severities()) - _registered_by_rbac()

@@ -509,6 +509,21 @@ export default function AuditLogs() {
         icon: "x-circle",
         color: "var(--danger)",
       },
+      "scan.recycled": {
+        label: "Scan Moved to Recycle Bin",
+        icon: "trash",
+        color: "var(--warning)",
+      },
+      "scan.restored": {
+        label: "Scan Restored",
+        icon: "rotate-ccw",
+        color: "var(--accent)",
+      },
+      "scan.purged": {
+        label: "Scan Permanently Deleted",
+        icon: "trash",
+        color: "var(--danger)",
+      },
     };
 
     if (config[act]) {
@@ -739,6 +754,9 @@ export default function AuditLogs() {
             <option value="user.updated">User Updated</option>
             <option value="user.deleted">User Deleted</option>
             <option value="scan.created">Scan Created</option>
+            <option value="scan.recycled">Scan Moved to Recycle Bin</option>
+            <option value="scan.restored">Scan Restored</option>
+            <option value="scan.purged">Scan Permanently Deleted</option>
           </CcureSelect>
 
           <CcureSelect

@@ -192,6 +192,10 @@ class HostResult:
     vulnerability_counts: dict = field(default_factory=dict)
     #: How many candidates verification examined (verified + suppressed).
     candidates_evaluated: int = 0
+    #: How many candidate searches ran, and which stopped at their row cap.
+    #: A truncated search leaves candidates that were never evaluated; recorded
+    #: here so the report can say so instead of the worker log alone.
+    candidate_enumeration: dict = field(default_factory=dict)
     host_risk_score: int = 0  # 0-100
     host_risk_level: str = "Info"  # Critical / High / Medium / Low / Info
     _ot_probed: bool = False
@@ -284,6 +288,7 @@ class HostResult:
             "suppressed_cves",
             "vulnerability_counts",
             "candidates_evaluated",
+            "candidate_enumeration",
             "host_risk_score",
             "host_risk_level",
             "device_category",

@@ -32,6 +32,8 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.candidate_enumeration import describe as describe_truncated_search
+
 from reporting.report_helpers import (
     NumberedCanvas,
     ReportDocTemplate,
@@ -570,6 +572,30 @@ def _boxed(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _truncated_searches_row(meta: dict, summary: dict) -> tuple | None:
+    """
+    Which candidate searches stopped at their row cap, or None if unrecorded.
+
+    A truncated search leaves candidates that were never evaluated. Scans
+    before 14 Oct 2026 did not record this, and for them the row is left out
+    rather than printed as "None", which would claim every search completed.
+    """
+    for source in (summary, meta):
+        if isinstance(source, dict) and "candidate_searches_truncated" in source:
+            truncated = source.get("candidate_searches_truncated") or []
+            break
+    else:
+        return None
+    if not truncated:
+        return (
+            "Candidate searches truncated",
+            "None — every candidate search ran to completion",
+        )
+    shown = "; ".join(describe_truncated_search(t) for t in truncated[:6])
+    more = f"; and {len(truncated) - 6} more" if len(truncated) > 6 else ""
+    return ("Candidate searches truncated", f"{len(truncated)} — {shown}{more}")
+
+
 def _scan_configuration(
     meta: dict, summary: dict, findings: ScanFindings, scan_type: str
 ) -> List[tuple]:
@@ -649,6 +675,9 @@ def _scan_configuration(
                 ),
             )
         )
+        truncated_row = _truncated_searches_row(meta, summary)
+        if truncated_row is not None:
+            rows.append(truncated_row)
         rows.append(("Reporting QoD threshold", f"{QOD_REPORT_THRESHOLD}%"))
 
     # Rows a scan that authenticated adds to the above. They are appended only

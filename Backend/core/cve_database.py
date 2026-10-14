@@ -308,6 +308,7 @@ class CVEDatabase:
                 )
                 for record in results:
                     record["enumeration_truncated"] = True
+                    record["enumeration_cap"] = row_cap
             return results
         except SQLAlchemyError as exc:
             logger.error("PostgreSQL CVE search failed for %s: %s", service_name, exc)

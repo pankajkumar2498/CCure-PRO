@@ -321,8 +321,20 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
         "org_id": str(getattr(scan, "org_id", "") or ""),
         "org_name": org_name,
         "policy": policy,
+        # None for a scan that never recorded its candidate searches; [] for
+        # one where every search ran to completion. See core.candidate_enumeration.
+        "candidate_searches_truncated": _truncated_searches(db, scan),
         "exported_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _truncated_searches(db: Session, scan: Any) -> List[str] | None:
+    from core.candidate_enumeration import describe, truncated_searches
+
+    hosts = _scan_hosts(db, scan)
+    if not any("candidate_enumeration" in h for h in hosts):
+        return None
+    return [describe(entry) for entry in truncated_searches(hosts)]
 
 
 #: Policy settings that only a vulnerability or configuration assessment reads.
@@ -382,6 +394,18 @@ def scan_context_rows(context: Mapping[str, Any]) -> List[List[str]]:
         ["Organization", _text(context.get("org_name"))],
         ["Exported At", _text(context.get("exported_at"))],
     ]
+    truncated = context.get("candidate_searches_truncated")
+    if truncated is not None:
+        rows.append(
+            [
+                "Candidate Searches Truncated",
+                (
+                    "; ".join(truncated)
+                    if truncated
+                    else "None — every candidate search ran to completion"
+                ),
+            ]
+        )
     if policy.get("recorded"):
         rows.extend(
             [

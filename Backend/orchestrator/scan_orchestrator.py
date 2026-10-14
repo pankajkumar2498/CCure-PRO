@@ -27,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 from core.asset_correlation import AssetCorrelationEngine
+from core.candidate_enumeration import searches_run, truncated_searches
 from reporting.availability import PDF_AVAILABLE
 
 # ── NEW imports for refactored architecture ───────────────────────────────────
@@ -919,6 +920,10 @@ class ScanOrchestrator:
             "candidates_suppressed": sum(
                 len(h.get("suppressed_cves") or []) for h in formatted
             ),
+            # Searches that stopped at their row cap left candidates nobody
+            # evaluated; the report states which (core.candidate_enumeration).
+            "candidate_searches": searches_run(formatted),
+            "candidate_searches_truncated": truncated_searches(formatted),
         }
         return {
             "success": True,
@@ -1295,6 +1300,7 @@ class ScanOrchestrator:
             suppressed_cves=data.get("suppressed_cves", []),
             vulnerability_counts=data.get("vulnerability_counts", {}),
             candidates_evaluated=data.get("candidates_evaluated", 0),
+            candidate_enumeration=data.get("candidate_enumeration") or {},
             host_risk_score=data.get("host_risk_score", 0),
             host_risk_level=data.get("host_risk_level", "Info"),
             _ot_probed=data.get("_ot_probed", False),

@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 
 from config import AppConfig
 from core import task_names
+from core.candidate_enumeration import searches_run, truncated_searches
 from core.celery_app import celery_app
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
@@ -2512,6 +2513,10 @@ def run_vulnerability_audit_task(
             )
             result["summary"]["candidates_suppressed"] = sum(
                 len(h.get("suppressed_cves") or []) for h in result["data"]
+            )
+            result["summary"]["candidate_searches"] = searches_run(result["data"])
+            result["summary"]["candidate_searches_truncated"] = truncated_searches(
+                result["data"]
             )
 
         context = resolve_report_context(db, user_id, scan_id=scan_id, hosts=hosts)

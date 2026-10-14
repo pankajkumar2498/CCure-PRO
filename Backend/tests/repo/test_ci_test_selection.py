@@ -134,3 +134,10 @@ def test_chromium_runs_only_for_visual_paths_or_a_full_run():
         assert fe(f)["browser"] is True, f
     assert sel.select([], full=True)["frontend"]["browser"] is True
     assert sel.select(["docs/a.md"])["frontend"]["browser"] is False
+
+
+def test_documentation_beside_the_tests_is_not_a_full_run():
+    # Found when the first pull request (which edited tests/README.md) selected
+    # the whole backend suite.
+    assert _groups("Backend/tests/README.md")["scope"] == "targeted"
+    assert _groups("Backend/tests/fixtures/x.json")["scope"] == "full"

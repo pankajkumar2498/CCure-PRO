@@ -187,6 +187,8 @@ def backend_groups(path: str) -> tuple[str, ...] | None:
         parts = PurePosixPath(path).parts
         if len(parts) > 2 and parts[1] in KNOWN_GROUPS:
             return (parts[1],) + BASELINE
+        if path.endswith((".md", ".txt")):
+            return BASELINE  # documentation beside the tests, e.g. tests/README.md
         return None
     if path.startswith("routers/"):
         stem = PurePosixPath(path).stem

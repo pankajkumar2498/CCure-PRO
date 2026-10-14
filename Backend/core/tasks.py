@@ -15,6 +15,7 @@ from core import task_names
 from core.candidate_enumeration import searches_run, truncated_searches
 from core.celery_app import celery_app
 from core.findings.credentialed_scope import assessed_check_ids, packages_assessed
+from core.findings.fix_state import fix_state_for
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
 from db.base import SessionLocal, gen_asset_id, utcnow
@@ -1053,6 +1054,7 @@ def _sync_credentialed_vulnerabilities(
             component=(package_name or None),
             component_version=(installed_ver or None),
             component_fixed_version=(fixed_ver or None),
+            fix_state=fix_state_for(vuln),
             in_kev=bool(vuln.get("in_kev")),
             has_exploit=bool(vuln.get("has_exploit")),
             # Exploitation provenance and the vendor's advisory, both joined on
@@ -1106,6 +1108,7 @@ def _sync_credentialed_vulnerabilities(
                 "component": (package_name or None),
                 "component_version": (installed_ver or None),
                 "component_fixed_version": (fixed_ver or None),
+                "fix_state": fix_state_for(vuln),
                 "detected_version": (installed_ver or None),
                 # Exploit corpora and vendor advisories change between scans:
                 # an exploit gets published, a vendor issues an advisory. A

@@ -33,7 +33,12 @@ from ccure_platform.api import log_audit_event
 from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
 from db.models.assets import Asset
-from db.models.findings import AssetVulnerability, VulnerabilityDefinition
+from db.models.findings import (
+    FIX_STATE_NOT_RELEASED,
+    FIX_STATES,
+    AssetVulnerability,
+    VulnerabilityDefinition,
+)
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from scans.cvss import canonical_severity, display_severity, severity_from_score
@@ -84,6 +89,49 @@ def _finding_port(finding: AssetVulnerability) -> str | None:
 # ── List Findings ─────────────────────────────────────────────────────────────
 
 
+#: ``fix_state`` filter values: the stored vocabulary, plus ``not_recorded``
+#: for a NULL — a finding for which no advisory established either answer.
+FIX_STATE_FILTERS = (*FIX_STATES, "not_recorded")
+
+_FIX_STATE_QUERY = Query(
+    None,
+    description=(
+        "Comma-separated: fix_released, no_fix_released (the distribution's "
+        "advisory lists the package as affected and names no fix), "
+        "not_recorded (neither was established)."
+    ),
+)
+
+
+def _filter_fix_state(q, fix_state: str | None):
+    """Narrow ``q`` to the requested fix states; an unknown value is a 400.
+
+    ``not_recorded`` is matched as NULL and never folded into
+    ``no_fix_released``: "no fixed version was stored" and "the vendor has
+    released no fix" are different facts, and only the second is about the
+    host.
+    """
+    if not fix_state:
+        return q
+    wanted = {part.strip() for part in fix_state.split(",") if part.strip()}
+    unknown = sorted(wanted - set(FIX_STATE_FILTERS))
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown fix_state {', '.join(unknown)}; expected one of "
+                f"{', '.join(FIX_STATE_FILTERS)}."
+            ),
+        )
+    conditions = []
+    named = sorted(wanted & set(FIX_STATES))
+    if named:
+        conditions.append(AssetVulnerability.fix_state.in_(named))
+    if "not_recorded" in wanted:
+        conditions.append(AssetVulnerability.fix_state.is_(None))
+    return q.filter(or_(*conditions)) if conditions else q
+
+
 @router.get("")
 @router.get("/")
 def list_findings(
@@ -94,6 +142,7 @@ def list_findings(
     search: str | None = Query(None),
     asset_id: str | None = Query(None),
     scan_id: str | None = Query(None),
+    fix_state: str | None = _FIX_STATE_QUERY,
     sort_by: str = Query("priority"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
@@ -134,6 +183,8 @@ def list_findings(
 
     if in_kev is not None:
         q = q.filter(AssetVulnerability.in_kev.is_(bool(in_kev)))
+
+    q = _filter_fix_state(q, fix_state)
 
     if asset_id:
         q = q.filter(AssetVulnerability.asset_id == asset_id)
@@ -235,6 +286,10 @@ def list_findings(
                 "priority_label": pl,
                 "cwe_ids": vuln.cwe_ids or [],
                 "status": finding.status,
+                # Beside status, never instead of it: a finding the
+                # distribution has not fixed is still open, still counted and
+                # keeps its severity.
+                "fix_state": finding.fix_state,
                 "asset": {
                     "id": asset.id,
                     "ip_address": str(asset.ip_address),
@@ -292,6 +347,7 @@ def list_findings_grouped(
     status: str | None = Query(None),
     asset_id: str | None = Query(None),
     scan_id: str | None = Query(None),
+    fix_state: str | None = _FIX_STATE_QUERY,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
@@ -330,6 +386,16 @@ def list_findings_grouped(
                 func.distinct(AssetVulnerability.component_fixed_version)
             ).label("fixed_versions"),
             func.count(AssetVulnerability.id).label("finding_count"),
+            # How many of the group the distribution has released no fix for.
+            # A group whose every finding is such a record has no upgrade to
+            # name, and saying "not recorded" there sends the operator to
+            # re-scan a host for an answer the vendor has not published.
+            func.sum(
+                case(
+                    (AssetVulnerability.fix_state == FIX_STATE_NOT_RELEASED, 1),
+                    else_=0,
+                )
+            ).label("no_fix_released_count"),
             worst.label("max_cvss"),
             func.bool_or(AssetVulnerability.in_kev).label("in_kev"),
             func.max(AssetVulnerability.last_found_at).label("last_found_at"),
@@ -379,6 +445,7 @@ def list_findings_grouped(
                 AssetVulnerability.first_scan_id == scan_id,
             )
         )
+    q = _filter_fix_state(q, fix_state)
 
     total = q.count()
     rows = (
@@ -418,6 +485,7 @@ def list_findings_grouped(
                     "hostname": r.hostname,
                 },
                 "finding_count": r.finding_count,
+                "no_fix_released_count": int(r.no_fix_released_count or 0),
                 "kev_count": r.kev_count,
                 "in_kev": bool(r.in_kev),
                 "exploit_count": r.exploit_count,
@@ -553,6 +621,8 @@ def get_finding(
         "detection_method": finding.detection_method,
         "detected_version": finding.detected_version,
         "attack_surface": finding.attack_surface,
+        "fixed_version": finding.component_fixed_version,
+        "fix_state": finding.fix_state,
         "port": _finding_port(finding),
         "in_kev": is_kev,
         "kev_due_date": (

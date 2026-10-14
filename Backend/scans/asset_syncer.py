@@ -33,6 +33,7 @@ from db.models.findings import (
 from engines.credentialed.coverage import BIND_LOOPBACK, bind_scope
 from core.checks.contract import normalize_severity
 from core.findings.comparison import STATUS_RULED_OUT
+from core.findings.fix_state import fix_state_for
 from core.findings.credentialed_scope import (
     CREDENTIALED_DETECTIONS,
     CREDENTIALED_ID_PREFIXES,
@@ -2570,6 +2571,10 @@ def sync_vulnerability_audit(
             if component:
                 written_components.setdefault(cve_id, set()).add(component)
             detection["component_fixed_version"] = _finding_fixed_version(v)
+            # Refreshed with the version on every re-detection: the day the
+            # distribution releases a fix, the finding stops reading as one
+            # nobody can patch.
+            detection["fix_state"] = fix_state_for(v)
             db.execute(
                 insert(AssetVulnerability)
                 .values(

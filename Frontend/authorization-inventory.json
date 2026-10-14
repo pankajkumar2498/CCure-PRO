@@ -325,14 +325,14 @@
     },
     {
       "file": "src/modules/audit/pages/VulnerabilityBrowser.jsx",
-      "line": 614,
+      "line": 638,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/VulnerabilityBrowser.jsx",
-      "line": 618,
+      "line": 642,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"

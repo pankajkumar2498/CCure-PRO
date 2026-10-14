@@ -90,6 +90,23 @@ REMEDIATION_STATE_SQL = (
     "remediation_state IN (" + ", ".join(f"'{s}'" for s in REMEDIATION_STATES) + ")"
 )
 
+#: What the advisory that matched says about a fix, on ``fix_state``.
+#:
+#: ``no_fix_released`` is a claim the distribution made: its own advisory lists
+#: the installed package as affected and names no fixed version. Ubuntu marks
+#: most CVEs it tracks this way; 2,241 of one Ubuntu 24.04 desktop's 2,355
+#: package findings were such records (14 Oct 2026). They are real findings
+#: and keep their severity; what they are not is actionable by patching.
+#:
+#: NULL means not established, never "no fix": an NVD range that ends
+#: inclusively names the last vulnerable release, not the absence of a fix,
+#: and a network or configuration finding has no fix version at all.
+FIX_STATE_RELEASED = "fix_released"
+FIX_STATE_NOT_RELEASED = "no_fix_released"
+FIX_STATES = (FIX_STATE_RELEASED, FIX_STATE_NOT_RELEASED)
+
+FIX_STATE_SQL = "fix_state IN (" + ", ".join(f"'{s}'" for s in FIX_STATES) + ")"
+
 #: What may be written to ``finding_remediation_events.event_type``.
 REMEDIATION_EVENT_TYPES = (
     "assigned",
@@ -551,6 +568,8 @@ class AssetVulnerability(Base):
         # constraint only the migration knows about exists on upgraded
         # databases and not on new ones.
         CheckConstraint(REMEDIATION_STATE_SQL, name="ck_asset_vuln_remediation_state"),
+        # Migration c4d6e8f0a2b4, declared here for the same reason.
+        CheckConstraint(FIX_STATE_SQL, name="ck_asset_vuln_fix_state"),
         # The two single-column indexes below must be declared with the names
         # migration d8e9f0a1b2c3 gives them, not left to `index=True`.
         # SQLAlchemy would name those `ix_asset_vulnerabilities_<column>`, so
@@ -681,6 +700,11 @@ class AssetVulnerability(Base):
     #: findings" with no answer to "upgrade to what?". NULL means no fix is
     #: published, which is a real state and not the same as unrecorded.
     component_fixed_version = Column(String(160), nullable=True)
+    #: Whether the matched advisory says a fix exists — ``FIX_STATES``. Kept
+    #: beside the version because an empty version cannot say it: "Ubuntu has
+    #: released no fix" and "no fixed version was recorded" both leave it
+    #: NULL, and only the first is a fact about the host's exposure.
+    fix_state = Column(String(20), nullable=True)
 
     remediation_notes = Column(Text, nullable=True)
     fixed_at = Column(TIMESTAMPTZ, nullable=True)

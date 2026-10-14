@@ -16887,6 +16887,24 @@
             }
           },
           {
+            "description": "Comma-separated: fix_released, no_fix_released (the distribution's advisory lists the package as affected and names no fix), not_recorded (neither was established).",
+            "in": "query",
+            "name": "fix_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated: fix_released, no_fix_released (the distribution's advisory lists the package as affected and names no fix), not_recorded (neither was established).",
+              "title": "Fix State"
+            }
+          },
+          {
             "in": "query",
             "name": "sort_by",
             "required": false,
@@ -17084,6 +17102,24 @@
             }
           },
           {
+            "description": "Comma-separated: fix_released, no_fix_released (the distribution's advisory lists the package as affected and names no fix), not_recorded (neither was established).",
+            "in": "query",
+            "name": "fix_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated: fix_released, no_fix_released (the distribution's advisory lists the package as affected and names no fix), not_recorded (neither was established).",
+              "title": "Fix State"
+            }
+          },
+          {
             "in": "query",
             "name": "sort_by",
             "required": false,
@@ -17231,6 +17267,24 @@
                 }
               ],
               "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Comma-separated: fix_released, no_fix_released (the distribution's advisory lists the package as affected and names no fix), not_recorded (neither was established).",
+            "in": "query",
+            "name": "fix_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated: fix_released, no_fix_released (the distribution's advisory lists the package as affected and names no fix), not_recorded (neither was established).",
+              "title": "Fix State"
             }
           },
           {

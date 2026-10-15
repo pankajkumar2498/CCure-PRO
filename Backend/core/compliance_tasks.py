@@ -1425,16 +1425,18 @@ ROLLBACK_COMMANDS = {
 }
 
 
-def _inject_sudo_password(command: str, password: str | None) -> str:
-    """Injects sudo password using -S parameter for non-interactive execution."""
-    if not password:
-        return command
-    import re
+#: A ``sudo`` whose standard input is a pipe from the command before it, as in
+#: ``echo 'line' | sudo tee /etc/file``. ``||`` is an ordinary shell fallback
+#: and is not a pipe, so the lookarounds are load-bearing.
+_PIPE_INTO_SUDO = re.compile(r"(?<!\|)\|(?!\|)\s*sudo\b")
 
-    escaped_password = password.replace("'", "'\\''")
-    pattern = r"\bsudo\b"
-    replacement = f"echo '{escaped_password}' | sudo -S"
-    return re.sub(pattern, replacement, command)
+
+def _redact_secret(text: str, secret: str | None) -> str:
+    """Mask *secret* wherever it appears in *text* — the last line of defence
+    for anything that reaches the stored execution log."""
+    if not text or not secret:
+        return text
+    return text.replace(secret, "***REDACTED***")
 
 
 def _execute_ssh_remediation(
@@ -1472,8 +1474,26 @@ def _execute_ssh_remediation(
             if len(b64_cmd) < 10
             else f"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {b64_cmd}"
         )
-    elif platform == "linux":
-        command = _inject_sudo_password(command, password)
+    elif platform == "linux" and password and _PIPE_INTO_SUDO.search(command):
+        # ``sudo -S`` reads its password from its own standard input, and in
+        # this shape that is the pipe rather than the session: sudo would take
+        # the piped data as the password, and the only way to hand it the real
+        # one is the command line. Refused before connecting, so the target
+        # sees neither a failed sudo attempt nor the secret. The injection this
+        # replaced wrote the password into the file such a command creates
+        # whenever sudo needed none.
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": -1,
+            "error": (
+                "The remediation command pipes data into sudo, which would read "
+                "that data as its password. Rewrite it so sudo runs the whole "
+                "pipeline (for example sudo sh -c '…'), or run it with a key "
+                "credential whose account needs no sudo password."
+            ),
+        }
 
     scanner = SSHScanner(
         ip=ip,
@@ -1485,22 +1505,30 @@ def _execute_ssh_remediation(
     )
     try:
         scanner.connect()
-        res = scanner.run(command, timeout=60)
+        # On Linux every sudo in the command reads the password from the
+        # remote command's standard input (``SSHScanner.run_sudo``). It is never
+        # placed in the command text, where ``ps`` shows it to every local user
+        # on the target and an ``execve`` audit rule records it.
+        if platform == "linux":
+            res = scanner.run_sudo(command, timeout=60)
+        else:
+            res = scanner.run(command, timeout=60)
         return {
             "success": res.success,
-            "stdout": res.stdout,
-            "stderr": res.stderr,
+            "stdout": _redact_secret(res.stdout, password),
+            "stderr": _redact_secret(res.stderr, password),
             "exit_code": res.exit_code,
             "error": "",
             "executed_command": clean_command,
         }
     except Exception as e:
+        detail = _redact_secret(str(e), password)
         return {
             "success": False,
             "stdout": "",
-            "stderr": str(e),
+            "stderr": detail,
             "exit_code": -1,
-            "error": f"SSH connection or execution failed: {e!s}",
+            "error": f"SSH connection or execution failed: {detail}",
         }
     finally:
         scanner.disconnect()

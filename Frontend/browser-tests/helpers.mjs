@@ -89,12 +89,17 @@ export async function openState(
   expect(response.headers()["content-security-policy"]).toContain(
     "script-src 'self'",
   );
+  // A state's readyTimeout, as scripts/ux4g-harness/run.mjs reads it, but never
+  // below playwright.config.mjs's 10 s expect timeout: a state declares it for
+  // the harness's Chromium, and WebKit on a hosted runner is slower.
   await expect
-    .poll(() =>
-      page.evaluate(
-        (expression) => Boolean((0, eval)(expression)),
-        state.ready,
-      ),
+    .poll(
+      () =>
+        page.evaluate(
+          (expression) => Boolean((0, eval)(expression)),
+          state.ready,
+        ),
+      { timeout: Math.max(state.readyTimeout ?? 0, 10_000) },
     )
     .toBe(true);
   for (const action of state.actions || []) {

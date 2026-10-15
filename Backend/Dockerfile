@@ -13,7 +13,7 @@
 # upgrade (no Pillow 10.3.0 or psycopg2-binary 2.9.9 wheels there), made by
 # editing the tag deliberately.
 # ── Base Image ─────────────────────────────────────────────────────────────
-FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS base
 
 # Download Chrome Stable through Google's authenticated APT repository. GPG
 # remains build-only; Chrome's runtime package separately requires wget/libcurl.

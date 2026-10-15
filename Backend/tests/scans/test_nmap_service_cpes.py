@@ -22,6 +22,9 @@ nmap = pytest.importorskip("nmap")
 
 from core.nmap import wrapper  # noqa: E402
 
+# CI's MOCK_SCANNERS=true replaces nmap.PortScanner for the session.
+pytestmark = pytest.mark.usefixtures("real_nmap_port_scanner")
+
 OPENSSH = "cpe:/a:openbsd:openssh:9.6p1"
 KERNEL = "cpe:/o:linux:linux_kernel"
 

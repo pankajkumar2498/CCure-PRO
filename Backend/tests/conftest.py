@@ -1379,6 +1379,11 @@ def detect_process_leaks():
 #: ``real_ssh_connect`` is how a test asks for it.
 _REAL_SSH_CONNECT = None
 
+#: The genuine ``nmap.PortScanner`` class, for the same reason: a test that
+#: parses nmap's XML needs the real parser, not the session-wide MagicMock.
+#: ``real_nmap_port_scanner`` is how a test asks for it.
+_REAL_NMAP_PORT_SCANNER = None
+
 
 @pytest.fixture(scope="session", autouse=True)
 def global_scanner_mocking():
@@ -1386,10 +1391,13 @@ def global_scanner_mocking():
     if os.getenv("MOCK_SCANNERS") == "true":
         from unittest.mock import MagicMock, patch
 
+        import nmap
+
         from engines.credentialed.ssh_scanner import SSHScanner
 
-        global _REAL_SSH_CONNECT
+        global _REAL_SSH_CONNECT, _REAL_NMAP_PORT_SCANNER
         _REAL_SSH_CONNECT = SSHScanner.connect
+        _REAL_NMAP_PORT_SCANNER = nmap.PortScanner
 
         # Mock SSH connections
         ssh_patcher = patch(
@@ -1439,3 +1447,28 @@ def real_ssh_connect():
         yield
     finally:
         SSHScanner.connect = stub
+
+
+@pytest.fixture
+def real_nmap_port_scanner():
+    """
+    Give one test back the real ``nmap.PortScanner``.
+
+    ``global_scanner_mocking`` replaces it with a MagicMock for the session,
+    so ``nmap.PortScanner.__new__(nmap.PortScanner)`` raises TypeError and
+    nothing parses XML. tests/scans/test_nmap_service_cpes.py failed all six
+    of its parsing tests that way under MOCK_SCANNERS=true and passed
+    everywhere else. A no-op when the mock is not installed.
+    """
+    if _REAL_NMAP_PORT_SCANNER is None:
+        yield
+        return
+
+    import nmap
+
+    stub = nmap.PortScanner
+    nmap.PortScanner = _REAL_NMAP_PORT_SCANNER
+    try:
+        yield
+    finally:
+        nmap.PortScanner = stub

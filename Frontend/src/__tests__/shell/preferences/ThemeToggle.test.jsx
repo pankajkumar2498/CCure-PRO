@@ -158,3 +158,27 @@ describe("header theme preference", () => {
     expect(updatePreferences).not.toHaveBeenCalled();
   });
 });
+
+describe("applying the theme", () => {
+  // WebKit leaves a freshly built subtree holding a <select> on the old theme
+  // if the theme changes before that subtree is first styled (cr-report in the
+  // webkit browser matrix). Settling style first is half of the fix; the other
+  // half, applying it from the commit, is covered by the browser suite.
+  it("settles pending style before the change, and does nothing without one", () => {
+    const themeWhenSettled = [];
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      () => {
+        themeWhenSettled.push(
+          document.documentElement.getAttribute("data-theme"),
+        );
+        return 0;
+      },
+    );
+    applyTheme("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    applyTheme("dark");
+    applyTheme("light");
+    expect(document.documentElement).not.toHaveAttribute("data-theme");
+    expect(themeWhenSettled).toEqual([null, "dark"]);
+  });
+});

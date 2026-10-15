@@ -2,13 +2,14 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   useCallback,
   useRef,
 } from "react";
 import { getPreferences, updatePreferences } from "../api/user";
 import { useAuth } from "../auth/AuthContext";
-import { readTheme, rememberTheme } from "./theme";
+import { applyTheme, readTheme, rememberTheme } from "./theme";
 
 const PreferencesContext = createContext(null);
 
@@ -20,6 +21,12 @@ export function PreferencesProvider({ children }) {
   const [savingTheme, setSavingTheme] = useState(false);
   const themeRequest = useRef(false);
   const requestVersion = useRef(null);
+
+  // The DOM follows `theme` inside the commit, not from the request callback
+  // that learned it: see applyTheme for the WebKit defect this ordering avoids.
+  useLayoutEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const updateLocalPreferences = useCallback((newPrefs) => {
     setPreferences(newPrefs);

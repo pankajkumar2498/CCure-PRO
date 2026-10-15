@@ -113,6 +113,39 @@ task, `install_backup_schedule.ps1`, was retired with it on 9 Oct 2026.)
 `archive_mode` is still `off`, so recovery granularity is "since the last
 dump", not point-in-time. Ad-hoc dumps before risky work are still worth taking.
 
+### Test targeted-first (AI agents and developers)
+
+**Run the smallest meaningful test set for the change, not the whole suite.**
+The full backend suite is about 28 minutes and the frontend's about 12; the
+pull-request CI already does the same thing
+([`docs/ci/CI_SCOPE.md`](docs/ci/CI_SCOPE.md)), and the full regression runs
+nightly, on a release tag and on demand.
+
+1. **Find the scope.** `python scripts/ci/select_tests.py --base origin/master`
+   (or `--files <paths>`) prints the backend groups and frontend scope for the
+   change. It is the same mapping CI uses. List the changed files, the modules
+   they belong to and what depends on them.
+2. **Run the targeted set first**: the changed code's own tests, then the
+   groups the selector names. Backend tests need a disposable database (see
+   above); frontend: `npx vitest run <paths>` or `npx vitest related --run
+   <changed files>`, from `Frontend/`.
+3. **Widen when the change warrants it**, which the selector does for you: APIs,
+   database models or migrations, authentication, permissions, scanning,
+   module boundaries, a shared component, the design system, the test harness
+   or a dependency pin. A security-critical feature, a migration or an
+   architecture boundary gets the related integration groups, not just the
+   file's unit tests.
+4. **Run a complete suite only** when asked to, when the change is broad or
+   cross-cutting (the selector reports `full`), or when targeted results show
+   that broader testing is needed. Never run both complete suites for a small
+   change.
+5. **Report exactly what ran.** Name the tests or groups that ran, the ones
+   skipped and why, and every failure. Never say or imply that tests passed
+   which were not run; "targeted tests passed" is a claim about those tests.
+
+Nothing in the repository's hooks launches a full suite (`.pre-commit-config.yaml`
+has no pytest or vitest hook); full runs happen only in CI's full scope.
+
 ### Known test-suite failures
 
 None. The three entries that used to sit here are all resolved, and two of them

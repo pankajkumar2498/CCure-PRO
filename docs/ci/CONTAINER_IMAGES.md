@@ -55,8 +55,8 @@ and "what runs" are not the same thing.
 
 ## CI: what each run does
 
-For all three images, after every merge to `master` (push), nightly at 02:30 IST,
-and on demand (Actions → Images → Run workflow). **Not on pull requests:** a PR
+For all three images, nightly at 02:30 IST, on a `v*` release tag (since
+15 Oct 2026 no longer after every merge to `master`), and on demand (Actions → Images → Run workflow). **Not on pull requests:** a PR
 is gated on what it changes in the application, while an image scan reports on
 OS packages and binaries whose advisories arrive with no commit, so as a PR
 check it failed PRs for advisories nobody had introduced. See

@@ -2013,6 +2013,10 @@ const NM_BASE = {
   route: "/topology",
   persona: ANALYST,
   stubs: NM_STUBS,
+  // nmCanvasReady needs four identical frames about a second apart once the
+  // layout settles. WebKit on a hosted runner stalled 4.4 s in that layout
+  // and ran nm-org out of a 10 s budget every night from 11 Oct 2026.
+  readyTimeout: 30000,
   tracked: [
     ...PAGE_TRACKED,
     "h2",

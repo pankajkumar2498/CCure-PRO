@@ -107,7 +107,9 @@ def test_options_passes_without_authentication():
 
 
 def test_the_public_allowlist_is_reachable_without_credentials():
-    assert len(PUBLIC) == 17
+    # A tripwire: a new public route changes this on purpose. 17 at Phase 10.1;
+    # 18 since GET /auth/config (ef58cfc, the sign-in page's registration policy).
+    assert len(PUBLIC) == 18
     for method, path in PUBLIC:
         resp = request(method, "/api" + path, {"Content-Type": "application/json"},
                        b"{}" if method == "POST" else None)

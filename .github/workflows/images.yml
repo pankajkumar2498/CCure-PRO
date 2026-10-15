@@ -9,13 +9,15 @@ name: Images
 # (ci.yml, security.yml); this scans what the image carries besides: Debian and
 # Alpine packages and the scanner binaries, whose advisories arrive with no
 # commit at all. Gating PRs on it turned them red for advisories nobody had
-# introduced. It runs after a merge to master, nightly, and on demand.
+# introduced. It runs nightly, on a release tag and on demand; it no longer runs
+# on every merge to master (15 Oct 2026), because a ~15 minute build per merge
+# repeated what the nightly run proves and gated nothing.
 # docs/ci/BRANCH_PROTECTION.md lists which checks are required, and these are
 # deliberately not among them: a required check that never runs on a PR would
 # leave every PR waiting for it.
 on:
   push:
-    branches: [main, master]
+    tags: ["v*"]
   schedule:
     - cron: "0 21 * * *" # 02:30 IST
   workflow_dispatch:

@@ -784,6 +784,14 @@ each folder's `README.md` says what belongs in it.
   platform's types and categories only; Audit's icons, tones and `Scans` tab are
   `modules/audit/config/notificationPresentation.js`, handed to the shell by the
   composition root (`NotificationPresentationProvider`).
+- **`data-theme` changes only inside a React commit.** `applyTheme`
+  (`shell/preferences/theme.js`) is called before the first render and then only
+  from `PreferencesProvider`'s layout effect, never from a request callback.
+  WebKit keeps the old theme on a subtree holding a `<select>` if the theme
+  changes between React building it detached and the first style pass: a white
+  section with dark-theme text in a dark page (`cr-report`, 2 of 6 WebKit
+  nightlies, 15 Oct 2026). A standalone page reproduces it in WebKit only;
+  `00594ac` has the measurements and the two fixes that did not work.
 - **The AMT page's permission is one constant**, `AMT_PERMISSION`
   (`modules/audit/config/permissions.js`): **`audit.asset.import_amt`**, which the backend
   also requires (`routers/assets.py`), shared by the sidebar item and the route. AMT is

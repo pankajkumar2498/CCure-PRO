@@ -2337,7 +2337,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 459,
+      "line": 454,
       "function": "list_timezones",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.read",
@@ -2347,17 +2347,17 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 478,
+      "line": 476,
       "function": "list_selectable_credentials",
       "mechanism": "require_authorized",
-      "permission": "audit.scan_schedule.read",
+      "permission": "audit.credential.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/scan_schedules.py::list_selectable_credentials::require_authorized::audit.scan_schedule.read#1"
+      "site_id": "routers/scan_schedules.py::list_selectable_credentials::require_authorized::audit.credential.read#1"
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 525,
+      "line": 517,
       "function": "list_schedules",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.read",
@@ -2367,7 +2367,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 545,
+      "line": 537,
       "function": "create_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.manage",
@@ -2377,7 +2377,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 628,
+      "line": 620,
       "function": "get_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.read",
@@ -2387,7 +2387,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 643,
+      "line": 635,
       "function": "update_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.manage",
@@ -2397,7 +2397,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 745,
+      "line": 737,
       "function": "set_enabled",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.manage",
@@ -2407,7 +2407,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 785,
+      "line": 777,
       "function": "run_now",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.manage",
@@ -2417,7 +2417,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 833,
+      "line": 825,
       "function": "list_runs",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.read",
@@ -2427,7 +2427,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 858,
+      "line": 850,
       "function": "delete_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.scan_schedule.delete",

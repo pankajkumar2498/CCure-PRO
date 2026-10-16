@@ -686,11 +686,11 @@
   ],
   [
    "routers.scan_schedules",
-   "core.scan_policy"
+   "core.credential_vault"
   ],
   [
    "routers.scan_schedules",
-   "db.models.compliance:ComplianceCredential"
+   "core.scan_policy"
   ],
   [
    "routers.traditional_scans",

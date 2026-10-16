@@ -1002,7 +1002,7 @@ arguments.
 | GET    | `/scan-schedules`                       | `scan_schedules:read`    | 60/min |
 | POST   | `/scan-schedules`                       | `scan_schedules:create`  | 20/min |
 | GET    | `/scan-schedules/timezones`             | `scan_schedules:read`    | 30/min |
-| GET    | `/scan-schedules/credentials`           | `scan_schedules:read`    | 60/min |
+| GET    | `/scan-schedules/credentials`           | `credentials:read`       | 60/min |
 | GET    | `/scan-schedules/{schedule_id}`         | `scan_schedules:read`    | 60/min |
 | PATCH  | `/scan-schedules/{schedule_id}`         | `scan_schedules:update`  | 20/min |
 | DELETE | `/scan-schedules/{schedule_id}`         | `scan_schedules:delete`  | 20/min |

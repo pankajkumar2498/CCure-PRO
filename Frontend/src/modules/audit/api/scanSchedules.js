@@ -10,10 +10,10 @@ import axiosInstance from "@shell/api/axiosInstance";
 // credential by `credentialId`; the worker resolves and decrypts it. There is
 // deliberately no password field anywhere in this module.
 
-// The credentials this org can attach, gated on scan_schedules:read rather
-// than compliance:read — picking a credential for a scan is a scanning task,
-// and requiring a compliance permission for it would lock out an analyst who
-// has no compliance role. Identifying fields only; no material is returned.
+// The credentials this org can attach. Gated on audit.credential.read, like
+// every route that lists credentials (S2b): the analyst and org-admin roles
+// that manage schedules hold it, and a viewer does not. Identifying fields
+// only; no material is returned.
 export const listScheduleCredentials = async () => {
   const response = await axiosInstance.get("/scan-schedules/credentials");
   return response.data.credentials || [];

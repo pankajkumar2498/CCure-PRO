@@ -53,6 +53,9 @@ EXPECTED_ROUTE_PERMISSIONS = {
     ("POST", "/credentials"): "audit.credential.manage",
     ("DELETE", "/compliance/credentials/{id}"): "audit.credential.delete",
     ("DELETE", "/credentials/{credential_id}"): "audit.credential.delete",
+    # The schedule form's credential picker (S2b): it answered
+    # audit.scan_schedule.read, which the viewer role holds.
+    ("GET", "/scan-schedules/credentials"): "audit.credential.read",
 }
 
 #: The legacy create and list response shape (``CredentialResponse``).
@@ -233,6 +236,10 @@ def test_no_credential_route_answers_a_compliance_permission():
         (
             "routers.compliance.delete_credential",
             "routers.credentials.delete_credential",
+        ),
+        (
+            "routers.scan_schedules.list_selectable_credentials",
+            "routers.credentials.list_credentials",
         ),
     ],
 )
@@ -521,3 +528,139 @@ def test_the_service_applies_the_type_rules():
         "ssh",
         22,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The schedule form's credential picker (S2b)
+#
+# GET /scan-schedules/credentials listed every credential's name, username,
+# auth method and port under audit.scan_schedule.read, which the viewer role
+# holds — the S2 disclosure on a third route. It now answers
+# audit.credential.read and lists through core.credential_vault. The roles that
+# manage schedules (analyst, org admin) hold that key, so picking a credential
+# for a schedule works as before.
+# ─────────────────────────────────────────────────────────────────────────────
+
+PICKER = "/scan-schedules/credentials"
+PICKER_FIELDS = {"id", "name", "username", "auth_method", "port"}
+
+
+def test_a_viewer_cannot_enumerate_credentials_through_the_schedule_picker(
+    client, db_session, org, as_role
+):
+    stored = _stored(db_session, org)
+    response = client.get(PICKER, headers=as_role("platform.viewer"))
+
+    assert response.status_code == 403
+    assert stored.name not in response.text
+    assert stored.username not in response.text
+
+
+def test_schedule_read_alone_no_longer_lists_credentials(
+    client, db_session, org, as_grants
+):
+    """The key the route used to answer, held without the credential key."""
+    stored = _stored(db_session, org)
+    response = client.get(PICKER, headers=as_grants("audit.scan_schedule.read"))
+
+    assert response.status_code == 403
+    assert stored.name not in response.text
+
+
+def test_credential_read_lists_the_picker(client, db_session, org, as_grants):
+    stored = _stored(db_session, org)
+    response = client.get(PICKER, headers=as_grants("audit.credential.read"))
+
+    assert response.status_code == 200
+    assert stored.id in {row["id"] for row in response.json()["credentials"]}
+
+
+@pytest.mark.parametrize(
+    "role", ["platform.analyst", "platform.org_admin", "platform.scanner"]
+)
+def test_roles_holding_credential_read_keep_the_picker_and_its_shape(
+    client, db_session, org, as_role, role
+):
+    first = _stored(db_session, org, name=f"a-{uuid.uuid4().hex[:6]}")
+    second = _stored(db_session, org, name=f"b-{uuid.uuid4().hex[:6]}")
+    response = client.get(PICKER, headers=as_role(role))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"credentials"}
+    rows = body["credentials"]
+    for row in rows:
+        assert set(row) == PICKER_FIELDS
+    ids = [row["id"] for row in rows]
+    assert ids.index(first.id) < ids.index(second.id)  # ordered by name
+    assert SECRET not in response.text
+    assert "encrypted" not in response.text
+
+
+def test_the_picker_lists_only_the_callers_organisation(
+    client, db_session, org, other_org, as_role
+):
+    own = _stored(db_session, org)
+    foreign = _stored(db_session, other_org)
+    headers = as_role("platform.org_admin")
+
+    listed = {
+        row["id"] for row in client.get(PICKER, headers=headers).json()["credentials"]
+    }
+    assert own.id in listed and foreign.id not in listed
+
+    # Naming another organisation is a request, honoured only with the
+    # platform switch grant, which an organisation administrator does not hold.
+    asked = client.get(PICKER, params={"org_id": other_org.id}, headers=headers)
+    assert asked.status_code == 200
+    asked_ids = {row["id"] for row in asked.json()["credentials"]}
+    assert own.id in asked_ids and foreign.id not in asked_ids
+
+
+def _credentialed_schedule(credential_id: str) -> dict:
+    return {
+        "name": f"nightly-{uuid.uuid4().hex[:8]}",
+        "scan_kind": "credentialed",
+        "targets": ["192.0.2.0/30"],
+        "recurrence": "daily",
+        "timezone": "Asia/Kolkata",
+        "run_at": "02:00",
+        "credential_id": credential_id,
+    }
+
+
+def test_a_picked_credential_can_be_attached_to_a_schedule(
+    client, db_session, org, as_role
+):
+    """The workflow the picker exists for, as the analyst who runs it."""
+    stored = _stored(db_session, org)
+    headers = as_role("platform.analyst")
+
+    picked = next(
+        row
+        for row in client.get(PICKER, headers=headers).json()["credentials"]
+        if row["id"] == stored.id
+    )
+    created = client.post(
+        "/scan-schedules", json=_credentialed_schedule(picked["id"]), headers=headers
+    )
+    assert created.status_code == 201, created.text
+    payload = created.json()
+    assert payload["credential_id"] == stored.id
+    # Read back through the credential service, tenant-scoped.
+    assert payload["credential_name"] == stored.name
+    assert SECRET not in created.text
+
+
+def test_another_organisations_credential_still_cannot_be_attached(
+    client, db_session, org, other_org, as_role
+):
+    foreign = _stored(db_session, other_org)
+    response = client.post(
+        "/scan-schedules",
+        json=_credentialed_schedule(foreign.id),
+        headers=as_role("platform.analyst"),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Credential not found for this organisation."

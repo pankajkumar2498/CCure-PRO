@@ -59,7 +59,7 @@ from core.scheduling.recurrence import (
 )
 from db.base import gen_scan_schedule_id, get_db
 from ccure_platform import api as platform_api
-from db.models import ComplianceCredential
+from core import credential_vault
 from db.models.scan_schedules import (
     DISPATCHABLE_SCAN_KINDS,
     RECURRENCE_CUSTOM,
@@ -160,11 +160,12 @@ def _serialize(schedule: ScanSchedule, db: Session) -> Dict[str, Any]:
     spec = RecurrenceSpec.from_schedule(schedule)
     credential_name = None
     if schedule.credential_id:
-        credential_name = (
-            db.query(ComplianceCredential.name)
-            .filter(ComplianceCredential.id == schedule.credential_id)
-            .scalar()
-        )
+        try:
+            credential_name = credential_vault.get_for_org(
+                db, schedule.org_id, schedule.credential_id
+            ).name
+        except credential_vault.CredentialNotFound:
+            credential_name = None
     return {
         "id": schedule.id,
         "org_id": schedule.org_id,
@@ -411,21 +412,15 @@ def _validate_credential(
         )
     if not credential_id:
         return
-    exists = (
-        db.query(ComplianceCredential.id)
-        .filter(
-            ComplianceCredential.id == credential_id,
-            # Scoped to the tenant: without this, one organisation could attach
-            # another's stored credential to its own schedule and have the
-            # worker decrypt and use it.
-            ComplianceCredential.tenant_id == org_id,
-        )
-        .first()
-    )
-    if not exists:
+    # Scoped to the tenant: without this, one organisation could attach another's
+    # stored credential to its own schedule and have the worker decrypt and use
+    # it. get_for_org filters on the organisation in the query.
+    try:
+        credential_vault.get_for_org(db, org_id, credential_id)
+    except credential_vault.CredentialNotFound:
         raise HTTPException(
             status_code=404, detail="Credential not found for this organisation."
-        )
+        ) from None
 
 
 def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[str]:
@@ -475,7 +470,10 @@ def list_selectable_credentials(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
+    # Credential metadata answers the credential policy wherever it is listed
+    # (core.credential_vault, S2b). audit.scan_schedule.read, which the viewer
+    # role holds, let a viewer list every credential's name and username.
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -493,13 +491,7 @@ def list_selectable_credentials(
     Declared above ``/{schedule_id}`` because FastAPI matches in declaration
     order and would otherwise read "credentials" as a schedule id.
     """
-    resolved_org = _resolve_org(user, org_id)
-    rows = (
-        db.query(ComplianceCredential)
-        .filter(ComplianceCredential.tenant_id == resolved_org)
-        .order_by(ComplianceCredential.name.asc())
-        .all()
-    )
+    rows = credential_vault.list_for_org(db, _resolve_org(user, org_id))
     return {
         "credentials": [
             {

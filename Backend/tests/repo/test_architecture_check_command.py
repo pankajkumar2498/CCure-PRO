@@ -27,6 +27,7 @@ def test_the_command_passes_on_this_tree():
         "identity boundary",
         "organisation settings",
         "secret handling",
+        "capability ratchet",
     }
     assert {name: problems for name, problems in results.items() if problems} == {}
 
@@ -83,6 +84,7 @@ def test_the_command_needs_only_the_standard_library():
         "import_graph",
         "layer_rules",
         "identity_boundary",
+        "capability_map",
     ]
     allowed = set(sys.stdlib_module_names) | {"scripts", "__future__"}
     for name in closure:

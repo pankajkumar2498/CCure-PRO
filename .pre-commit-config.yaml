@@ -124,12 +124,12 @@ repos:
         stages: [commit-msg]
 
   # The architecture and secret-handling ratchets: layering, import cycles, the
-  # identity boundary, organisation-setting references, and the sudo-password
-  # and session-password guards. Every one is also a test in tests/repo or
+  # identity boundary, organisation-setting references, the capability
+  # ratchet, and the sudo-password and session-password guards. Every one is also a test in tests/repo or
   # tests/credentialed, but those need a disposable PostgreSQL and the backend's
   # dependencies, and nothing ran them while hosted CI was unavailable
   # (docs/ci/LOCAL_ENFORCEMENT.md). This runs the same rules with the standard
-  # library only — no database, no network, no credentials — in about five
+  # library only — no database, no network, no credentials — in about twelve
   # seconds, and only when backend code is staged. A failure names the rule and
   # the file; it never depends on the environment it runs in.
   - repo: local

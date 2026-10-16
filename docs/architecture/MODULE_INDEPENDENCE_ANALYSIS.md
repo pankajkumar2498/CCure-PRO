@@ -19,15 +19,15 @@ Audit at run time.
 
 ## 0. Progress since the baseline
 
-| Item                                             | State                                                                                                                                                       | Commit    | Record                                                             |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------ |
-| S1 sudo password in the remediation command line | **Fixed** — `SSHScanner.run_sudo`; piped-sudo commands refused; application-wide guard                                                                      | `6925b2b` | log §2                                                             |
-| S2 two credential APIs with different rules      | **Fixed** — one service (`core/credential_vault.py`), one permission set, legacy contract preserved                                                         | `cb62582` | log §2                                                             |
-| S3 non-scanning queues in the privileged worker  | **Proposed, not deployed** — awaiting D-4; current routing pinned by a test                                                                                 | `9a32319` | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| S4 enforcement                                   | **Local enforcement in place** — stdlib pre-commit hook and a throwaway-container runner. The original finding was partly wrong about CI (corrected in §14) | `2d4509d` | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| A1 documentation                                 | This revision                                                                                                                                               | —         | log §3                                                             |
-| A2 capability map and ratchet                    | Pending                                                                                                                                                     | —         | —                                                                  |
-| A3 shared JSON-contract tests                    | Pending                                                                                                                                                     | —         | —                                                                  |
+| Item                                             | State                                                                                                                                                                      | Commit         | Record                                                             |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------ |
+| S1 sudo password in the remediation command line | **Fixed** — `SSHScanner.run_sudo`; piped-sudo commands refused; application-wide guard                                                                                     | `6925b2b`      | log §2                                                             |
+| S2 two credential APIs with different rules      | **Fixed** — one service (`core/credential_vault.py`), one permission set, legacy contract preserved                                                                        | `cb62582`      | log §2                                                             |
+| S3 non-scanning queues in the privileged worker  | **Proposed, not deployed** — awaiting D-4; current routing pinned by a test                                                                                                | `9a32319`      | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| S4 enforcement                                   | **Local enforcement in place** — stdlib pre-commit hook and a throwaway-container runner. The original finding was partly wrong about CI (corrected in §14)                | `2d4509d`      | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| A1 documentation                                 | This revision                                                                                                                                                              | —              | log §3                                                             |
+| A2 capability map and ratchet                    | **Done** — `Backend/scripts/architecture/capability_map.py`; the figures here reproduce with this report's method, and the committed map's baseline is recorded in the log | pending commit | log §3                                                             |
+| A3 shared JSON-contract tests                    | Pending                                                                                                                                                                    | —              | —                                                                  |
 
 ---
 
@@ -905,6 +905,7 @@ No claim is made about them.
 
 The import graph and guards are the repository's own (`Backend/scripts/architecture/`). The
 capability grouping (Appendix A), the table-access scan, the load-profile script and the frontend
-graph were run from session scratch files. Step A2 commits them, with a test, as
-`scripts/architecture/capability_map.py`. Until then, Appendix A and §2 are the specification
-needed to reproduce every figure.
+graph were run from session scratch files. Step A2 committed a refined capability map, with its
+ratchet, as `scripts/architecture/capability_map.py`; the log (§3, A2) reconciles its figures with
+these. Appendix A and §2 remain the specification of _this report's_ method, and that method
+reproduces every figure here on `23f8e72`.

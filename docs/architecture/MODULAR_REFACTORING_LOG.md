@@ -107,6 +107,83 @@ them as history is D-9. No other documentation was reorganised.
 Tests (selector: `repo`, `security`): `tests/repo tests/security` → 957 passed, 0 failed, 1 skipped
 (the `alembic.ini` skip).
 
+### A2 — capability map and ratchet
+
+`Backend/scripts/architecture/capability_map.py` (stdlib only) classifies all 481 backend
+modules into 29 capabilities. Layers follow the analysis §8.2. Its ratchet fails when coupling
+grows and when removed coupling is left in the baseline:
+
+- the capabilities in a cycle;
+- every upward or lateral module edge;
+- every table a capability references or writes that another owns;
+- what 25 entry points load.
+
+`capability_baseline.json` holds the detail. Its sizes are capped by `CEILINGS`, which are
+pinned in a test at the figures below and may only fall. It runs in the `architecture-guards`
+hook and in `tests/repo/test_capability_ratchet.py`.
+
+How the map differs from the analysis's Appendix A, and why:
+
+- **No catch-all for the mixed packages.** `core`, `db`, `routers`, `scans`, `reporting`,
+  `orchestrator` and `engines` have no default for their direct children, so a new flat module
+  fails until it is classified.
+- **`renderers` is a capability.** The report generators are separate from the read side (`reporting.exports`, `routers.reports`).
+- **Ambiguous modules, with the reason beside each entry:**
+  - `core.scan_scope` → scan kernel;
+  - `orchestrator.host_discovery_api` and `routers.health` → scans;
+  - `db.migrate_production_schema` → composition root;
+  - `core.oui_lookup` and `core.device_classifier` → assets, the owner of the data they use.
+- **Model imports are attributed per class.** A class goes to the capability owning its table,
+  through `table_ownership.yaml`; the registry's own re-exports are nobody's dependency; relative
+  imports between model files are resolved.
+
+Reproduction and reconciliation (`python -m scripts.architecture.capability_map`, from `Backend/`):
+
+| Method                                 | Tree                          | Largest cycle, all / top-level  | Cross-capability imports, top / lazy | Upward | Lateral | Foreign refs | Foreign writes |
+| -------------------------------------- | ----------------------------- | ------------------------------- | ------------------------------------ | -----: | ------: | -----------: | -------------: |
+| The analysis's own method and grouping | `23f8e72`                     | 23 / 20                         | 424 / 386                            |     57 |       — |            — |              — |
+| `capability_map.py`                    | `23f8e72`                     | 22 / 13 (+ `infra`↔`platform`) | 452 / 392                            |     50 |      72 |           80 |             18 |
+| `capability_map.py` — **the baseline** | `2d4509d` + A1, after Phase 0 | 22 / 13 (+ `infra`↔`platform`) | 457 / 392                            |     50 |      74 |           80 |             17 |
+
+**The analysis's figures reproduce exactly with its method.** The differences in the second row
+are method, not code: the grouping refinements above, and per-class attribution. The analysis's
+"57 upward" used the old grouping, and its foreign-table table left out `main` and
+`infrastructure`.
+
+Phase 0 moved two figures:
+
+- foreign writes fell from 18 to 17, because compliance no longer writes the vault's table (S2);
+- lateral edges rose from 72 to 74: the new credential service reads the scheduling and
+  compliance model files.
+
+The two-member top-level cycle is `infra`↔`platform`, through the stdlib module registry that
+`core.celery_app` reads, which the layer rules already exempt.
+
+Known limits are stated in the module's docstring:
+
+- an edge is an import, not a call path;
+- writes through attribute assignment are counted as references, so write sets are a floor;
+- raw SQL is found by table name in literals;
+- load profiles ignore `sys.modules` aliasing. They were checked against real imports in the
+  release image on 16 Oct.
+
+`check.py` gained the ratchet as a sixth parallel check: 11.3 s wall-clock for the whole command.
+Parsing is cached per file, and raw-SQL detection is one pass per module. Both changes leave the
+measurement byte-identical.
+
+Tests:
+
+| Command / targets                                                                     | Passed | Failed |           Skipped |
+| ------------------------------------------------------------------------------------- | -----: | -----: | ----------------: |
+| `tests/repo/test_capability_ratchet.py tests/repo/test_architecture_check_command.py` |     18 |      0 |                 0 |
+| `tests/repo tests/security` (selector)                                                |    970 |      0 | 1 (`alembic.ini`) |
+| `python -m scripts.architecture.capability_map --check`                               |      — |      — |            exit 0 |
+| `pre-commit run architecture-guards --all-files`                                      |      — |      — |            Passed |
+
+The first run of the new tests failed one: `db.migrate_production_schema` does `import db.models`,
+a whole-registry import that genuinely loads every model. The test was too strict and was
+corrected to allow exactly that form.
+
 ## 4. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                | From                                                               |

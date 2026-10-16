@@ -4,12 +4,12 @@ The repository's architecture and secret-handling guards, standard library only.
     python Backend/scripts/architecture/check.py      # from anywhere; exit 1 on a breach
 
 Every rule here is also a test (``tests/repo/test_architecture_guardrails.py``,
-``test_identity_boundary.py``,
+``test_identity_boundary.py``, ``test_capability_ratchet.py``,
 ``tests/credentialed/test_sudo_password_safety.py``). Those need the backend's
 dependencies and a disposable PostgreSQL, because ``tests/conftest.py`` builds a
 schema before any test runs. This needs neither: it parses source with ``ast``
 and imports nothing from the application, so the ``architecture-guards``
-pre-commit hook can run it on every backend commit (about five seconds; its
+pre-commit hook can run it on every backend commit (about twelve seconds; its
 checks run in parallel processes).
 
 It is the local twin of those tests, not a replacement. Remote CI runs the tests
@@ -30,6 +30,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from scripts.architecture import capability_map  # noqa: E402
 from scripts.architecture import identity_boundary as ib  # noqa: E402
 from scripts.architecture import secret_guards  # noqa: E402
 from scripts.architecture.import_graph import collect_edges, module_cycles  # noqa: E402
@@ -130,18 +131,23 @@ def check_secrets() -> list[str]:
     return secret_guards.violations()
 
 
+def check_capabilities() -> list[str]:
+    return capability_map.ratchet_problems()
+
+
 def check_import_graph() -> dict[str, list[str]]:
     _, edges = collect_edges()
     return {"layering": check_layering(edges), "import cycles": check_cycles(edges)}
 
 
 #: Independent checks, each of which parses the source tree itself. They run in
-#: parallel processes: one at a time they take ~15 s, together ~5 s.
+#: parallel processes: one at a time they take ~25 s, together ~12 s.
 CHECKS = {
     "import graph": check_import_graph,
     "identity boundary": check_identity,
     "organisation settings": check_organisation_settings,
     "secret handling": check_secrets,
+    "capability ratchet": check_capabilities,
 }
 
 

@@ -71,7 +71,7 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 
 log = logging.getLogger("ccure.compliance")
 router = APIRouter(prefix="/compliance", tags=["Compliance"])

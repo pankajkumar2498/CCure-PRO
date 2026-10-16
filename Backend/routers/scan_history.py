@@ -31,7 +31,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from scans.legacy_json_builder import build_legacy_scan_results
 from scans.scan_access import (  # noqa: F401  (the old private names stay)
     get_scan_or_404 as _get_scan_or_404,

@@ -97,7 +97,7 @@ from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, FindingRemediationEvent
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 

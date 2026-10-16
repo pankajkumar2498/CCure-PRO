@@ -19,7 +19,7 @@ from ccure_platform import api as platform_api
 from ccure_platform.api import acts_across_organisations, resource_organisation_allowed
 from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from fastapi.responses import FileResponse
 from reporting.pdf_generator import ScanReportGenerator
 from scan_helpers import (

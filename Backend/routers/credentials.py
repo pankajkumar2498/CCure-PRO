@@ -71,7 +71,7 @@ from db.models.compliance import (
 )
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.credentials")

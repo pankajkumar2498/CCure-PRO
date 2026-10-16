@@ -24,7 +24,8 @@ from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpo
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
-from scan_helpers import limiter, log
+from core.rate_limiter import limiter
+from scan_helpers import log
 from scans.db_helpers import create_scan
 
 router = APIRouter(tags=["Credentialed Scans"])

@@ -989,31 +989,20 @@
   "routers.web_scans": {
    "capabilities": [
     "assets",
-    "check_kernel",
     "compliance",
-    "credentialed_audit",
-    "discovery",
     "findings",
     "infra",
-    "network_checks",
     "platform",
-    "port_inventory",
-    "renderers",
     "reporting",
-    "scan_kernel",
     "scan_policy",
     "scans",
     "scheduling",
-    "topology",
-    "vuln_intel"
+    "topology"
    ],
    "third_party": [
     "fastapi",
     "jose",
-    "nmap",
     "redis",
-    "reportlab",
-    "scapy",
     "slowapi",
     "sqlalchemy",
     "starlette"
@@ -1146,18 +1135,6 @@
    "db.models.scans:Scan"
   ],
   [
-   "routers.assets",
-   "scan_helpers"
-  ],
-  [
-   "routers.compliance",
-   "scan_helpers"
-  ],
-  [
-   "routers.config_audit",
-   "scan_helpers"
-  ],
-  [
    "routers.credentialed",
    "core.tasks"
   ],
@@ -1186,20 +1163,8 @@
    "core.tasks"
   ],
   [
-   "routers.credentials",
-   "scan_helpers"
-  ],
-  [
-   "routers.remediation",
-   "scan_helpers"
-  ],
-  [
    "routers.scan_policies",
    "db.models.scans:Scan"
-  ],
-  [
-   "routers.scan_policies",
-   "scan_helpers"
   ],
   [
    "routers.scan_schedules",
@@ -1208,10 +1173,6 @@
   [
    "routers.topology",
    "db.models.scans:Scan"
-  ],
-  [
-   "routers.web_scans",
-   "scan_helpers"
   ],
   [
    "scans.asset_syncer",

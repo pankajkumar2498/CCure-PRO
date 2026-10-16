@@ -14,7 +14,8 @@ Endpoints
 from ccure_platform.api import CurrentUser, require_authorized
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from scan_helpers import limiter, log
+from core.rate_limiter import limiter
+from scan_helpers import log
 
 router = APIRouter(tags=["Traditional Scans"])
 

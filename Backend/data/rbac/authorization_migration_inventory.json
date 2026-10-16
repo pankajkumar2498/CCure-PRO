@@ -1487,7 +1487,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 45,
+      "line": 46,
       "function": "_enforce_credentialed_scan_scope",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1497,7 +1497,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 167,
+      "line": 168,
       "function": "scan_credentialed",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1507,7 +1507,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 201,
+      "line": 202,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1517,7 +1517,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 283,
+      "line": 284,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -2477,7 +2477,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 57,
+      "line": 58,
       "function": "scan_host",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2487,7 +2487,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 83,
+      "line": 84,
       "function": "scan_range",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2497,7 +2497,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 109,
+      "line": 110,
       "function": "scan_subnet",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2507,7 +2507,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 135,
+      "line": 136,
       "function": "scan_subnets",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",

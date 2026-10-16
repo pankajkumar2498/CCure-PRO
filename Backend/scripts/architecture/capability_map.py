@@ -757,7 +757,8 @@ def measure(root: Path = BACKEND_ROOT) -> dict:
 CEILINGS = {
     "largest_cycle": 22,
     "largest_cycle_top_level": 13,
-    "upward_edges": 50,
+    # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7.
+    "upward_edges": 43,
     "lateral_edges": 74,
     "foreign_table_references": 80,
     "foreign_table_writes": 17,

@@ -1050,7 +1050,9 @@ an API** — the only credential endpoints were under `/compliance`, gated on
 Windows hosts needs to manage scanning credentials without holding a compliance
 permission. Phase 2 adds `credentials:update` and `credentials:validate` and
 gives the resource the API it was defined for. The `/compliance/credentials`
-endpoints still work; they read the same table.
+endpoints still work and keep their own request and response shapes, but since
+16 Oct 2026 they are adapters over the same service (`core/credential_vault.py`)
+and answer the same permissions and limits as the routes below.
 
 | Method | Path                                    | Permission             | Limit  |
 | ------ | --------------------------------------- | ---------------------- | ------ |
@@ -1710,11 +1712,18 @@ scoping filter: `framework_id`, `status` (findings only), `saq_profile`,
 
 ### Credentials
 
-| Method | Path                           | Permission                             |
-| ------ | ------------------------------ | -------------------------------------- |
-| POST   | `/compliance/credentials`      | `compliance:manage_integrations` (201) |
-| GET    | `/compliance/credentials`      | `compliance:read`                      |
-| DELETE | `/compliance/credentials/{id}` | `compliance:manage_integrations`       |
+| Method | Path                           | Permission                 | Limit  |
+| ------ | ------------------------------ | -------------------------- | ------ |
+| POST   | `/compliance/credentials`      | `credentials:create` (201) | 20/min |
+| GET    | `/compliance/credentials`      | `credentials:read`         | 60/min |
+| DELETE | `/compliance/credentials/{id}` | `credentials:delete`       | 20/min |
+
+The same permissions as `/credentials` (section 6c): both paths are adapters
+over `core/credential_vault.py`. Until 16 Oct 2026 these three answered
+`compliance:read` and `compliance:manage_integrations`, so a viewer could list
+every credential's name and username. The request and response shapes, status
+codes and messages here are unchanged (a duplicate name is still 400 on this
+path, 409 on `/credentials`).
 
 Secrets are AES-256-GCM encrypted (`core/security_crypto.py`) into
 `encrypted_password` / `encrypted_key_content` and are never returned by the

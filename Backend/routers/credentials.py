@@ -45,7 +45,7 @@ ticket. The four WinRM error classes map to four different messages and a
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ccure_platform.api import (
     CurrentUser,
@@ -53,9 +53,9 @@ from ccure_platform.api import (
     resolve_active_organisation,
 )
 from ccure_platform.api import log_audit_event
+from core import credential_vault
 from core.security_crypto import encrypt_credential
-from db.base import gen_compliance_credential_id, get_db
-from ccure_platform import api as platform_api
+from db.base import get_db
 from db.models import ComplianceCredential
 from db.models.compliance import (
     AUTH_METHODS,
@@ -66,9 +66,6 @@ from db.models.compliance import (
     CREDENTIAL_TYPE_SSH,
     CREDENTIAL_TYPE_WINDOWS,
     DATABASE_TRANSPORTS,
-    TRANSPORT_POSTGRESQL,
-    TRANSPORT_SMB,
-    TRANSPORT_SSH,
     TRANSPORT_WINRM,
     USABLE_CREDENTIAL_TYPES,
 )
@@ -82,71 +79,13 @@ log = logging.getLogger("ccure.credentials")
 router = APIRouter(prefix="/credentials", tags=["Credentials"])
 
 
-#: Which authentication methods each credential type can actually use.
-#:
-#: Deliberately here rather than as a database CHECK: this matrix grows every
-#: time a credential type is added (Phases 10 and 11), and a CHECK migration on
-#: a table holding customer credentials for each growth is the cost that
-#: avoids. ``test_credential_type_auth_matrix_is_enforced`` asserts the API
-#: applies it.
-TYPE_AUTH_MATRIX: Dict[str, tuple] = {
-    CREDENTIAL_TYPE_SSH: ("password", "key"),
-    # ``kerberos`` is gone from this matrix, not because Windows does not use
-    # it but because this build cannot: pywinrm raises "requested auth method
-    # is kerberos, but pykerberos is not installed" at the first command, so a
-    # credential saved with it failed on the customer's network rather than at
-    # the moment somebody saved it. It stays in the column's vocabulary — see
-    # USABLE_AUTH_METHODS — so the phase that implements it adds a mechanism
-    # rather than a migration.
-    #
-    # ``ntlm_hash`` is Pass-the-Hash over SMB, which also means a domain estate
-    # need not store a reversible plaintext password here to be scanned.
-    CREDENTIAL_TYPE_WINDOWS: ("password", "ntlm", "ntlm_hash"),
-    # Password only. Every engine here also supports certificate and
-    # integrated authentication, and none of those is implemented, so offering
-    # them would let a user save a credential the scanner cannot use.
-    CREDENTIAL_TYPE_DATABASE: ("password",),
-}
-
-#: Which transports each credential type may use.
-#:
-#: New in Phase 7, and it closes a gap rather than only serving the new type:
-#: transport was previously defaulted per type but never *validated*, so a
-#: Windows credential could be stored with an arbitrary transport from the
-#: column's vocabulary. With database engines in that vocabulary the
-#: consequence stops being cosmetic — a Windows credential carrying transport
-#: ``postgresql`` would be dispatched at a database session.
-TYPE_TRANSPORTS: Dict[str, tuple] = {
-    CREDENTIAL_TYPE_SSH: (TRANSPORT_SSH,),
-    # A Windows host is reachable either way: WinRM natively, or SSH through
-    # the OpenSSH-on-Windows arrangement this product used to require.
-    CREDENTIAL_TYPE_WINDOWS: (TRANSPORT_WINRM, TRANSPORT_SMB, TRANSPORT_SSH),
-    CREDENTIAL_TYPE_DATABASE: DATABASE_TRANSPORTS,
-}
-
-#: Default transport and port per type, applied when the caller does not say.
-#:
-#: The database default is PostgreSQL because it is the only engine whose
-#: driver this product already depended on before Phase 7. There is no
-#: defensible "generic" database port, so a caller naming a database credential
-#: without a transport gets the one engine that was always present rather than
-#: a guess.
-TYPE_DEFAULTS: Dict[str, Dict[str, Any]] = {
-    CREDENTIAL_TYPE_SSH: {"transport": TRANSPORT_SSH, "port": 22},
-    CREDENTIAL_TYPE_WINDOWS: {"transport": TRANSPORT_WINRM, "port": 5985},
-    CREDENTIAL_TYPE_DATABASE: {"transport": TRANSPORT_POSTGRESQL, "port": 5432},
-}
-
-
-#: Default port per database transport, applied when the caller names an engine
-#: but no port. Sourced from ``DEFAULT_PORTS`` in the executor so the two
-#: cannot drift — a credential defaulted to 5432 for a MySQL transport would
-#: fail at scan time on a customer's network rather than at the moment somebody
-#: saved it.
-def _database_default_port(transport: str) -> int:
-    from engines.credentialed.database_executor import DEFAULT_PORTS
-
-    return int(DEFAULT_PORTS.get(transport, 5432))
+#: The type rules live in the credential service, which both credential
+#: surfaces share; re-exported here because callers and tests import them from
+#: this module.
+TYPE_AUTH_MATRIX = credential_vault.TYPE_AUTH_MATRIX
+TYPE_TRANSPORTS = credential_vault.TYPE_TRANSPORTS
+TYPE_DEFAULTS = credential_vault.TYPE_DEFAULTS
+_database_default_port = credential_vault.database_default_port
 
 
 def _database_drivers() -> Dict[str, bool]:
@@ -163,17 +102,10 @@ def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
 
 
 def _get(db: Session, credential_id: str, org_id: str) -> ComplianceCredential:
-    row = (
-        db.query(ComplianceCredential)
-        .filter(
-            ComplianceCredential.id == credential_id,
-            ComplianceCredential.tenant_id == org_id,
-        )
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail="Credential not found.")
-    return row
+    try:
+        return credential_vault.get_for_org(db, org_id, credential_id)
+    except credential_vault.CredentialNotFound:
+        raise HTTPException(status_code=404, detail="Credential not found.") from None
 
 
 def _serialize(cred: ComplianceCredential) -> Dict[str, Any]:
@@ -297,41 +229,12 @@ def _apply_type_rules(
     transport: Optional[str],
     port: Optional[int],
 ) -> tuple:
-    allowed = TYPE_AUTH_MATRIX.get(credential_type, ())
-    if auth_method not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"a {credential_type} credential cannot use auth_method "
-                f"{auth_method!r}; expected one of {', '.join(allowed)}"
-            ),
+    try:
+        return credential_vault.apply_type_rules(
+            credential_type, auth_method, transport, port
         )
-
-    defaults = TYPE_DEFAULTS.get(credential_type, {})
-    resolved_transport = transport or defaults.get("transport", TRANSPORT_SSH)
-
-    permitted = TYPE_TRANSPORTS.get(credential_type, ())
-    if permitted and resolved_transport not in permitted:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"a {credential_type} credential cannot use transport "
-                f"{resolved_transport!r}; expected one of "
-                f"{', '.join(permitted)}"
-            ),
-        )
-
-    if port:
-        resolved_port = int(port)
-    elif credential_type == CREDENTIAL_TYPE_DATABASE:
-        # The port follows the engine, not the type. Defaulting a MySQL
-        # credential to PostgreSQL's 5432 would store something that cannot
-        # connect and would surface as an unreachable host at scan time.
-        resolved_port = _database_default_port(resolved_transport)
-    else:
-        resolved_port = int(defaults.get("port", 22))
-
-    return (resolved_transport, resolved_port)
+    except credential_vault.CredentialRuleViolation as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.get("/types")
@@ -437,10 +340,7 @@ def list_credentials(
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
-    query = db.query(ComplianceCredential).filter(ComplianceCredential.tenant_id == org)
-    if credential_type:
-        query = query.filter(ComplianceCredential.credential_type == credential_type)
-    rows = query.order_by(ComplianceCredential.name.asc()).all()
+    rows = credential_vault.list_for_org(db, org, credential_type)
     return {"credentials": [_serialize(c) for c in rows], "total": len(rows)}
 
 
@@ -455,73 +355,41 @@ def create_credential(
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
-    transport, port = _apply_type_rules(
-        body.credential_type, body.auth_method, body.transport, body.port
-    )
-
-    encrypted_password = None
-    encrypted_key = None
-    if body.auth_method in AUTH_REQUIRES_PASSWORD:
-        if not body.password:
-            raise HTTPException(
-                status_code=400,
-                detail=f"auth_method {body.auth_method!r} requires a password.",
-            )
-        encrypted_password = encrypt_credential(body.password.get_secret_value())
-    elif body.auth_method in AUTH_REQUIRES_KEY:
-        if not body.private_key:
-            raise HTTPException(
-                status_code=400,
-                detail=f"auth_method {body.auth_method!r} requires a private key.",
-            )
-        encrypted_key = encrypt_credential(body.private_key.get_secret_value())
-
-    if (
-        db.query(ComplianceCredential.id)
-        .filter(
-            ComplianceCredential.tenant_id == org,
-            ComplianceCredential.name == body.name,
+    try:
+        cred = credential_vault.create(
+            db,
+            actor=user,
+            org_id=org,
+            name=body.name,
+            username=body.username,
+            credential_type=body.credential_type,
+            auth_method=body.auth_method,
+            password=(
+                body.password.get_secret_value() if body.password is not None else None
+            ),
+            private_key=(
+                body.private_key.get_secret_value()
+                if body.private_key is not None
+                else None
+            ),
+            domain=body.domain,
+            transport=body.transport,
+            port=body.port,
+            options=body.options,
+            request=request,
         )
-        .first()
-    ):
+    except credential_vault.CredentialRuleViolation as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except credential_vault.MissingSecret as exc:
+        noun = "password" if exc.field == "password" else "private key"
+        raise HTTPException(
+            status_code=400,
+            detail=f"auth_method {body.auth_method!r} requires a {noun}.",
+        ) from None
+    except credential_vault.DuplicateCredentialName:
         raise HTTPException(
             status_code=409, detail=f"A credential named {body.name!r} already exists."
-        )
-
-    org_row = platform_api.organisation(db, org)
-    cred = ComplianceCredential(
-        id=gen_compliance_credential_id(org_row.slug if org_row else org),
-        tenant_id=org,
-        name=body.name,
-        username=body.username,
-        domain=body.domain or None,
-        credential_type=body.credential_type,
-        transport=transport,
-        auth_method=body.auth_method,
-        port=port,
-        options=body.options or {},
-        encrypted_password=encrypted_password,
-        encrypted_key_content=encrypted_key,
-    )
-    db.add(cred)
-    log_audit_event(
-        db,
-        user,
-        "credential.created",
-        "credential",
-        cred.id,
-        # Deliberately records what kind of credential it is and never any part
-        # of the material — not even its length, which narrows a brute force.
-        changes={
-            "name": cred.name,
-            "credential_type": cred.credential_type,
-            "transport": cred.transport,
-            "auth_method": cred.auth_method,
-        },
-        request=request,
-    )
-    db.commit()
-    db.refresh(cred)
+        ) from None
     return _serialize(cred)
 
 
@@ -768,28 +636,12 @@ def delete_credential(
     the customer's scheduling instead.
     """
     org = _resolve_org(user, org_id)
-    cred = _get(db, credential_id, org)
-    name = cred.name
-
-    from db.models.scan_schedules import ScanSchedule
-
-    affected = (
-        db.query(ScanSchedule.id)
-        .filter(ScanSchedule.credential_id == cred.id, ScanSchedule.org_id == org)
-        .count()
-    )
-
-    log_audit_event(
-        db,
-        user,
-        "credential.deleted",
-        "credential",
-        cred.id,
-        changes={"name": name, "schedules_affected": affected},
-        request=request,
-    )
-    db.delete(cred)
-    db.commit()
+    try:
+        name, affected = credential_vault.delete(
+            db, actor=user, org_id=org, credential_id=credential_id, request=request
+        )
+    except credential_vault.CredentialNotFound:
+        raise HTTPException(status_code=404, detail="Credential not found.") from None
     return {
         "success": True,
         "id": credential_id,

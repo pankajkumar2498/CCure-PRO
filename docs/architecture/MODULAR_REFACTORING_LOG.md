@@ -184,13 +184,97 @@ The first run of the new tests failed one: `db.migrate_production_schema` does `
 a whole-registry import that genuinely loads every model. The test was too strict and was
 corrected to allow exactly that form.
 
+### A3 — shared JSON-contract shape tests
+
+`Backend/tests/scans/test_shared_json_contracts.py` (33 tests) pins shape only:
+
+- each writer's output;
+- the keys each reader consumes;
+- what a reader does with a legacy record that lacks the key.
+
+No stored record, key name or behaviour changes.
+
+**Pinned:**
+
+- **`scans.options["scan_policy"]`**
+  - Writer: `core.scan_policy.snapshot.snapshot_payload`.
+  - Readers: `read_policy_snapshot`, the reports and the policy-usage query.
+  - Pinned: the exact key set; the raw readers' keys (`recorded`, `policy_name`, `fingerprint`, `policy_id`) are written; round trip with sibling keys kept; absent, empty or unrecorded means no policy, and two unknown policies are not comparable.
+- **`scans.options["assessment_scope"]`**
+  - Writer: `core.findings.record_assessment_scope`, from `core.tasks` and the package matcher.
+  - Readers: the comparison and remediation verification.
+  - Pinned: shape `{recorded, assets, families, detail}` with sorted string lists; merge rather than replace; unrecorded covers nothing; a missing or malformed check list restricts no check.
+- **`scans.options["credentials"]`**
+  - Writer: the host-discovery request model.
+  - Reader: `core.tasks._credentialed_plan_for_scan`.
+  - Pinned: both use `core.credential_scope`; a plan the writer accepts resolves on the reader; no plan means no credentialed pass.
+- **The five port options** (`custom_ports`, `exclude_ports`, `exclude_ot_from_nmap`, `passive_first`, `exclude_ips`)
+  - Writers: `POST /scan/asset-discovery`, and the schedule dispatcher, which forwards them.
+  - Reader: the phase tasks, from `scans.options`.
+  - Pinned: every key read is written and forwarded under its own name; the defaults for a missing key (`exclude_ot_from_nmap` true, `passive_first` false).
+- **`assets.custom_attributes["credentialed_status"]`**
+  - Writers: `scans.asset_syncer.set_credentialed_status` and `core/tasks.py`.
+  - Reader: `core.compliance_evidence`.
+  - Pinned: vocabulary `success`/`failed` at every write site; reassigned, not mutated; only `success` counts as authenticated; absent means not authenticated.
+- **`assets.custom_attributes["password_policy"]`**
+  - Writer: `core/tasks.py`, from the collectors.
+  - Reader: `core.compliance_evidence`.
+  - Pinned: the five keys written are exactly the five read; a collected key reaches compliance; an uncollected one is absent, never defaulted.
+
+**Documented, not pinned** — their contract is not established in one place, so a schema here would be invented:
+
+- **`scans.options["credentialed_report"]`** — three shapes (pipeline-nested, standalone, multi-host list) defined by the collectors. The reporting tests cover them (11 files). This is the typed hand-off of roadmap C6.
+- **`scans.options["snmp"]`**
+  - Comes from the request's free-form `options`, validated nowhere; read by `core.tasks` and `core.topology.engine`.
+  - Candidate for a validator like `validate_credential_options`.
+- **`assets.custom_attributes["credentialed_system_info"]`** and **`["provenance"]`** — written in `core/tasks.py` and `scans/asset_syncer.py`, read by compliance adapters and the asset view, with no single definition.
+- **`scan_phases.summary`** (`assessed`, `results`, `reason`, `platform`, `network_plugin_coverage`, `scan_duration`) — written per phase by the task hub and read by findings, assets, `ccure_audit` services and reports. Its shape varies by phase, and each reader tolerates absence. This also belongs to C6.
+
+Two observations, recorded and not changed:
+
+- `scan_policy` names two different things: a snapshot dict in `scans.options`, and a preset name in `web_scans.options`.
+- `credentialed_status` has two write sites, not the one CLAUDE.md describes, both using the shared constants; the vocabulary test covers both.
+
+Mutation check: three breaks in a scratch copy were each caught (4 failures):
+
+- a flipped reader default;
+- a password-policy key dropped from the reader;
+- a renamed snapshot key.
+
+Tests: the new file passed 33 of 33.
+
+### Milestone — full backend suite after Phase 0 and Phase A
+
+`python -m pytest -p no:cacheprovider -q -rfEs tests` ran in the environment of §1, on the
+complete tree: Phase 0, A1, A2 and A3.
+
+| Passed | Failed | Skipped | Time        |
+| -----: | -----: | ------: | ----------- |
+|  7,870 |  **0** |     211 | 14 min 28 s |
+
+The 211 skips are all environmental:
+
+- **165** need the audit tamper-evidence chain and **44** the audit-retention bootstrap. Both
+  are DBA-installed and absent from a throwaway database; the tests report "NOT VERIFIED, not
+  passing".
+  - They were deliberately not installed here. The chain's security model assumes the
+    application role is not a superuser, and in a throwaway PostgreSQL it is, so running them
+    there would test the wrong thing.
+  - CI's database has the same limit.
+- **1** is the by-design `alembic.ini is already activated` skip.
+- **1** needs the live OSV npm feed, which the internal-only test network cannot reach.
+
+The frontend suites were not run: no frontend file changed in Phase 0 or A, and the selector
+reports frontend scope `none` for every step.
+
 ## 4. Decisions awaiting the project owner
 
-| #   | Decision                                                                                                                                                | From                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| D-4 | Approve the worker privilege split (S3)                                                                                                                 | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                        | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                 | analysis §13                                                       |
-| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                    | S2                                                                 |
-| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                     | S1                                                                 |
-| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions | S2                                                                 |
+| #       | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                              | From                                                               |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **S2b** | `GET /scan-schedules/credentials` still lists every credential's name, username, auth method and port under `audit.scan_schedule.read`, which `platform.viewer` holds. It is the S2 disclosure on a third route, found during A3 and outside S2's two named routes, so not changed. Recommended: list through `core.credential_vault` under `audit.credential.read`. Analysts and organisation administrators keep it; viewers, who cannot manage schedules, lose it. | A3                                                                 |
+| D-4     | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                                                                                               | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5     | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                                                                                      | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9     | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                                                                                               | analysis §13                                                       |
+| new     | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                                                                                                  | S2                                                                 |
+| new     | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                                                                                                   | S1                                                                 |
+| new     | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                                                                                               | S2                                                                 |

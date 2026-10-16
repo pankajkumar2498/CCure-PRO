@@ -29,6 +29,7 @@ Audit at run time.
 | A1 documentation                                                                    | **Done** — this report adopted as the current-state report; progress here, steps in the log                                                                                | `99d511b` | log §3                                                             |
 | A2 capability map and ratchet                                                       | **Done** — `Backend/scripts/architecture/capability_map.py`; the figures here reproduce with this report's method, and the committed map's baseline is recorded in the log | `aa215dc` | log §3                                                             |
 | A3 shared JSON-contract tests                                                       | **Done** — six shared keys pinned by shape; the rest documented with the reason they are not                                                                               | `780d936` | log §3                                                             |
+| B1 limiter imported from `core.rate_limiter`                                        | **Done** — 9 modules stop loading `scan_helpers` (the web router: 125 → 70 first-party modules, no Scapy, nmap or ReportLab); upward edges 50 → 43; interfaces identical   | `ffbc170` | log §6                                                             |
 
 ---
 

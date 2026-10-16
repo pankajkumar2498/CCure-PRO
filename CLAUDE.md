@@ -302,7 +302,9 @@ Two things Phase 3 deliberately left, which are **not** violations:
   are `sys.modules` aliases of `core.checks.cvss` / `core.checks.finding_normalizer`
   (the same module objects, so patches and `isinstance` still work), and
   `scan_helpers.limiter` is `core.rate_limiter.limiter`. New code imports the
-  new paths; the old ones are migrated and deprecated later, not now.
+  new paths. Application code's limiter imports were migrated in B1
+  (16 Oct 2026, `docs/architecture/MODULAR_REFACTORING_LOG.md` §6); the alias
+  stays for tests and scripts. The two `scans.*` aliases move later (C3).
 - **The discovery engine still loads SQLAlchemy**, via `core.risk` →
   `core.vuln_intel`. It breaks no rule; it stops the engine running without the
   database layer, and is refactored only when a phase needs that.

@@ -438,7 +438,135 @@ Python 3.11.16), which was built from the _previous_ base-image digest. The new
 first build is the next release's, and CLAUDE.md requires running the suite inside that image
 before it is deployed.
 
-## 6. Decisions awaiting the project owner
+## 6. Phase B — low-risk dependency reduction
+
+The owner approved Phase B on 16 Oct 2026. It runs one change per commit, follows §10's B1–B10
+order, and stops for review after each step. Every step is measured on its parent commit and on
+its own commit, with the same probes:
+
+- **Interfaces:**
+  - `app.routes`, each with its endpoint's module and name;
+  - `Limiter._route_limits`, the route-limit registry, keyed by route function;
+  - which modules hold the canonical limiter object;
+  - Celery's registered task names, after loading every task module;
+  - the beat schedule;
+  - `openapi.json`, through `--check` and the pre-commit hook.
+- **Import cost:** each changed module imported in a fresh interpreter, counting first-party
+  modules, all modules, and whether Scapy, python-nmap, ReportLab, paramiko, impacket, sslyze,
+  openpyxl or python-docx loaded.
+- **Coupling:** `python -m scripts.architecture.capability_map`, which reports the cycle, upward
+  and lateral edges, foreign-table access and load profiles.
+
+### B1 — the rate limiter from `core.rate_limiter`
+
+Commit `ffbc170`, committed in place.
+
+**The change.** `main` and 13 routers imported `limiter` from `scan_helpers`, whose import
+loads the network orchestrator (`HostDiscoveryAPI`) and, through it, Scapy, python-nmap and
+ReportLab. The limiter has lived in `core.rate_limiter` since Phase 3; `scan_helpers` only
+re-exports it. All 14 now import it from `core.rate_limiter`.
+
+- It is the same object, so routes, limits and limiter keys are unchanged. slowapi keys a limit
+  by the route function's module and name, not by where the limiter was imported from.
+- `scan_helpers` keeps the alias, which the tests and `scripts/measure_export_coverage.py` use.
+- The RBAC inventory moved eight line numbers, because two routers gained an import line.
+- This reverses the 25 Sep "not now" (D-1) for the limiter alias only. `scans.cvss` and
+  `scans.finding_normalizer` are left for C3.
+
+**Interfaces: identical.** The probe output is byte-identical before and after:
+
+- 288 routes with the same endpoint names;
+- 96 route-limit keys with the same limits;
+- `app.state.limiter`, `scan_helpers.limiter` and every router's `limiter` are the same object;
+- 36 registered Celery tasks and the same beat schedule;
+- `openapi.json` unchanged.
+
+**Import cost:**
+
+| Module                                                                                                | First-party modules | All modules | Scapy, python-nmap, ReportLab                       |
+| ----------------------------------------------------------------------------------------------------- | ------------------- | ----------- | --------------------------------------------------- |
+| `routers.web_scans`                                                                                   | 125 → 70            | 1,304 → 733 | loaded → none                                       |
+| `routers.assets`                                                                                      | 118 → 64            | 1,266 → 695 | loaded → none                                       |
+| `routers.credentials`                                                                                 | 119 → 64            | 1,268 → 696 | loaded → none                                       |
+| `routers.remediation`                                                                                 | 125 → 70            | 1,274 → 702 | loaded → none                                       |
+| `routers.scan_history`                                                                                | 123 → 69            | 1,301 → 731 | loaded → none                                       |
+| `routers.scan_policies`                                                                               | 122 → 72            | 1,271 → 704 | loaded → none                                       |
+| `routers.scan_schedules`                                                                              | 122 → 67            | 1,277 → 705 | loaded → none                                       |
+| `routers.config_audit`                                                                                | 149 → 99            | 1,297 → 730 | loaded → none                                       |
+| `routers.compliance`                                                                                  | 123 → 68            | 1,366 → 882 | Scapy and nmap gone; ReportLab and python-docx stay |
+| `main`, `routers.credentialed`, `routers.phase_scans`, `routers.reports`, `routers.traditional_scans` | unchanged           | unchanged   | unchanged                                           |
+
+Notes on the table:
+
+- `routers.compliance` still loads ReportLab and python-docx because it holds its own report
+  generators.
+- The last row's five modules still use other names from `scan_helpers`: `set_api`, `log`, and
+  the pipeline and report helpers. Moving those is C1's work.
+- `routers.scan_schedules` imports `scan_helpers` only inside a function, so it stops loading it
+  at import time but still depends on it statically.
+
+**Coupling:**
+
+| Measure                                    | Before (`af0e76c`) | After (`ffbc170`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Upward edges                               |                 50 |            **43** |
+| Lateral edges                              |                 74 |                74 |
+| Largest cycle, all / top-level             |            22 / 13 |           22 / 13 |
+| Foreign-table references / writes          |            80 / 17 |           80 / 17 |
+| Cross-capability imports, top-level / lazy |          458 / 392 |         462 / 392 |
+
+- **The seven upward edges removed** are from `routers.assets`, `compliance`, `config_audit`,
+  `credentials`, `remediation`, `scan_policies` and `web_scans` to `scan_helpers`.
+  `scan_history` sits in the same capability as `scan_helpers`, so its edge was never counted.
+- **The baseline and the ceiling now record this.** The baseline no longer lists the removed
+  edges, and `CEILINGS["upward_edges"]` is 43, so the edges cannot return unnoticed.
+- **The `routers.web_scans` load profile shrank.** It no longer reaches the `check_kernel`,
+  `credentialed_audit`, `discovery`, `network_checks`, `port_inventory`, `renderers`,
+  `scan_kernel` and `vuln_intel` capabilities.
+- **The cross-capability import count rose by 4.** It counts edges in either direction, and the
+  new imports point down to shared infrastructure (`core.rate_limiter`, layer 0). It is not a
+  ratcheted figure.
+- **The cycle is unchanged, as expected.** §10 predicts that the cycle shrinks only from
+  B1–B10 together.
+
+**Against §10's prediction:**
+
+- Eight modules stop depending on `scan_helpers` statically, as predicted. Nine stop loading it
+  at import, counting `scan_schedules`.
+- `routers.web_scans` no longer loads Scapy, nmap or ReportLab, as predicted.
+
+**Tests:**
+
+| Step                     | Command / targets                                                                   | Passed | Failed | Skipped | Notes                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------- | -----: | -----: | ------: | --------------------------------------------------------------------------------------------- |
+| Selector                 | `select_tests.py --files <the 18 files>`                                            |      — |      — |       — | `full`: `Backend/main.py` is cross-cutting                                                    |
+| Targeted                 | `tests/repo tests/security`, uncommitted tree                                       |    980 |      0 |       1 | The `alembic.ini` skip; 2 min 57 s                                                            |
+| Architecture and secrets | `python3 -I Backend/scripts/architecture/check.py`                                  |      — |      — |       — | All six checks `ok`                                                                           |
+| Capability ratchet       | `python -m scripts.architecture.capability_map --check`                             |      — |      — |       — | Holds, after `--write-baseline`                                                               |
+| API contract             | `python -m scripts.openapi.generate --check`                                        |      — |      — |       — | Exit 0                                                                                        |
+| RBAC inventory           | `python -m scripts.rbac.build_migration_inventory --check`                          |      — |      — |       — | Current after `--write`; only line numbers moved                                              |
+| Pre-commit               | every hook, inside the commit                                                       |      — |      — |       — | Passed                                                                                        |
+| **Full backend suite**   | `tests`, on a clean detached worktree of `ffbc170` (1,920 paths, nothing untracked) |  7,880 |  **0** |     211 | 14 min 13 s; the same count and the same 211 environmental skips as S2b (§4): B1 adds no test |
+
+No live scan was run, because B1 is not on a scan path (§11 requires live validation for B2, B3,
+C2, C3 and C6). The frontend did not change.
+
+**Runner.** `scripts/ci/local_guard_tests.sh` failed during set-up twice more. A trace of one
+failure showed the cause:
+
+1. the readiness loop stopped on a successful `pg_isready` over the Unix socket;
+2. the confirming check a moment later failed;
+3. this is the gap while the official image restarts the server after initdb.
+
+Both B1 runs therefore used a scratch copy of the runner that differs only by `-h 127.0.0.1`
+on its two `pg_isready` calls. The image's initdb server does not listen on TCP. Both runs
+completed. The committed runner is unchanged, pending the decision in §7.
+
+**Left on purpose:** `routers.credentialed` and `routers.traditional_scans` still take `log`
+from `scan_helpers`. It is the same object as `logging.getLogger("ccure.api")`, so one line
+each would detach them, but B1 is the limiter only.
+
+## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                               | From                                                               |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -450,4 +578,5 @@ before it is deployed.
 | new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                | S2                                                                 |
 | new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage` | S2b, §4                                                            |
 | new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                      | S2b, §4                                                            |
-| new | `scripts/ci/local_guard_tests.sh`: check PostgreSQL readiness over TCP, so a check during the image's initdb restart cannot end the run                                                                                | S2b, §4                                                            |
+| new | `scripts/ci/local_guard_tests.sh`: check PostgreSQL readiness over TCP. Confirmed by a trace during B1, and both B1 runs completed with the TCP check (§6)                                                             | S2b, §4; B1, §6                                                    |
+| new | Commit B1's two measurement probes (interface snapshot; import cost per module) as tooling, so B2–B10 are measured the same way                                                                                        | B1, §6                                                             |

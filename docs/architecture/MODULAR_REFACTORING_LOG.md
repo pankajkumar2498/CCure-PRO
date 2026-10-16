@@ -31,7 +31,8 @@ never connected to. `scripts/ci/local_guard_tests.sh` (S4) is this setup, commit
 - **The throwaway database lacks the DBA-installed audit chain and retention bootstrap.** 209
   audit tests skip themselves there with "NOT VERIFIED, not passing". They are reported as
   skipped, never as passed.
-- **The frontend was not changed.** For every step, `select_tests.py` reports frontend scope `none`.
+- **The frontend was not changed until S2b**, which changed one comment (§4). For every earlier
+  step, `select_tests.py` reports frontend scope `none`.
 
 ## 2. Phase 0
 
@@ -267,14 +268,186 @@ The 211 skips are all environmental:
 The frontend suites were not run: no frontend file changed in Phase 0 or A, and the selector
 reports frontend scope `none` for every step.
 
-## 4. Decisions awaiting the project owner
+## 4. S2b — the schedule credential picker
 
-| #       | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                              | From                                                               |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **S2b** | `GET /scan-schedules/credentials` still lists every credential's name, username, auth method and port under `audit.scan_schedule.read`, which `platform.viewer` holds. It is the S2 disclosure on a third route, found during A3 and outside S2's two named routes, so not changed. Recommended: list through `core.credential_vault` under `audit.credential.read`. Analysts and organisation administrators keep it; viewers, who cannot manage schedules, lose it. | A3                                                                 |
-| D-4     | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                                                                                               | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5     | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                                                                                      | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9     | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                                                                                               | analysis §13                                                       |
-| new     | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                                                                                                  | S2                                                                 |
-| new     | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                                                                                                   | S1                                                                 |
-| new     | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                                                                                               | S2                                                                 |
+Commit `c12851b`. It was committed in place, without a worktree or a reset: every modified file
+was staged, so pre-commit had no unstaged change to stash. The untracked Nessus study was left
+as it was. Every hook passed, including `architecture-guards` and `openapi-contract` (no
+change to `openapi.json`).
+
+### What changed
+
+- **`GET /scan-schedules/credentials` requires `audit.credential.read`**, the key every other
+  credential listing requires, and lists through `credential_vault.list_for_org`. Before, it
+  required `audit.scan_schedule.read`. These are unchanged: the response shape (`id`, `name`,
+  `username`, `auth_method`, `port`), the 60/minute limit, the ordering by name, and the
+  docstring, which is the published OpenAPI description.
+- **The schedule router's other two credential reads go through the service too:**
+
+  - the name shown on a schedule (`_serialize`), now read with `get_for_org` for the
+    schedule's organisation. The answer cannot differ, because attaching already requires the
+    credential to belong to that organisation;
+  - the tenant check when a credential is attached (`_validate_credential`), with the same 404
+    and message.
+
+  `routers/scan_schedules.py` no longer imports `ComplianceCredential`.
+
+- **Capability baseline:** the lateral edge
+  `routers.scan_schedules -> db.models.compliance:ComplianceCredential` is replaced by
+  `routers.scan_schedules -> core.credential_vault`. Every count is unchanged: cycle 22/13,
+  upward 50, lateral 74, foreign references 80, foreign writes 17. The schedule dispatcher
+  (`core/scheduling/dispatcher.py`) still reads `ComplianceCredential` directly; that is C5's
+  work and was not touched.
+- **Records:**
+  - authorization inventory regenerated (`--write`, then `--check`: "inventory is current");
+  - the row in `BACKEND_API_REFERENCE.md`;
+  - a "superseded" note on `GAP_TRACKER.md` §4.4;
+  - the comment above `listScheduleCredentials` in `Frontend/src/modules/audit/api/scanSchedules.js` (a comment only).
+
+Who can list, with the default grants:
+
+| Role                                     | Before | After | Why                                                                                                                                   |
+| ---------------------------------------- | ------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `platform.viewer`                        | 200    | 403   | Holds `scan_schedule.read`, not `credential.read`. It cannot create or edit a schedule, so it loses no workflow.                      |
+| `platform.analyst`, `platform.org_admin` | 200    | 200   | Hold both keys. These are the roles holding `scan_schedule.manage`, so picking a credential for a schedule works as before.           |
+| `platform.scanner`                       | 403    | 200   | Holds `credential.read`, not `scan_schedule.read`. Since S2 it can list the same rows at `/credentials`, so nothing new is disclosed. |
+| `platform.superadmin`                    | 200    | 200   | Holds every key through materialised grants.                                                                                          |
+
+### Tests
+
+Seven tests (nine cases) were added to
+`Backend/tests/security/test_credential_api_consolidation.py`. The route also joined the
+file's permission and rate-limit parity tables, which adds one rate-limit case. The file went
+from 22 to 32 cases.
+
+- a viewer is refused, and neither the credential's name nor its username appears in the
+  response;
+- a role holding only `audit.scan_schedule.read`, the route's old key, is refused;
+- a role holding only `audit.credential.read` is served;
+- the analyst, org-admin and scanner roles are served exactly the five fields, ordered by name,
+  with no secret and nothing named `encrypted`;
+- another organisation's credential is never listed, including when a caller without the
+  organisation-switch grant names that organisation in `?org_id=`;
+- the workflow the picker exists for: an analyst lists, picks a credential and creates a
+  credentialed schedule. The response carries `credential_name`, and no secret.
+- another organisation's credential is still refused when it is attached (404, same message).
+
+| Step                     | Command / targets                                                                                                           | Passed | Failed | Skipped | Notes                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ------------------------------------------------------------------------------------------------ |
+| Focused                  | `scripts/ci/local_guard_tests.sh tests/security/test_credential_api_consolidation.py tests/scans/test_scan_schedule_api.py` |     57 |      0 |       0 | Uncommitted tree, before the commit; 43 s with set-up                                            |
+| Mutation                 | the consolidation file, on a scratch worktree with the route put back on `audit.scan_schedule.read`                         |     27 |  **5** |       0 | Expected to fail: proves the tests see the disclosure                                            |
+| Architecture and secrets | `python3 -I Backend/scripts/architecture/check.py`                                                                          |      — |      — |       — | Exit 0, all six checks `ok`; 11.5 s                                                              |
+| Capability ratchet       | `python -m scripts.architecture.capability_map --check`                                                                     |      — |      — |       — | "capability ratchet holds"                                                                       |
+| API contract             | `python -m scripts.openapi.generate --check`                                                                                |      — |      — |       — | Exit 0: `openapi.json` unchanged                                                                 |
+| RBAC inventory           | `python -m scripts.rbac.build_migration_inventory --check`                                                                  |      — |      — |       — | "inventory is current"                                                                           |
+| Frontend                 | `npx vitest related --run src/modules/audit/api/scanSchedules.js` (from `Frontend/`)                                        |     91 |      0 |       0 | 3 files; the change is a comment                                                                 |
+| Pre-commit               | every hook, inside the commit                                                                                               |      — |      — |       — | Passed                                                                                           |
+| **Full backend suite**   | `scripts/ci/local_guard_tests.sh tests`, on a clean detached worktree of `c12851b`                                          |  7,880 |  **0** |     211 | 14 min 26 s. The milestone's 7,870 plus the 10 new cases; the same 211 environmental skips as §3 |
+
+The mutation run's five failures were these tests:
+
+- the permission parity test;
+- the viewer test;
+- the old-key-only test;
+- the `credential.read`-only test, which a role without `scan_schedule.read` fails on the old key;
+- the scanner case.
+
+The other 27 tests do not depend on which key the route answers.
+
+The 211 skips are those of §3's milestone, one for one: 165 need the audit chain, 44 the
+retention bootstrap, 1 is the `alembic.ini` skip and 1 the live OSV feed. The run left no
+container or network behind.
+
+The selector (`select_tests.py`) named `compliance`, `credentialed`, `repo`, `scans` and
+`security` for the backend and the one changed frontend file. The full suite covers every
+backend group, so those groups were not also run separately.
+
+### Limitations
+
+- **The first mutation attempt died during set-up.** It printed "starting throwaway PostgreSQL"
+  and nothing more, and it reproduced nothing when repeated. The likely cause is that
+  `local_guard_tests.sh` checks readiness over the Unix socket. The official PostgreSQL image
+  answers there during initdb, then restarts the server, so the second check can land in that
+  gap. Checking over TCP (`pg_isready -h 127.0.0.1`), which the init-time server does not
+  listen on, would close it. Recorded below, not fixed here: changing the CI tooling is outside
+  this task.
+- **The published description is now stale.** The route's docstring still says
+  `GET /compliance/credentials` "is gated on `compliance:read`". That stopped being true at S2.
+  It was left unchanged because editing it changes the published OpenAPI document.
+- **What the schedule page does.** `ScanSchedules.jsx` loads the picker when the page opens and
+  turns any error into an empty list. It also shows "New schedule" to everyone; that predates
+  S2b.
+  - **Viewer:** now sees an empty picker. A viewer could never save a schedule (that needs
+    `scan_schedule.manage`), so no workflow is lost.
+  - **Custom role with `scan_schedule.manage` but not `credential.read`:** would see an empty
+    picker with no explanation. This is the "no data ≠ empty result" case in CLAUDE.md. No
+    system role is in that state. Recorded below, not changed.
+
+## 5. What the reported test runs covered
+
+The Phase 0 and A report said the new branch was cut from `master` at `c0c0f4e`: "10 commits
+ahead of `Improvements` … with no backend code changes". It sat directly beside "the full
+backend suite passes on the result". Read together, the two suggest the suite ran on unchanged
+backend code. It did not.
+
+**What the statement was about.** It described only the base: the 10 commits from `23f8e72`
+(the analysis's tree) to `c0c0f4e`. `git diff --stat 23f8e72 c0c0f4e -- Backend` lists two
+files:
+
+- `Backend/Dockerfile`, a new `python:3.11-slim` digest from Dependabot (`a86604a`);
+- `Backend/.env.example`, `POSTGRES_DB` changed from `ccure_test` to `ccure_db` (`03d6019`).
+
+Neither is Python source. "No backend code changes" was accurate for the base and
+"Python base-image bump" named the Dockerfile; "no backend _source_ changes" would have been
+the exact phrase.
+
+**What the branch changed.** The branch itself changes backend production code. The test runs
+were on those changes:
+
+| Commit    | Backend production code                                                                                                                 | Backend tests and tooling                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `6925b2b` | `core/compliance_tasks.py`                                                                                                              | `tests/credentialed/test_sudo_password_safety.py`                                                                         |
+| `cb62582` | `core/credential_vault.py` (new), `routers/compliance.py`, `routers/credentials.py`, `data/rbac/authorization_migration_inventory.json` | `tests/security/test_credential_api_consolidation.py`                                                                     |
+| `9a32319` | —                                                                                                                                       | `tests/repo/test_worker_queue_mapping.py`                                                                                 |
+| `2d4509d` | —                                                                                                                                       | `scripts/architecture/check.py`, `secret_guards.py`; the sudo test                                                        |
+| `aa215dc` | —                                                                                                                                       | `scripts/architecture/capability_map.py`, `capability_baseline.json`, `check.py`; `tests/repo/test_capability_ratchet.py` |
+| `780d936` | —                                                                                                                                       | `tests/scans/test_shared_json_contracts.py`                                                                               |
+| `c12851b` | `routers/scan_schedules.py`, the inventory                                                                                              | the consolidation test; the capability baseline                                                                           |
+
+**What each run covered.** Phase 0 and A were tested on the working tree, and each commit was
+built afterwards in a detached worktree. Matching a run to a commit therefore needs evidence.
+Two kinds were used:
+
+- the files' modification times, together with which commits touch each file;
+- the session record of every file edit, test run and commit.
+
+| Run                                | Started (IST) | Backend tree under test                  | Evidence                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------- | ------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1 regression, 5,137 passed        | 01:26:55      | exactly `6925b2b`                        | `compliance_tasks.py` was last modified at 01:23:42, and `6925b2b` is the only commit that touches it, so its content then is the committed content. The sudo test was last edited at 01:26:01, before the run; its next edit was 01:43:31 (S4), after the commit at 01:33:52. `credential_vault.py` did not exist until 01:30:28.                                     |
+| S2 regression, 6,513 passed        | 01:39:23      | exactly `cb62582` (S1 + S2)              | `credential_vault.py`, `routers/credentials.py` and `routers/compliance.py` were last modified at 01:32:18–01:32:40, and only `cb62582` touches them. The test file (01:36:25) and the inventory (01:38:25) were not edited again before the commit at 06:51:47. The S3 and S4 files were created after the run started (01:41 onwards), so they were not in its copy. |
+| Milestone full suite, 7,870 passed | 07:27:07      | exactly `780d936` (all of Phase 0 and A) | The run's file list, saved at 07:27:08, is `780d936`'s tree path for path, plus the untracked Nessus study. Between the start and the commit at 07:42:29, only Markdown and memory files were edited. After `git reset --mixed 780d936` at 07:42:39, `git status` showed nothing but the Nessus study. No tracked backend file has a modification time in that window. |
+| S2b full suite (this section)      | 09:42:34      | exactly `c12851b`                        | A clean detached worktree of `c12851b`: 1,920 paths, equal to `git ls-tree`, no untracked file.                                                                                                                                                                                                                                                                        |
+
+So the 7,870 result covers `6925b2b`'s and `cb62582`'s backend changes, and everything else up
+to `780d936`. S2b is covered by its own run (§4). The groups named in §2 cover what that table
+says, and no more.
+
+**What no run covered.** Every run used the release image `3a0dde6d4580` (release `3212d6b`,
+Python 3.11.16), which was built from the _previous_ base-image digest. The new
+`python:3.11-slim` digest in `c0c0f4e`'s Dockerfile has not been built or tested here. Its
+first build is the next release's, and CLAUDE.md requires running the suite inside that image
+before it is deployed.
+
+## 6. Decisions awaiting the project owner
+
+| #   | Decision                                                                                                                                                                                                               | From                                                               |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                       | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                | analysis §13                                                       |
+| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                   | S2                                                                 |
+| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                    | S1                                                                 |
+| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                | S2                                                                 |
+| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage` | S2b, §4                                                            |
+| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                      | S2b, §4                                                            |
+| new | `scripts/ci/local_guard_tests.sh`: check PostgreSQL readiness over TCP, so a check during the image's initdb restart cannot end the run                                                                                | S2b, §4                                                            |

@@ -285,6 +285,17 @@ Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
 prints the graph; `--violations` lists every rule-breaking edge.
 
+**Local enforcement** (16 Oct 2026):
+- `python3 Backend/scripts/architecture/check.py` runs the ratchets that need
+  only source with the standard library: layering, cycles, identity boundary,
+  organisation settings and the secret-handling guards. The
+  `architecture-guards` pre-commit hook runs it on every backend commit.
+- `scripts/ci/local_guard_tests.sh` runs the database-backed guard tests in
+  throwaway containers.
+- GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
+  only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
+  runs where.
+
 Two things Phase 3 deliberately left, which are **not** violations:
 
 - **Compatibility import paths.** `scans.cvss` and `scans.finding_normalizer`

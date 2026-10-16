@@ -428,66 +428,12 @@ def test_the_shipped_catalogue_has_no_command_the_rewrite_cannot_elevate():
 # nothing looked anywhere else. These look everywhere.
 # ─────────────────────────────────────────────────────────────────────────────
 
-#: A single pipe into sudo. ``|| sudo`` is a shell fallback, not a pipe.
-_PIPED_SUDO = r"(?<!\|)\|(?!\|)\s*sudo\b"
+# The detectors live in scripts/architecture/secret_guards.py, which the
+# stdlib-only pre-commit hook (scripts/architecture/check.py) runs too.
+from scripts.architecture import secret_guards  # noqa: E402
 
-
-def _interpolated_piped_sudo(source: str) -> list[int]:
-    """
-    Lines where code *builds* a string that pipes into sudo out of a variable —
-    an f-string, ``%`` formatting, ``+`` concatenation or ``.format``. That is
-    the shape that carries a secret into the command line. A fixed literal (a
-    redaction placeholder, a remediation catalogue entry) carries none, and is
-    the catalogue test's business below.
-    """
-    import ast
-    import re
-
-    pattern = re.compile(_PIPED_SUDO)
-    hits: list[int] = []
-
-    def literal(node) -> str | None:
-        return (
-            node.value
-            if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            else None
-        )
-
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.JoinedStr):
-            text = "".join(
-                v.value if isinstance(v, ast.Constant) else "{}" for v in node.values
-            )
-            if any(
-                isinstance(v, ast.FormattedValue) for v in node.values
-            ) and pattern.search(text):
-                hits.append(node.lineno)
-        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
-            sides = [literal(node.left), literal(node.right)]
-            if any(s and pattern.search(s) for s in sides) and None in sides:
-                hits.append(node.lineno)
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "format"
-            and literal(node.func.value)
-            and pattern.search(literal(node.func.value))
-        ):
-            hits.append(node.lineno)
-    return sorted(set(hits))
-
-
-def _application_sources():
-    from testpaths import BACKEND_ROOT
-
-    skip = {"tests", ".venv", "__pycache__", "alembic", "logs", "reports", "data"}
-    for path in sorted(BACKEND_ROOT.rglob("*.py")):
-        rel = path.relative_to(BACKEND_ROOT)
-        if skip.intersection(rel.parts[:-1]) or any(
-            p.startswith(".") for p in rel.parts[:-1]
-        ):
-            continue
-        yield rel, path.read_text(encoding="utf-8")
+_PIPED_SUDO = secret_guards.PIPED_SUDO
+_interpolated_piped_sudo = secret_guards.interpolated_piped_sudo
 
 
 def test_the_guard_recognises_the_shape_it_exists_for():
@@ -515,7 +461,7 @@ def test_the_guard_recognises_the_shape_it_exists_for():
 def test_no_module_interpolates_anything_into_a_piped_sudo_command():
     offenders = [
         f"{rel}:{line}"
-        for rel, source in _application_sources()
+        for rel, source in secret_guards.application_sources()
         for line in _interpolated_piped_sudo(source)
     ]
     assert offenders == [], (
@@ -525,28 +471,27 @@ def test_no_module_interpolates_anything_into_a_piped_sudo_command():
     )
 
 
-#: Executors hold their own session's secret. Nothing else reads one.
-_EXECUTORS_HOLDING_A_PASSWORD = {
-    "engines/credentialed/ssh_scanner.py",
-    "engines/credentialed/winrm_executor.py",
-    "engines/credentialed/smb_executor.py",
-    "engines/credentialed/database_executor.py",
-}
-
-
 def test_only_an_executor_touches_a_session_password_attribute():
-    import ast
-
-    offenders = []
-    for rel, source in _application_sources():
-        if rel.as_posix() in _EXECUTORS_HOLDING_A_PASSWORD:
-            continue
-        for node in ast.walk(ast.parse(source)):
-            if isinstance(node, ast.Attribute) and node.attr == "_password":
-                offenders.append(f"{rel}:{node.lineno}")
-            if isinstance(node, ast.Constant) and node.value == "_password":
-                offenders.append(f"{rel}:{node.lineno}")
+    offenders = [
+        f"{rel}:{line}"
+        for rel, source in secret_guards.application_sources()
+        for line in secret_guards.session_password_reads(rel, source)
+    ]
     assert offenders == [], offenders
+
+
+def test_the_password_attribute_guard_sees_a_read():
+    from pathlib import Path
+
+    assert secret_guards.session_password_reads(
+        Path("engines/credentialed/linux_collector.py"), "x = ssh._password\n"
+    ) == [1]
+    assert (
+        secret_guards.session_password_reads(
+            Path("engines/credentialed/ssh_scanner.py"), "x = self._password\n"
+        )
+        == []
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

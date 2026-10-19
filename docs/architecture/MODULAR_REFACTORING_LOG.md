@@ -582,11 +582,235 @@ failure showed the cause:
 
 Both B1 runs therefore used a scratch copy of the runner that differs only by `-h 127.0.0.1`
 on its two `pg_isready` calls. The image's initdb server does not listen on TCP. Both runs
-completed. The committed runner is unchanged, pending the decision in §7.
+completed. The committed runner was left unchanged in B1 and fixed in `6b81530` (19 Oct 2026, below).
 
 **Left on purpose:** `routers.credentialed` and `routers.traditional_scans` still take `log`
 from `scan_helpers`. It is the same object as `logging.getLogger("ccure.api")`, so one line
 each would detach them, but B1 is the limiter only.
+
+### Before B2: the runner and the probes
+
+The owner approved both outstanding tooling items on 19 Oct 2026, to be committed separately and
+before B2.
+
+**`6b81530`: the runner waits for PostgreSQL over TCP.** `local_guard_tests.sh` now passes
+`-h 127.0.0.1` to both `pg_isready` checks.
+
+- The mechanism, sampled inside a fresh `postgres:18-alpine` container: the image's initdb server
+  listens on the Unix socket only. The samples ran:
+  1. socket ready, TCP down;
+  2. socket down twice during the restart, TCP still down;
+  3. both ready once the real server listened.
+- So a socket check can pass during initdb and fail a moment later. That is the set-up failure
+  seen three times on 16 Oct and traced in B1.
+- Five consecutive runs of `scripts/ci/local_guard_tests.sh tests/repo/test_architecture_check_command.py`
+  completed (5 passed each, 51–56 s) and left no container or network.
+
+**`98f33d1`: the probes are committed.**
+`Backend/scripts/architecture/interface_snapshot.py` and `import_cost.py` (§6, method), with
+`tests/repo/test_measurement_scripts.py`.
+
+- **Reproducible:** two snapshots of the same tree are byte-identical. The snapshot matches B1's
+  scratch probe on every field they share (it adds an OpenAPI digest), and `import_cost`
+  reproduces B1's first-party and total counts for all 14 modules.
+
+| Check                                              | Passed | Failed | Skipped             |
+| -------------------------------------------------- | -----: | -----: | ------------------- |
+| `tests/repo` (the selector's first group)          |    725 |      0 | 1 (`alembic.ini`)   |
+| `tests/security` (its second)                      |    263 |      0 | 0                   |
+| `python3 -I Backend/scripts/architecture/check.py` |      — |      — | all six checks `ok` |
+| Pre-commit, on both commits                        |      — |      — | passed              |
+
+### B2 — engines take a progress sink and a cancellation token
+
+Commit `6986194`, committed in place.
+
+**The change.**
+
+- **`core/engine_ports.py`** declares what an engine takes, as structural protocols with no
+  application import:
+
+  - `ProgressSink`: `start`, `publish`, `publish_sync` and `record`;
+  - `CancelToken`: `is_cancelled` and `raise_if_cancelled`;
+  - `NEVER_CANCELLED`, the token for a run with no scan.
+
+  It is classified as the scan kernel (layer 2), below the engines.
+
+- **The engines take them as arguments instead of a scan id:**
+
+  - `DiscoveryEngine.run(ips, progress, cancel)`;
+  - `PortEngine.run(hosts, progress)`;
+  - `VulnerabilityEngine.run(hosts, progress)`.
+
+  None of them imports `core.scan_control` or `core.redis_client` any more.
+
+- **The implementations stay in orchestration** (`core.scan_control`):
+
+  - `ScanProgress` publishes to `scan_progress:<id>` and writes `scans.options["progress"]`
+    through the same functions as before;
+  - `ScanCancelToken` reads the status through `make_cancel_check` and raises `ScanCancelled`,
+    which every scan task already catches;
+  - `engine_ports(scan_id)` builds both for a scan, or neither when there is no scan id.
+
+  The orchestrator calls it once per phase method, through a lazy import, so importing the
+  orchestrator loads nothing new.
+
+- **The web scanner.** It imported `core.scan_control` only for its own terminal-status settler,
+  which wrote `web_scans` from inside the `scans` capability.
+  - `force_terminal_web_scan_status` and `WEB_TERMINAL_STATUSES` moved to
+    `core/web/scan_status.py`. They are byte-identical and keep the logger name
+    `ccure.scan_control`, so the log lines do not change.
+  - `core.web.tasks`, `core.web.timeout`, `core.tasks` and two web tests import them there.
+  - The web engines already took a `cancel_cb` (crawler, injection, OAST, access control, HTTP
+    methods), so nothing else changed on that side.
+- **Behaviour.**
+  - The checks happen at the same points and the same number of times.
+  - The port and network-check engines still do not poll for cancellation; the tasks check
+    between phases, as before.
+  - The only visible difference is one log line: "Scan `<id>` cancelled — stopping discovery…"
+    is now "scan `<id>` cancelled — …", printed through the token.
+- **Python interfaces changed:**
+
+  - the three engines' `run` signatures;
+  - the import path of the web settler.
+
+  Every caller and test double is updated (`test_port_registration_flow`'s double,
+  `test_fault_injection`, `test_web_scan_stall_recovery`). `test_ci_test_selection` pinned "a
+  change to `core/scan_control.py` selects the web tests", which stopped being true. It now
+  samples the same property on `reporting/web_pdf_generator.py`. HTTP APIs, Celery task names and
+  the schema are unchanged.
+
+**Interfaces: identical.** `interface_snapshot --compare` on `98f33d1` and `6986194` reports
+"interfaces identical": 288 routes, 96 route limits, 36 Celery tasks, the beat schedule and the
+OpenAPI digest. `scripts.openapi.generate --check` exits 0, and the RBAC inventory is current.
+
+**Coupling** (`capability_map`):
+
+| Measure                                    | Before (`98f33d1`) | After (`6986194`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Upward edges                               |                 43 |            **40** |
+| Lateral edges                              |                 74 |                74 |
+| Largest cycle, all / top-level             |            22 / 13 |           22 / 13 |
+| Foreign-table references / writes          |            80 / 17 |       **79** / 17 |
+| Cross-capability imports, top-level / lazy |          462 / 392 |         466 / 386 |
+
+- **Removed:**
+
+  - the three upward edges into `core.scan_control`, from `core.discovery.engine`,
+    `core.web.tasks` and `core.web.timeout`;
+  - the reference from `scans` to `web_scans`.
+
+  The baseline records the removals. `CEILINGS` is lowered to 40 upward edges and 79 foreign
+  references.
+
+- **The cross-capability counts, exactly** (diffed against a worktree of the parent):
+
+  - nine lazy edges went: four engine imports of `core.redis_client`, and five imports of
+    `core.scan_control` (the discovery engine, `core.web.tasks` twice, `core.web.timeout`, and
+    `core.tasks`' import of the moved settler);
+  - three lazy edges came: `core.scan_control → core.redis_client` twice (the Redis side now lives
+    in orchestration), and `core.tasks → core.web.scan_status`;
+  - four top-level edges came: the three engines' imports of `core.engine_ports`, and
+    `core.web.scan_status → db.base`.
+
+  Every added edge points down a layer.
+
+- **The cycle is unchanged, as expected:** §10 expects it to shrink only once B1–B10 are all done.
+
+**Import cost and run-time load.**
+
+- **At import, nothing heavy changed.** `import_cost --compare` shows each engine gaining one
+  first-party module, `core.engine_ports`, and no heavy package: the old imports were lazy, inside
+  `run()`, so they never showed at import time.
+- **The difference is at run time.** The same script runs the discovery engine on `98f33d1`
+  (with a scan id) and on `6986194` (with no orchestrator):
+
+  - before, running it loaded `core.scan_control` and the `Scan` model;
+  - after, it loads neither.
+
+  `tests/scans/test_engine_ports.py` pins this for discovery, the network checks and the port
+  scan. The port scan still loads `core.redis_client`, through `core.nmap.wrapper`'s process lease
+  (the `Lease` port, not B2's).
+
+**Tests.**
+
+| Step                     | Command / targets                                                                                                                                                                                                                   | Passed | Failed | Skipped | Notes                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Characterization, before | `tests/scans/test_engine_progress_and_cancellation.py` on `98f33d1` plus the file                                                                                                                                                   |     10 |      0 |       0 | Written first, against the old code                                                                                                   |
+| Characterization, after  | the same file, unchanged, on B2                                                                                                                                                                                                     |     10 |      0 |       0 | Same frames, counter writes and status-read counts                                                                                    |
+| Focused                  | the characterization file, `test_port_registration_flow`, `test_ot_safety`, `test_tasks`, `test_scan_stall_recovery`, `test_progress`, `tests/web/test_fault_injection.py`, `test_web_scan_stall_recovery`, `test_web_scan_timeout` |     72 |      0 |       0 |                                                                                                                                       |
+| New                      | `tests/scans/test_engine_ports.py`                                                                                                                                                                                                  |     13 |      0 |       0 | The first run failed one test, because the probe script imported the port engine before measuring discovery; corrected                |
+| Mutation                 | the two files, on a scratch worktree with: M1 the after-batch cancel check removed; M2 `import core.scan_control` back in discovery; M3 the port sink not passed; M4 `ScanProgress.record` doing nothing                            |      — |      — |       — | Caught: M1 by 3 tests, M2 by 2, M3 by 1, M4 by 3. M3's first attempt never applied (black had reformatted the line) and was redone    |
+| Targeted groups          | `tests/scans tests/web tests/repo`, uncommitted tree                                                                                                                                                                                |  4,709 |  **1** |       2 | The failure is the stale selector sample above, fixed, then 15 of 15 in `test_ci_test_selection`. Skips: `alembic.ini`, live OSV feed |
+| Architecture             | `check.py`; `capability_map --check`; `openapi.generate --check`; `build_migration_inventory --check`; pre-commit                                                                                                                   |      — |      — |       — | All pass                                                                                                                              |
+| **Full backend suite**   | `scripts/ci/local_guard_tests.sh tests`, on a clean detached worktree of `6986194` (1,927 paths)                                                                                                                                    |  7,911 |  **0** |     211 | 14 min 40 s: B1's 7,880 plus the 31 new tests (8 probe, 10 characterization, 13 engine-port); the same 211 environmental skips        |
+
+The selector named 12 of the 13 groups, so the full suite covers what it asked for.
+
+**Live validation, before and after.** §11 requires live scans for B2.
+
+- **Targets.** There were no standing targets on the VM; `CLAUDE.md`'s target containers date
+  from the Windows host. Disposable targets were built on an internal Docker network,
+  `172.30.250.0/24`, and removed afterwards along with their images:
+  - `.10`, Ubuntu 24.04 with OpenSSH 9.6p1;
+  - `.11`, nginx serving an exposed `.env` and `.git/config` (the `ccure-nuclei-target` shape,
+    with dummy values);
+  - `.12`, Redis 7 with no authentication;
+  - `.13`, PostgreSQL 18;
+  - `.14` and `.15`, empty addresses.
+- **Code and tools.** Each run used `git archive` of the commit, run in the release image
+  (`3a0dde6d4580`), so the image's nmap, Nuclei templates and Scapy apply.
+- **The worker's runtime.** Root, `NET_RAW` and `NET_ADMIN`, the worker's scanner settings, and
+  Celery eager so a whole scan runs in one process. A throwaway PostgreSQL and Redis sat on a
+  second internal network.
+- **The host was excluded.** `172.30.250.1` is the host's address on that bridge. The full scan's
+  targets were listed explicitly, and the cancel scan covered the /24 minus `.1` (253 addresses,
+  as recorded).
+- **Dispatch.** The harness creates and dispatches scans exactly as `POST /scan/host-discovery`
+  does: `create_scan`, the policy snapshot, the options, `run_host_discovery_task.delay`. It
+  records every frame on `scan_progress:*`, then reads back the scan row, its phases, the assets,
+  services and findings.
+- **Production was not touched.** No live database, no production target and no host networking.
+
+| Run                                          | Before (`98f33d1`)                                                                                                                                                                   | After (`6986194`)                                                                   |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Full vulnerability audit of `.10`–`.15`      | complete; 3 phases complete; 4 active hosts, 2 inactive; 4 services with product and version; 7 findings; 13 progress frames; 315 s                                                  | identical in every field except time (325 s)                                        |
+| Stopped mid-discovery (basic, 253 addresses) | stop applied on the first discovery frame (1.9 s in), during the first batch; honoured at the batch boundary; `cancelled`, no phase recorded; 4 frames; settled 9.1 s after the stop | identical; stop applied on the first frame (1.1 s in); settled 9.1 s after the stop |
+
+- **The seven findings:**
+  - Redis without authentication (critical);
+  - the exposed `.env` and `.git/config`: two Nuclei findings and the sensitive-path check;
+  - three HTTP findings (cleartext, missing headers, version disclosure).
+- **What "identical" covers:** the scan rows, phases, assets, services, findings, the task
+  results and every frame's content and order. Wall-clock times are excluded.
+- **The cancel run's stop** is issued when the first discovery frame arrives, the same moment in
+  both runs. Where a stop lands relative to a batch boundary varies with timing, so the identical
+  outcome here is one sample, not a proof. The characterization tests pin the before, during and
+  between-batch cases deterministically.
+
+Two things the first live attempts settled:
+
+- **The scanner's first interface has to be the target network.** With the database network
+  first, the BALANCED and AGGRESSIVE profiles found no host: their raw ARP, ICMP and SYN went out
+  of the wrong interface, and the scan ended `unreachable`. FAST still found two hosts by TCP
+  connect. Production runs with the host's network, where this cannot arise.
+- **The harness queried `scan_phases.phase_number`,** which does not exist. The scan itself had
+  completed; the query was corrected and the run repeated from a fresh database.
+
+**Limitations.**
+
+- **Not exercised live:**
+  - The vulnerability-intelligence database was the throwaway one in both runs, so no CVE was
+    matched either way.
+  - The credentialed path, which B2 did not touch.
+  - The web DAST pipeline. B2 moved only its settler, which `tests/web` covers, including the
+    database-down case.
+- **Kept as scratch, not committed:** the live harness and its driver. See §7.
+- **The engines still load SQLAlchemy** through `core.risk` and `core.utils`. That is B3.
+- **The port engine still loads Redis** through the nmap process lease.
+- **The port and network-check engines take no cancellation token,** because they never polled
+  for cancellation. Adding a check would change when a stop takes effect, which is a behaviour
+  change for its own decision.
 
 ## 7. Decisions awaiting the project owner
 
@@ -600,5 +824,6 @@ each would detach them, but B1 is the limiter only.
 | new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                | S2                                                                 |
 | new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage` | S2b, §4                                                            |
 | new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                      | S2b, §4                                                            |
-| new | `scripts/ci/local_guard_tests.sh`: check PostgreSQL readiness over TCP. Confirmed by a trace during B1, and both B1 runs completed with the TCP check (§6)                                                             | S2b, §4; B1, §6                                                    |
-| new | Commit B1's two measurement probes (interface snapshot; import cost per module) as tooling, so B2–B10 are measured the same way                                                                                        | B1, §6                                                             |
+| new | Commit the live-validation harness and its driver (scratch in B2) as tooling, for the live validations §11 still requires (B3, C2, C3, C6)                                                                             | B2, §6                                                             |
+| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                          | B2, §6                                                             |
+| new | Standing scan targets for the VM. `CLAUDE.md`'s "Test targets" name Windows-era containers that do not exist here; B2 built disposable ones and removed them                                                           | B2, §6                                                             |

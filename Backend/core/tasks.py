@@ -5516,7 +5516,7 @@ def reap_stalled_web_scans() -> dict:
     from datetime import timedelta, timezone
 
     from config import WebScanConfig
-    from core.scan_control import force_terminal_web_scan_status
+    from core.web.scan_status import force_terminal_web_scan_status
 
     # Just above each phase task's hard `time_limit` (recon/audit 2400s,
     # crawl 4200s, detect 8400s), plus grace so the tick and the phase-start

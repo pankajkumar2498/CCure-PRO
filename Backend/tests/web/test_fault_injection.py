@@ -169,7 +169,9 @@ def test_global_timeout_settles_with_redis_down(session, monkeypatch):
 
 # ── 4. PostgreSQL unavailable → force_terminal never raises ──────────────────
 def test_force_terminal_never_raises_when_db_down(monkeypatch):
-    import core.scan_control as SC
+    # The settler lives in core.web.scan_status since B2; it is that module's
+    # SessionLocal it opens, so that is the one to make fail.
+    import core.web.scan_status as SC
 
     # A down database surfaces as the query raising (SessionLocal() itself is
     # lazy and does not connect), so inject a session whose execute() fails.
@@ -277,7 +279,7 @@ def test_cancellation_is_detected_in_every_phase(session, phase):
 # ── RACES: a real terminal result is never overwritten ───────────────────────
 @pytest.mark.parametrize("terminal", ["complete", "failed", "cancelled"])
 def test_watchdog_never_overwrites_a_terminal_result(session, monkeypatch, terminal):
-    from core.scan_control import force_terminal_web_scan_status
+    from core.web.scan_status import force_terminal_web_scan_status
     from core.web import timeout as TO
     from core.web.tasks import _settle_web_scan_failed
 

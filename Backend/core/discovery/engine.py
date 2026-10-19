@@ -45,6 +45,7 @@ import logging
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
+from core.engine_ports import NEVER_CANCELLED, CancelToken, ProgressSink
 from core.discovery.host_identity import resolve_identity
 from core.discovery.profiles import BALANCED, DiscoveryProfile, Technique
 from core.discovery.techniques import (
@@ -222,13 +223,21 @@ class DiscoveryEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, ip_list: list[str], scan_id: str | None = None) -> list[dict]:
+    async def run(
+        self,
+        ip_list: list[str],
+        progress: ProgressSink | None = None,
+        cancel: CancelToken | None = None,
+    ) -> list[dict]:
         """
         Discover all IPs in ip_list using the configured profile.
 
         Args:
-            ip_list: Flat list of IP address strings to probe.
-            scan_id: Optional UUID to publish real-time progress via Redis.
+            ip_list:  Flat list of IP address strings to probe.
+            progress: Where to report progress (live frames and counters).
+                      None reports nothing.
+            cancel:   Polled between batches; ``raise_if_cancelled`` raises the
+                      runner's cancellation exception. None never cancels.
 
         Returns:
             List[dict] — one entry per IP, enriched with discovery data.
@@ -257,40 +266,33 @@ class DiscoveryEngine:
             self.has_priv,
         )
 
-        from core.redis_client import publish_progress
-        from core.scan_control import (
-            make_cancel_check,
-            raise_if_cancelled,
-            record_progress,
-            start_progress,
-        )
-
         total_ips = len(scan_order)
         discovered = 0
+        cancel = cancel or NEVER_CANCELLED
 
         # Cancellation is cooperative: the host scanner worker uses a threads
         # pool, where Celery's revoke(terminate=True) cannot kill a running
         # thread. Polling between batches bounds how long a cancelled scan keeps
         # sending packets to one batch, without adding a check to the hot path.
-        cancel_check = make_cancel_check(scan_id)
-        raise_if_cancelled(scan_id)
-        start_progress(scan_id, total_ips)
+        cancel.raise_if_cancelled()
+        if progress is not None:
+            progress.start(total_ips)
 
         # ── Process in batches ─────────────────────────────────────────────
         for i in range(0, len(scan_order), batch_sz):
-            if cancel_check():
+            if cancel.is_cancelled():
                 log.info(
-                    "Scan %s cancelled — stopping discovery after %d/%d IPs",
-                    scan_id,
+                    "%r cancelled — stopping discovery after %d/%d IPs",
+                    cancel,
                     discovered,
                     total_ips,
                 )
-                raise_if_cancelled(scan_id)
+                cancel.raise_if_cancelled()
 
             batch = scan_order[i : i + batch_sz]
 
             monitor_task = None
-            if scan_id:
+            if progress is not None:
 
                 async def _live_publisher():
                     last_active_count = sum(
@@ -319,8 +321,7 @@ class DiscoveryEngine:
                         ]
                         if len(active_hosts_snapshot) > last_active_count:
                             last_active_count = len(active_hosts_snapshot)
-                            await publish_progress(
-                                scan_id,
+                            await progress.publish(
                                 1,
                                 {
                                     "discovered": discovered
@@ -353,7 +354,7 @@ class DiscoveryEngine:
             # Check again on the way out of the batch. A single-batch scan would
             # otherwise only ever be tested before any probing began, so a stop
             # issued a moment later did no work-avoidance at all.
-            raise_if_cancelled(scan_id)
+            cancel.raise_if_cancelled()
 
             discovered += len(batch)
             # Final batch publish — NBNS has now completed so netbios_names is populated
@@ -374,9 +375,8 @@ class DiscoveryEngine:
                 for r in results.values()
                 if r["is_active"]
             ]
-            if scan_id:
-                await publish_progress(
-                    scan_id,
+            if progress is not None:
+                await progress.publish(
                     1,
                     {
                         "discovered": discovered,
@@ -390,8 +390,7 @@ class DiscoveryEngine:
                 # Persisting the same counters is what makes the REST progress
                 # endpoint report anything other than 0%.
                 await asyncio.to_thread(
-                    record_progress,
-                    scan_id,
+                    progress.record,
                     discovered,
                     len(active_hosts_snapshot),
                 )
@@ -412,7 +411,7 @@ class DiscoveryEngine:
         # Enrichment (SNMP/mDNS/NetBIOS/PTR) is the longest tail of a discovery
         # run. Stopping before it starts is the difference between a cancel
         # taking effect now and taking effect several seconds from now.
-        raise_if_cancelled(scan_id)
+        cancel.raise_if_cancelled()
 
         # ── Post-scan enrichment (when enrichment enabled in profile) ──────
         if self.profile.enrichment:
@@ -463,7 +462,7 @@ class DiscoveryEngine:
         # ── Final enrichment publish: send complete hostname/vendor data ─────
         # This fires once after all probing + enrichment, ensuring the frontend
         # receives updated hostnames (netbios/mdns resolved) for every host.
-        if scan_id:
+        if progress is not None:
 
             def _extract_hostname(r):
                 return (
@@ -485,8 +484,7 @@ class DiscoveryEngine:
                 for r in results.values()
                 if r["is_active"]
             ]
-            await publish_progress(
-                scan_id,
+            await progress.publish(
                 1,
                 {
                     "discovered": total_ips,

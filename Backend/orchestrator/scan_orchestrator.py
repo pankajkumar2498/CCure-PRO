@@ -53,6 +53,20 @@ if PDF_AVAILABLE:
 log = logging.getLogger("ccure.orchestrator")
 
 
+def _engine_ports(scan_id: str | None):
+    """
+    The progress sink and cancellation token for the engines of one scan.
+
+    The engines take these as arguments and know nothing of the scan record or
+    the message broker (B2); the implementations are the scans capability's,
+    in core.scan_control. Imported here rather than at module level so that
+    importing the orchestrator loads no more than it did before.
+    """
+    from core.scan_control import engine_ports
+
+    return engine_ports(scan_id)
+
+
 class ScanOrchestrator:
     """
     Single entry-point for all scan types.
@@ -295,7 +309,10 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            disc_results: list[dict] = await discovery.run(all_ips, scan_id=scan_id)
+            progress, cancel = _engine_ports(scan_id)
+            disc_results: list[dict] = await discovery.run(
+                all_ips, progress=progress, cancel=cancel
+            )
             duration = time.time() - t0
 
             # Trigger classification and OS inference on the discovered hosts
@@ -436,6 +453,9 @@ class ScanOrchestrator:
         t0 = time.time()
         fallback_targets_count = 0
         fallback_active_hosts = 0
+        # One sink and one token for every engine this phase runs: the FAST and
+        # BALANCED passes report into, and are cancelled through, the same scan.
+        progress, cancel = _engine_ports(scan_id)
 
         if intensity == "light":
             # ── LIGHT: FAST only ─────────────────────────────────────────────
@@ -446,7 +466,9 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            raw_results: list[dict] = await engine.run(all_ips, scan_id=scan_id)
+            raw_results: list[dict] = await engine.run(
+                all_ips, progress=progress, cancel=cancel
+            )
             discovery_profile_label = "FAST"
 
         elif intensity == "normal":
@@ -458,7 +480,9 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            fast_raw: list[dict] = await fast_engine.run(all_ips, scan_id=scan_id)
+            fast_raw: list[dict] = await fast_engine.run(
+                all_ips, progress=progress, cancel=cancel
+            )
 
             # Determine which IPs are still inactive after FAST pass
             fast_by_ip: dict[str, dict] = {r["ip"]: r for r in fast_raw}
@@ -477,7 +501,7 @@ class ScanOrchestrator:
                     rate_limit=rate_limit,
                 )
                 balanced_raw: list[dict] = await balanced_engine.run(
-                    unresolved_ips, scan_id=scan_id
+                    unresolved_ips, progress=progress, cancel=cancel
                 )
                 balanced_by_ip: dict[str, dict] = {r["ip"]: r for r in balanced_raw}
                 fallback_active_hosts = sum(
@@ -501,7 +525,7 @@ class ScanOrchestrator:
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
             )
-            raw_results = await engine.run(all_ips, scan_id=scan_id)
+            raw_results = await engine.run(all_ips, progress=progress, cancel=cancel)
             discovery_profile_label = "BALANCED"
 
         duration = time.time() - t0
@@ -745,7 +769,10 @@ class ScanOrchestrator:
             exclude_ot_from_nmap=exclude_ot_from_nmap,
         )
         if active_for_scan:
-            await port_engine.run(active_for_scan, scan_id=scan_id)  # mutates in-place
+            progress, _ = _engine_ports(scan_id)
+            await port_engine.run(
+                active_for_scan, progress=progress
+            )  # mutates in-place
             self._apply_os_inference(active_for_scan, ot_enrichment=True)
         if skipped_hosts:
             self._apply_os_inference(skipped_hosts, ot_enrichment=False)
@@ -886,7 +913,8 @@ class ScanOrchestrator:
         # reliable CVE correlation.
         self._nmap_pre_enrich(active_hosts, exclude_ot_from_nmap=exclude_ot_from_nmap)
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
-        vuln_engine.run(active_hosts, scan_id=scan_id)
+        progress, _ = _engine_ports(scan_id)
+        vuln_engine.run(active_hosts, progress=progress)
         self._apply_os_inference(active_hosts, ot_enrichment=True)
 
         # ── Enrich asset registry with vulnerability findings ───────────────

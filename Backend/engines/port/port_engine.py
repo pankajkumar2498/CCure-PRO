@@ -36,6 +36,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
+from core.engine_ports import ProgressSink
 from core.constants import (
     PORT_DB,
     SCAN_PORTS_OT,
@@ -198,14 +199,16 @@ class PortEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, hosts: list[dict], scan_id: str | None = None) -> list[dict]:
+    async def run(
+        self, hosts: list[dict], progress: ProgressSink | None = None
+    ) -> list[dict]:
         """
         Scan all active hosts for open ports and services.
 
         Args:
-            hosts: List of host dicts from Phase 1 (DiscoveryEngine).
-                   Only hosts with is_active=True are scanned.
-            scan_id: Optional UUID to publish real-time progress.
+            hosts:    List of host dicts from Phase 1 (DiscoveryEngine).
+                      Only hosts with is_active=True are scanned.
+            progress: Where to report progress; None reports nothing.
 
         Returns:
             Same list, each active host enriched with:
@@ -223,13 +226,13 @@ class PortEngine:
             return hosts
 
         if NMAP_AVAILABLE:
-            await self._scan_with_nmap(active, scan_id=scan_id)
+            await self._scan_with_nmap(active, progress=progress)
         else:
             log.warning(
                 "nmap not available — falling back to async TCP connect. "
                 "Install nmap for faster, more accurate port scanning."
             )
-            await self._scan_fallback(active, scan_id=scan_id)
+            await self._scan_fallback(active)
 
         # After port scanning, perform a lightweight SNMP check on active hosts
         await self._lightweight_snmp_check(active)
@@ -240,7 +243,7 @@ class PortEngine:
         return hosts
 
     async def _scan_with_nmap(
-        self, hosts: list[dict], scan_id: str | None = None
+        self, hosts: list[dict], progress: ProgressSink | None = None
     ) -> None:
         """
         Use NmapScanner for port scanning.
@@ -276,8 +279,6 @@ class PortEngine:
         )
         t0 = time.time()
 
-        from core.redis_client import publish_progress
-
         if self.custom_ports or self.intensity != ScanIntensity.DEEP:
             # ──────────────────────────────────────────────────────────
             # LIGHT / NORMAL / Custom Ports: single batch call — port states + service info
@@ -287,9 +288,9 @@ class PortEngine:
             include_svc = (self.intensity == ScanIntensity.NORMAL) or bool(
                 self.custom_ports
             )
-            if scan_id:
-                await publish_progress(
-                    scan_id, 2, {"total_hosts": len(ips), "status": "running"}
+            if progress is not None:
+                await progress.publish(
+                    2, {"total_hosts": len(ips), "status": "running"}
                 )
 
             nmap_results: dict[str, NmapScanResult] = await loop.run_in_executor(
@@ -318,9 +319,8 @@ class PortEngine:
                     host, nmap_results[ip], service_detection=include_svc
                 )
 
-            if scan_id:
-                await publish_progress(
-                    scan_id,
+            if progress is not None:
+                await progress.publish(
                     2,
                     {
                         "scanned_hosts": len(ips),
@@ -332,9 +332,8 @@ class PortEngine:
             # ──────────────────────────────────────────────────────────
             # DEEP: two-pass — full port sweep then targeted service detect
             # ──────────────────────────────────────────────────────────
-            if scan_id:
-                await publish_progress(
-                    scan_id,
+            if progress is not None:
+                await progress.publish(
                     2,
                     {
                         "phase_detail": "port_sweep",
@@ -357,14 +356,14 @@ class PortEngine:
                 "Nmap DEEP port scan done in %.1fs (pass 1/2)",
                 time.time() - t0,
             )
-            await self._enrich_services(hosts, nmap_results, loop, scan_id=scan_id)
+            await self._enrich_services(hosts, nmap_results, loop, progress=progress)
 
     async def _enrich_services(
         self,
         hosts: list[dict],
         initial_results: dict[str, NmapScanResult],
         loop: asyncio.AbstractEventLoop,
-        scan_id: str | None = None,
+        progress: ProgressSink | None = None,
     ) -> None:
         """
         Run targeted service/version detection per host on its open ports.
@@ -377,12 +376,10 @@ class PortEngine:
         """
         t0 = time.time()
         n_workers = max(1, min(len(hosts), 8))  # was 4
-        from core.redis_client import publish_progress
 
-        if scan_id:
+        if progress is not None:
             asyncio.create_task(
-                publish_progress(
-                    scan_id,
+                progress.publish(
                     2,
                     {
                         "phase_detail": "service_detection",
@@ -409,10 +406,9 @@ class PortEngine:
             svc_result = self._nmap.detect_services(ip, ports=open_port_nums)
             self._apply_nmap_ports(host, svc_result, service_detection=True)
             completed += 1
-            if scan_id:
+            if progress is not None:
                 asyncio.run_coroutine_threadsafe(
-                    publish_progress(
-                        scan_id,
+                    progress.publish(
                         2,
                         {
                             "phase_detail": "service_detection",
@@ -433,10 +429,9 @@ class PortEngine:
                 if isinstance(res, Exception):
                     log.debug("Service enrichment error: %s", res)
 
-        if scan_id:
+        if progress is not None:
             asyncio.create_task(
-                publish_progress(
-                    scan_id,
+                progress.publish(
                     2,
                     {
                         "phase_detail": "service_detection",
@@ -640,9 +635,7 @@ class PortEngine:
 
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 
-    async def _scan_fallback(
-        self, hosts: list[dict], scan_id: str | None = None
-    ) -> None:
+    async def _scan_fallback(self, hosts: list[dict]) -> None:
         """
         Original async TCP connect + Scapy UDP implementation.
         Used when nmap is not installed.

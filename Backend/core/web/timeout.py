@@ -190,7 +190,10 @@ def enforce_global_timeout(
     if timeout <= 0:
         return None
 
-    from core.scan_control import WEB_TERMINAL_STATUSES, force_terminal_web_scan_status
+    from core.web.scan_status import (
+        WEB_TERMINAL_STATUSES,
+        force_terminal_web_scan_status,
+    )
 
     row = _read_scan_row(web_scan_id)
     if not row:

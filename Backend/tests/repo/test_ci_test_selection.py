@@ -107,7 +107,10 @@ def test_groups_whose_tests_import_a_module_are_selected_with_it():
     assert "auth" in _groups("Backend/core/rate_limiter.py")["groups"]
     assert "rbac" in _groups("Backend/scans/progress.py")["groups"]
     assert "scans" in _groups("Backend/ccure_platform/api.py")["groups"]
-    assert "web" in _groups("Backend/core/scan_control.py")["groups"]
+    # The web tests imported core/scan_control.py for the web-scan settler
+    # until B2 moved it into core/web/scan_status.py; this is the same
+    # property on a module they still import from another group.
+    assert "web" in _groups("Backend/reporting/web_pdf_generator.py")["groups"]
     assert "audit" in _groups("Backend/core/upload_guard.py")["groups"]
 
 

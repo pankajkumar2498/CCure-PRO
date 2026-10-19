@@ -171,6 +171,10 @@ PREFIXES: dict[str, str] = {
     "core.models": "scan_kernel",
     "core.mac": "scan_kernel",
     "core.risk": "scan_kernel",
+    # The progress and cancellation interfaces every scan engine is handed
+    # (B2). Below the engines so they can depend on it; the implementations
+    # live with the scans capability (core.scan_control).
+    "core.engine_ports": "scan_kernel",
     # Ambiguous: the one seam through which Audit admits targets against the
     # platform-owned scan scope, used by scans, credentialed audit, scheduling
     # and policy alike — a kernel service, not the scans capability's own.
@@ -757,10 +761,12 @@ def measure(root: Path = BACKEND_ROOT) -> dict:
 CEILINGS = {
     "largest_cycle": 22,
     "largest_cycle_top_level": 13,
-    # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7.
-    "upward_edges": 43,
+    # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
+    # B2 (engine ports, the web-scan settler in core.web) removed 3.
+    "upward_edges": 40,
     "lateral_edges": 74,
-    "foreign_table_references": 80,
+    # 80 when introduced; B2 moved the web_scans settler out of scans.
+    "foreign_table_references": 79,
     "foreign_table_writes": 17,
 }
 

@@ -89,7 +89,7 @@ def _settle_web_scan_failed(db, web_scan_id: str, phase: str, reason: str) -> No
     rather than waiting for the next poll.
     """
     reason = (reason or "")[:1000]
-    from core.scan_control import WEB_TERMINAL_STATUSES
+    from core.web.scan_status import WEB_TERMINAL_STATUSES
 
     settled = False
     changed = False
@@ -124,7 +124,7 @@ def _settle_web_scan_failed(db, web_scan_id: str, phase: str, reason: str) -> No
         except Exception:
             pass
         try:
-            from core.scan_control import force_terminal_web_scan_status
+            from core.web.scan_status import force_terminal_web_scan_status
 
             # force_terminal is itself a no-op on an already-terminal scan, so
             # the no-overwrite guarantee holds on the fallback path too.

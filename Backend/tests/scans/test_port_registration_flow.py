@@ -67,7 +67,7 @@ async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls
     # Mock PortEngine to run without modifying open_ports (simulating a scan that misses port 502)
     mock_port_engine = MagicMock()
 
-    async def mock_run(hosts, scan_id=None):
+    async def mock_run(hosts, progress=None):
         for h in hosts:
             # Overwrite open_ports to represent a scan that did not cover port 502
             h["open_ports"] = []

@@ -313,10 +313,6 @@
    "vulnerability_definitions"
   ],
   [
-   "scans",
-   "web_scans"
-  ],
-  [
    "scheduling",
    "compliance_credentials"
   ],
@@ -1067,10 +1063,6 @@
    "engines.vulnerability.plugin_selector"
   ],
   [
-   "core.discovery.engine",
-   "core.scan_control"
-  ],
-  [
    "core.discovery.techniques.arp",
    "core.oui_lookup"
   ],
@@ -1105,14 +1097,6 @@
   [
    "core.topology.engine",
    "db.models.scans:Scan"
-  ],
-  [
-   "core.web.tasks",
-   "core.scan_control"
-  ],
-  [
-   "core.web.timeout",
-   "core.scan_control"
   ],
   [
    "engines.port.port_engine",

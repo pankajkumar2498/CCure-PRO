@@ -442,20 +442,42 @@ before it is deployed.
 
 The owner approved Phase B on 16 Oct 2026. It runs one change per commit, follows §10's B1–B10
 order, and stops for review after each step. Every step is measured on its parent commit and on
-its own commit, with the same probes:
+its own commit, with the same three probes. The first two have been committed tools since
+19 Oct 2026. B1 used scratch copies of them, whose figures they reproduce exactly. Run from
+`Backend/`:
 
-- **Interfaces:**
-  - `app.routes`, each with its endpoint's module and name;
+```bash
+python -m scripts.architecture.interface_snapshot > before.json        # interfaces
+python -m scripts.architecture.import_cost --json --watch <module> MOD... > cost-before.json
+python -m scripts.architecture.capability_map                          # coupling
+# ...make the change, then the same three into after files, and:
+python -m scripts.architecture.interface_snapshot --compare before.json after.json
+python -m scripts.architecture.import_cost --compare cost-before.json cost-after.json
+```
+
+- **Interfaces** (`scripts/architecture/interface_snapshot.py`):
+
+  - every route, with its methods, path and the module and name of its handler;
   - `Limiter._route_limits`, the route-limit registry, keyed by route function;
   - which modules hold the canonical limiter object;
   - Celery's registered task names, after loading every task module;
   - the beat schedule;
-  - `openapi.json`, through `--check` and the pre-commit hook.
-- **Import cost:** each changed module imported in a fresh interpreter, counting first-party
-  modules, all modules, and whether Scapy, python-nmap, ReportLab, paramiko, impacket, sslyze,
-  openpyxl or python-docx loaded.
+  - a SHA-256 of the OpenAPI document the application generates. `openapi.json` is also checked
+    by `scripts.openapi.generate --check` and the pre-commit hook.
+
+  `--compare` exits 1 and names each difference. The snapshot is sorted and carries no
+  timestamp, so two runs over the same code are byte-identical.
+
+- **Import cost** (`scripts/architecture/import_cost.py`): each named module imported in a fresh
+  interpreter, counting first-party modules and all modules, the heavy packages that loaded
+  (`HEAVY`: the scan, report and browser toolchains, the database and broker clients, the web
+  framework), and whether each `--watch` module loaded. It sees what an import loads, not what a
+  call loads: a lazy import inside a function counts only once that function runs.
 - **Coupling:** `python -m scripts.architecture.capability_map`, which reports the cycle, upward
-  and lateral edges, foreign-table access and load profiles.
+  and lateral edges, foreign-table access and load profiles, statically.
+
+Both scripts set `SKIP_DOTENV_LOAD=1`, connect to nothing and change nothing.
+`tests/repo/test_measurement_scripts.py` pins what they measure.
 
 ### B1 — the rate limiter from `core.rate_limiter`
 

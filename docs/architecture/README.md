@@ -54,6 +54,11 @@ edits Audit's code.
   module READMEs (`Backend/ccure_policy/README.md`, `Backend/ccure_rank/README.md`).
 - Layering and import cycles: `Backend/scripts/architecture/layer_rules.py`
   (`python -m scripts.architecture.import_graph --violations`).
+- Coupling between Audit's capabilities: `Backend/scripts/architecture/capability_map.py`, a
+  ratchet in the `architecture-guards` pre-commit hook. A refactoring step is measured before and
+  after with `interface_snapshot.py` (routes, limits, Celery tasks, beat, OpenAPI) and
+  `import_cost.py` (what importing a module loads), beside it
+  ([refactoring log](MODULAR_REFACTORING_LOG.md) §6).
 - Identity boundary and token signing: `tests/repo/test_identity_boundary.py`,
   `tests/repo/test_token_guardrails.py`.
 - Frontend: one application, one folder per product (`Frontend/modules.config.js`,

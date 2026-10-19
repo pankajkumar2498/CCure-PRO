@@ -73,11 +73,18 @@ docker run -d --name "$PG" --network "$NET" \
   -e POSTGRES_DB="$DB_NAME" -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD="$DB_PASSWORD" \
   postgres:18-alpine >/dev/null
 docker run -d --name "$REDIS" --network "$NET" redis:7-alpine >/dev/null
+# Readiness is checked over TCP, never the Unix socket. The image's entrypoint
+# runs initdb, starts a temporary server with listen_addresses='' (socket
+# only), creates the database and user, stops it, then starts the real server.
+# A socket check therefore answers "ready" during initdb, and the check after
+# the loop could land in the gap before the real server listened: the run then
+# ended after "starting throwaway PostgreSQL" with no other output (traced on
+# 16 Oct 2026). Only the real server listens on TCP.
 for _ in $(seq 1 60); do
-  docker exec "$PG" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
+  docker exec "$PG" pg_isready -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$PG" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
+docker exec "$PG" pg_isready -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" >/dev/null
 
 run_in_image() {
   docker run --rm --init --network "$NET" --user 1000:1000 \

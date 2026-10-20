@@ -764,8 +764,9 @@ CEILINGS = {
     "largest_cycle": 22,
     "largest_cycle_top_level": 13,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
-    # B2 (engine ports, the web-scan settler in core.web) removed 3.
-    "upward_edges": 40,
+    # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
+    # network checks register their plugins with the check kernel) removed 2.
+    "upward_edges": 38,
     "lateral_edges": 74,
     # 80 when introduced; B2 moved the web_scans settler out of scans.
     "foreign_table_references": 79,

@@ -1030,14 +1030,6 @@
    "db.models.compliance:ComplianceTenantFramework"
   ],
   [
-   "core.checks.legacy_plugins",
-   "engines.vulnerability"
-  ],
-  [
-   "core.checks.legacy_plugins",
-   "engines.vulnerability.plugin_selector"
-  ],
-  [
    "core.discovery.techniques.arp",
    "core.oui_lookup"
   ],

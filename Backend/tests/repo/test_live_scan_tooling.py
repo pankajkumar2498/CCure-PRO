@@ -15,6 +15,8 @@ drift silently:
   ``targets.sh up`` replaces a target holding any other;
 * the harness dispatches a scan with exactly the keyword arguments the
   host-discovery route uses, and stops one the way the stop route does;
+* the harness points Scapy at the targets' network itself, before any scan,
+  and refuses when no interface holds the scanner's address;
 * the harness's queries run against the real schema (B2's first run queried a
   column that does not exist);
 * the comparison names every difference except time, and tolerates only the
@@ -262,10 +264,11 @@ def test_the_scripts_create_only_internal_networks_and_exclude_the_host():
                 r"\s(-p|--publish)\s|--network[= ]host|--net[= ]host", command
             ), command
     assert 'CCURE_LIVE_EXCLUDE="$VALIDATION_HOST_ADDRESS"' in live
-    # The scanner joins the targets' network first, as the worker's host network
-    # would be its first interface (with the database network first, raw
-    # discovery finds nothing).
+    # The scanner's address on the targets' network, which the harness uses to
+    # find the interface Scapy must send from: Docker's attach order, which
+    # Scapy would otherwise follow, is not guaranteed (B5).
     assert '--network "$VALIDATION_NETWORK" --ip "$VALIDATION_SCANNER_ADDRESS"' in live
+    assert 'CCURE_LIVE_SCANNER_ADDRESS="$VALIDATION_SCANNER_ADDRESS"' in live
     assert 'git -C "$REPO" archive "$COMMIT"' in live
 
 
@@ -310,6 +313,57 @@ def test_the_harness_refuses_a_target_list_holding_the_host(monkeypatch):
     monkeypatch.setenv("CCURE_LIVE_EXCLUDE", "172.30.250.1")
     with pytest.raises(SystemExit, match="excluded host address"):
         harness.main("refused")
+
+
+def test_the_scanner_interface_is_the_one_holding_its_address():
+    harness = _load("live_scan_harness")
+    seen = [("lo", "127.0.0.1"), ("eth0", "172.19.0.2"), ("eth1", "172.30.250.5")]
+    assert harness.interface_holding("172.30.250.5", seen) == "eth1"
+    for address, interfaces, why in (
+        ("", seen, "not set"),
+        ("172.30.250.5", seen[:2], "0 interfaces"),
+        ("172.30.250.5", [*seen, ("eth2", "172.30.250.5")], "2 interfaces"),
+    ):
+        with pytest.raises(SystemExit, match=why):
+            harness.interface_holding(address, interfaces)
+
+
+def test_scapy_is_pointed_at_the_targets_network(monkeypatch):
+    """The order B5 failed in: the database network attached first."""
+    import types
+
+    import scapy.all
+
+    harness = _load("live_scan_harness")
+    fake_conf = types.SimpleNamespace(iface="eth0")
+    addresses = {"lo": "127.0.0.1", "eth0": "172.19.0.2", "eth1": "172.30.250.5"}
+    monkeypatch.setattr(scapy.all, "conf", fake_conf)
+    monkeypatch.setattr(scapy.all, "get_if_list", lambda: list(addresses))
+    monkeypatch.setattr(scapy.all, "get_if_addr", lambda name: addresses[name])
+    assert harness.pin_scapy_interface("172.30.250.5") == {
+        "pinned": "eth1",
+        "address": "172.30.250.5",
+        "scapy_default": "eth0",
+    }
+    assert fake_conf.iface == "eth1"
+
+
+@pytest.mark.parametrize("scanner", ["", "192.0.2.77"])
+def test_the_harness_refuses_before_anything_when_the_interface_is_unknown(
+    monkeypatch, scanner
+):
+    harness = _load("live_scan_harness")
+    monkeypatch.setenv("CCURE_LIVE_TARGETS", "172.30.250.10")
+    monkeypatch.setenv("CCURE_LIVE_SWEEP", "172.30.250.0/24")
+    monkeypatch.setenv("CCURE_LIVE_EXCLUDE", "172.30.250.1")
+    monkeypatch.setenv("CCURE_LIVE_SCANNER_ADDRESS", scanner)
+
+    def created(*_args):
+        raise AssertionError("an identity was created before the interface was known")
+
+    monkeypatch.setattr(harness, "make_identity", created)
+    with pytest.raises(SystemExit, match="refusing"):
+        harness.main("no-interface")
 
 
 def test_the_harness_reads_back_against_the_real_schema(db_session):

@@ -21,8 +21,20 @@ written to ``/out/<label>.json``; ``compare_live_scans.py`` compares two.
 
 Configuration comes from the environment, set by live_scan.sh from
 targets.env: CCURE_LIVE_TARGETS (comma-separated addresses), CCURE_LIVE_SWEEP
-(a range) and CCURE_LIVE_EXCLUDE (the host's own bridge address, always
-excluded). Nothing here holds a secret.
+(a range), CCURE_LIVE_EXCLUDE (the host's own bridge address, always excluded)
+and CCURE_LIVE_SCANNER_ADDRESS (the scanner's address on the targets' network).
+Nothing here holds a secret.
+
+Scapy's interface is set, not inferred. Discovery's raw ARP leaves by
+``scapy.conf.iface``. On the worker's host network that is the interface of the
+default route, the one facing the targets. The scanner container has no default
+route (both its networks are internal), so Scapy takes the interface of the
+broadest route instead: the multicast route every interface carries, listed in
+the order Docker attached them. Docker does not guarantee that order, and with
+the database network attached first discovery found no host (B5, refactoring
+log §6). So ``main()`` sets ``conf.iface`` to the interface holding
+CCURE_LIVE_SCANNER_ADDRESS before any scan, and refuses if none holds it. The
+choice, and what Scapy would have chosen, are recorded in the result.
 
 Importing this module runs nothing; ``main()`` does the work.
 ``tests/repo/test_live_scan_tooling.py`` exercises its parts against the test
@@ -46,6 +58,49 @@ def _config() -> dict:
         ],
         "sweep": os.environ.get("CCURE_LIVE_SWEEP", ""),
         "exclude": os.environ.get("CCURE_LIVE_EXCLUDE", ""),
+        "scanner": os.environ.get("CCURE_LIVE_SCANNER_ADDRESS", ""),
+    }
+
+
+def interface_holding(address: str, interfaces: list[tuple[str, str]]) -> str:
+    """
+    The one interface, of ``(name, address)`` pairs, that holds *address*.
+
+    Raises ``SystemExit`` when the address is unset, held by no interface, or
+    held by several: scanning from a guessed interface records a run that may
+    not see its targets.
+    """
+    if not address:
+        raise SystemExit(
+            "refusing: CCURE_LIVE_SCANNER_ADDRESS is not set, so the scanner's "
+            "interface on the targets' network cannot be found"
+        )
+    names = sorted(name for name, held in interfaces if held == address)
+    if len(names) != 1:
+        raise SystemExit(
+            f"refusing: {len(names)} interfaces hold the scanner's address "
+            f"{address} ({names}); interfaces seen: {sorted(interfaces)}"
+        )
+    return names[0]
+
+
+def pin_scapy_interface(address: str) -> dict:
+    """Point Scapy's layer-2 traffic at the targets' network; report what changed."""
+    from scapy.all import conf, get_if_addr, get_if_list
+
+    default = getattr(conf.iface, "name", str(conf.iface))
+    interfaces = []
+    for name in get_if_list():
+        try:
+            interfaces.append((name, get_if_addr(name)))
+        except Exception:  # noqa: BLE001 - an interface without an address
+            continue
+    chosen = interface_holding(address, interfaces)
+    conf.iface = chosen
+    return {
+        "pinned": getattr(conf.iface, "name", str(conf.iface)),
+        "address": address,
+        "scapy_default": default,
     }
 
 
@@ -331,10 +386,11 @@ def main(label: str) -> dict:
         )
     if cfg["exclude"] in cfg["targets"]:
         raise SystemExit("refusing: the excluded host address is in the target list")
+    interface = pin_scapy_interface(cfg["scanner"])
 
     org_id, user_id = make_identity(label)
     recorder = FrameRecorder()
-    result = {"label": label, "config": cfg}
+    result = {"label": label, "config": cfg, "interface": interface}
 
     scan_id, kwargs, task = dispatch(
         org_id, user_id, cfg["targets"], "vulnerability_audit", cfg["exclude"]

@@ -15,9 +15,11 @@
 #   * gives it a throwaway PostgreSQL 18 and Redis 7 on a second internal
 #     network created for this run, bootstrapped as CI does, and removes them,
 #     the network and the code copy on exit;
-#   * connects the scanner to the targets' network first: Scapy's raw ARP, ICMP
-#     and SYN leave by the default interface, as on the worker's host network
-#     (with the database network first, the raw profiles find no host);
+#   * attaches the scanner to the targets' network and the database network.
+#     Docker does not guarantee their order, and with no default route Scapy's
+#     raw ARP would leave by whichever was attached first, so the harness sets
+#     Scapy's interface to the one holding the scanner's address
+#     (CCURE_LIVE_SCANNER_ADDRESS) and refuses if none does;
 #   * excludes VALIDATION_HOST_ADDRESS, the VM's own address on the bridge,
 #     from every scan.
 #   It never uses the host network, the live database, a production target or
@@ -86,6 +88,7 @@ ENVS=(
   -e CCURE_BROWSER_CHANNEL=chrome -e SCANNER_RUNTIME=container
   -e CCURE_LIVE_TARGETS="$TARGETS" -e CCURE_LIVE_SWEEP="$VALIDATION_SUBNET"
   -e CCURE_LIVE_EXCLUDE="$VALIDATION_HOST_ADDRESS"
+  -e CCURE_LIVE_SCANNER_ADDRESS="$VALIDATION_SCANNER_ADDRESS"
 )
 
 echo "bootstrapping the schema and catalogue"

@@ -92,10 +92,21 @@ scripts/validation/targets.sh down                    # when finished
 - **What it runs against:** a throwaway PostgreSQL 18 and Redis 7, on a second
   internal network made for that run. Their schema and catalogue are
   bootstrapped as CI does.
-- **Network order.** The scanner joins the targets' network first. Scapy's raw
-  ARP, ICMP and SYN leave by the default interface, as they do on the worker's
-  host network. With the database network first, the BALANCED and AGGRESSIVE
-  discovery profiles find no host at all (measured during B2).
+- **Scapy's interface is set, not inferred.** Discovery's raw ARP leaves by
+  Scapy's default interface.
+  - **Production.** On the worker's host network that is the interface of the
+    default route, the one facing the targets.
+  - **The scanner container.** It has no default route, so Scapy takes the
+    interface whose multicast route it lists first, which is whichever network
+    Docker attached first. Docker does not guarantee that order. With the
+    database network first, ARP gets no reply and discovery finds no host (B2,
+    B5).
+  - **What the harness does.** Before any scan it sets Scapy's interface to the
+    one holding the scanner's address on the targets' network
+    (`CCURE_LIVE_SCANNER_ADDRESS`, `.5`), and refuses to run if no interface
+    holds it.
+  - **What is recorded.** The result's `interface` says which interface was
+    used (`pinned`) and which Scapy would have used (`scapy_default`).
 - **Clean-up.** The run removes its containers, its network and its code copy,
   whatever the outcome.
 
@@ -198,16 +209,14 @@ Before reading the first as a regression, repeat the runs in alternation
   comparison tolerates the first two and prints them. The settle time is
   wall-clock and is not compared at all.
 
-**A run can also fail outright.** This is a defect in the tooling, not variation,
-and B5 found it (refactoring log §6).
+**A run used to fail outright now and then.** B5 found it (refactoring log §6).
 
-- **The symptom.** The full audit ends `unreachable` with no host found, and the
-  stopped sweep finds only a few hosts.
-- **The cause.** `live_scan.sh` relies on Docker making the targets' network the
-  scanner's `eth0`, and Docker does not guarantee it: 1 of 12 trials put the
-  database network there. Scapy's raw ARP then leaves by the wrong interface.
-- **What to do.** Until the script enforces the order (log §7), discard such a
-  run and repeat it. Do not compare it.
+- **The symptom.** The full audit ended `unreachable` with no host found.
+- **The cause.** Scapy sent ARP from the database network whenever Docker
+  attached that network first.
+- **Fixed.** The harness now sets Scapy's interface itself (above).
+- **If a run ends `unreachable` again,** read its `interface` record before
+  anything else.
 
 ## Limits
 

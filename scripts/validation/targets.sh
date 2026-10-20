@@ -12,7 +12,9 @@
 # on the bridge (VALIDATION_HOST_ADDRESS); that address is the VM itself, and
 # live_scan.sh excludes it from every scan.
 #
-# `up` is idempotent: running targets are left alone and missing ones started.
+# `up` is idempotent: a running target holding its defined address and MAC is
+# left alone; a missing one is started, and one holding anything else (created
+# by hand, or before the MACs were fixed) is replaced.
 # The SSH target's image is built once from the pinned base and kept, so a
 # later `up` serves the same OpenSSH build; `down --images` removes it too.
 # docs/ci/LIVE_SCAN_VALIDATION.md has the whole procedure.
@@ -35,14 +37,24 @@ network_up() {
   fi
 }
 
-start() { # name ip image [docker run args...] -- [command...]
-  local name=$1 ip=$2 image=$3
-  shift 3
-  if running "$name"; then return 0; fi
+# "<ip> <mac>" of a container on the validation network, empty if it is not on it.
+address_of() {
+  docker container inspect -f \
+    "{{with index .NetworkSettings.Networks \"$VALIDATION_NETWORK\"}}{{.IPAddress}} {{.MacAddress}}{{end}}" \
+    "$1" 2>/dev/null || true
+}
+
+start() { # name ip mac image [docker run args...]
+  local name=$1 ip=$2 mac=$3 image=$4
+  shift 4
+  if running "$name"; then
+    if [ "$(address_of "$name")" = "$ip $mac" ]; then return 0; fi
+    echo "replacing $name: it does not hold $ip $mac"
+  fi
   if exists "$name"; then docker rm -f "$name" >/dev/null; fi
-  docker run -d --name "$name" --network "$VALIDATION_NETWORK" --ip "$ip" \
+  docker run -d --name "$name" --network "$VALIDATION_NETWORK" --ip "$ip" --mac-address "$mac" \
     --label ccure.validation=target "$@" "$image" >/dev/null
-  echo "started $name at $ip"
+  echo "started $name at $ip ($mac)"
 }
 
 up() {
@@ -51,8 +63,8 @@ up() {
     echo "building $SSH_IMAGE_TAG from $SSH_BASE_IMAGE"
     docker build -q --build-arg BASE="$SSH_BASE_IMAGE" -t "$SSH_IMAGE_TAG" "$HERE/ssh-target" >/dev/null
   fi
-  start "$SSH_CONTAINER" "$SSH_TARGET" "$SSH_IMAGE_TAG"
-  start "$WEB_CONTAINER" "$WEB_TARGET" "$WEB_IMAGE"
+  start "$SSH_CONTAINER" "$SSH_TARGET" "$SSH_MAC" "$SSH_IMAGE_TAG"
+  start "$WEB_CONTAINER" "$WEB_TARGET" "$WEB_MAC" "$WEB_IMAGE"
   # The exposure the web checks and Nuclei must find: a dotenv file and a git
   # config in the document root. Dummy values, written into the container so
   # nothing named .env or .git is ever committed.
@@ -62,9 +74,9 @@ up() {
     mkdir -p $d/.git
     printf "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n[remote \"origin\"]\n\turl = https://example.invalid/validation/target.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n" > $d/.git/config
     printf "<html><body>ccure validation target</body></html>\n" > $d/index.html'
-  start "$REDIS_CONTAINER" "$REDIS_TARGET" "$REDIS_IMAGE"
+  start "$REDIS_CONTAINER" "$REDIS_TARGET" "$REDIS_MAC" "$REDIS_IMAGE"
   # Random per start; nothing logs in with it, it only lets the server run.
-  start "$PG_CONTAINER" "$PG_TARGET" "$PG_IMAGE" \
+  start "$PG_CONTAINER" "$PG_TARGET" "$PG_MAC" "$PG_IMAGE" \
     -e POSTGRES_PASSWORD="$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   sleep 3
   status
@@ -76,7 +88,9 @@ status() {
     return 1
   fi
   for name in "$SSH_CONTAINER" "$WEB_CONTAINER" "$REDIS_CONTAINER" "$PG_CONTAINER"; do
-    printf '%-24s %s\n' "$name" "$(docker container inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo missing)"
+    printf '%-24s %-8s %s\n' "$name" \
+      "$(docker container inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo missing)" \
+      "$(address_of "$name")"
   done
   docker run --rm --network "$VALIDATION_NETWORK" --ip "$VALIDATION_PROBE_ADDRESS" "$PROBE_IMAGE" sh -c "
     printf 'ssh   %s ' $SSH_TARGET; nc -w 2 $SSH_TARGET 22 </dev/null | head -1 || echo unreachable

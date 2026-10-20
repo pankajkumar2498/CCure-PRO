@@ -11,6 +11,8 @@ drift silently:
 * the target definition stays isolated: an internal private subnet that
   overlaps nothing this installation uses, the host's own bridge address never
   a target, every image pinned by digest;
+* every target keeps the same MAC address however often it is re-created, and
+  ``targets.sh up`` replaces a target holding any other;
 * the harness dispatches a scan with exactly the keyword arguments the
   host-discovery route uses, and stops one the way the stop route does;
 * the harness's queries run against the real schema (B2's first run queried a
@@ -21,6 +23,7 @@ drift silently:
 import importlib.util
 import ipaddress
 import json
+import os
 import re
 import subprocess
 import sys
@@ -100,6 +103,145 @@ def test_every_image_is_pinned_by_digest():
         "PROBE_IMAGE",
     ):
         assert re.fullmatch(r"[a-z0-9./-]+@sha256:[0-9a-f]{64}", env[key]), key
+
+
+TARGETS = ("SSH", "WEB", "REDIS", "PG")
+
+
+def _registry_prefixes() -> set[str]:
+    """The OUI prefixes the bundled registry (core/oui_lookup.py) knows."""
+    prefixes = set()
+    for line in (
+        (BACKEND_ROOT / "data" / "manuf.txt")
+        .read_text(encoding="utf-8", errors="ignore")
+        .splitlines()
+    ):
+        if line and not line.startswith("#"):
+            first = line.split("\t", 1)[0].strip()
+            prefixes.add(re.sub(r"[^0-9a-f]", "", first.lower())[:6])
+    return prefixes
+
+
+def test_every_target_has_a_fixed_mac_that_is_nobodys():
+    """
+    Docker picks a random MAC whenever a container is created, so before the
+    MACs were fixed every asset's MAC changed with each down and up. A fixed
+    MAC must be locally administered and unicast (no vendor's), and absent from
+    the bundled registry, so discovery looks it up as it did the random ones.
+    """
+    env = _targets_env()
+    macs = [env[f"{t}_MAC"] for t in TARGETS]
+    assert len(set(macs)) == len(macs)
+    registry = _registry_prefixes()
+    for target in TARGETS:
+        mac = env[f"{target}_MAC"]
+        assert re.fullmatch(r"([0-9a-f]{2}:){5}[0-9a-f]{2}", mac), mac
+        first = int(mac[:2], 16)
+        assert first & 0b10 and not first & 0b01, f"{mac} is not local unicast"
+        assert mac.replace(":", "")[:6] not in registry, mac
+        # Docker's classic form, so the address reads back to its target.
+        octets = ipaddress.ip_address(env[f"{target}_TARGET"]).packed
+        assert mac == "02:42:" + ":".join(f"{b:02x}" for b in octets), mac
+
+
+#: A stand-in for the docker CLI: records each call and answers the queries
+#: targets.sh makes from a JSON state file of containers.
+_FAKE_DOCKER = r"""#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["FAKE_DOCKER_LOG"], "a") as log:
+    log.write(json.dumps(args) + "\n")
+path = os.environ["FAKE_DOCKER_STATE"]
+state = json.load(open(path))
+def save():
+    json.dump(state, open(path, "w"))
+def opt(name):
+    return args[args.index(name) + 1] if name in args else None
+if args[:2] == ["network", "inspect"]:
+    print("true" if "-f" in args else "[]")
+elif args[0] in ("network", "image", "build", "exec"):
+    pass
+elif args[:2] == ["container", "inspect"]:
+    box = state.get(args[-1])
+    if box is None:
+        sys.exit(1)
+    template = opt("-f") or ""
+    if "State.Running" in template:
+        print("true")
+    elif "State.Status" in template:
+        print("running")
+    elif "MacAddress" in template:
+        print(box["address"])
+elif args[0] == "rm":
+    state.pop(args[-1], None)
+    save()
+elif args[0] == "run" and "--rm" not in args:
+    state[opt("--name")] = {"address": f"{opt('--ip')} {opt('--mac-address')}"}
+    save()
+"""
+
+
+def _run_up(tmp_path, containers: dict) -> tuple[list[list[str]], str, dict]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(_FAKE_DOCKER)
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    for tool in ("docker", "sleep"):
+        (bin_dir / tool).chmod(0o755)
+    log, state = tmp_path / "calls.jsonl", tmp_path / "state.json"
+    log.write_text("")
+    state.write_text(json.dumps(containers))
+    done = subprocess.run(
+        ["bash", str(VALIDATION / "targets.sh"), "up"],
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "FAKE_DOCKER_LOG": str(log),
+            "FAKE_DOCKER_STATE": str(state),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    return calls, done.stdout, json.loads(state.read_text())
+
+
+def _defined() -> dict:
+    env = _targets_env()
+    return {
+        env[f"{t}_CONTAINER"]: {"address": f"{env[f'{t}_TARGET']} {env[f'{t}_MAC']}"}
+        for t in TARGETS
+    }
+
+
+def test_up_starts_every_target_at_its_address_and_mac(tmp_path):
+    calls, _, state = _run_up(tmp_path, {})
+    started = [c for c in calls if c[0] == "run" and "--rm" not in c]
+    assert len(started) == len(TARGETS)
+    assert state == _defined()
+
+
+def test_up_leaves_targets_holding_their_address_alone(tmp_path):
+    calls, out, state = _run_up(tmp_path, _defined())
+    assert not [c for c in calls if c[0] == "rm" or (c[0] == "run" and "--rm" not in c)]
+    assert "started" not in out and "replacing" not in out
+    assert state == _defined()
+
+
+def test_up_replaces_a_target_holding_another_mac(tmp_path):
+    """A target created by hand, or before the MACs were fixed, is replaced."""
+    env = _targets_env()
+    containers = _defined()
+    web = env["WEB_CONTAINER"]
+    containers[web] = {"address": f"{env['WEB_TARGET']} 3a:2e:0d:74:a2:00"}
+    calls, out, state = _run_up(tmp_path, containers)
+    assert ["rm", "-f", web] in calls
+    assert [
+        c[c.index("--name") + 1] for c in calls if c[0] == "run" and "--rm" not in c
+    ] == [web]
+    assert f"replacing {web}" in out
+    assert state == _defined()
 
 
 def test_the_scripts_create_only_internal_networks_and_exclude_the_host():

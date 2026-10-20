@@ -19,13 +19,13 @@ and nothing else.
 an internal Docker network. `scripts/validation/targets.env` defines them in one
 place:
 
-| Address         | Container                | What it exercises                                                          |
-| --------------- | ------------------------ | -------------------------------------------------------------------------- |
-| `172.30.250.10` | `ccure-validation-ssh`   | Ubuntu 24.04 running OpenSSH: banner, version, the SSH probe               |
-| `172.30.250.11` | `ccure-validation-web`   | nginx serving a dummy `.env` and `.git/config`: Nuclei and the HTTP checks |
-| `172.30.250.12` | `ccure-validation-redis` | Redis with no authentication: a critical network check                     |
-| `172.30.250.13` | `ccure-validation-pg`    | PostgreSQL: service detection and the default-credential probe             |
-| `.14`, `.15`    | none                     | Empty addresses, which must stay inactive                                  |
+| Address         | MAC                 | Container                | What it exercises                                                          |
+| --------------- | ------------------- | ------------------------ | -------------------------------------------------------------------------- |
+| `172.30.250.10` | `02:42:ac:1e:fa:0a` | `ccure-validation-ssh`   | Ubuntu 24.04 running OpenSSH: banner, version, the SSH probe               |
+| `172.30.250.11` | `02:42:ac:1e:fa:0b` | `ccure-validation-web`   | nginx serving a dummy `.env` and `.git/config`: Nuclei and the HTTP checks |
+| `172.30.250.12` | `02:42:ac:1e:fa:0c` | `ccure-validation-redis` | Redis with no authentication: a critical network check                     |
+| `172.30.250.13` | `02:42:ac:1e:fa:0d` | `ccure-validation-pg`    | PostgreSQL: service detection and the default-credential probe             |
+| `.14`, `.15`    | none                | none                     | Empty addresses, which must stay inactive                                  |
 
 **Isolation.**
 
@@ -46,15 +46,27 @@ place:
   Ubuntu archive when its image is built, so its OpenSSH build can change at a
   rebuild. `targets.sh` keeps the built image (`ccure-validation-ssh:ubuntu-24.04`)
   between runs, and `down --images` removes it.
-- **The before and after runs of one check use the same running targets**, so
-  the comparison is never between two builds.
+- **Each target's MAC is fixed** in `targets.env`. The form is Docker's classic
+  `02:42:<IPv4 in hex>`. It is locally administered, so no vendor's, and it is
+  not in the bundled OUI registry, so discovery looks it up as it did Docker's
+  random MACs. Before 20 Oct 2026 Docker chose a random MAC whenever a target was
+  created, and every asset's MAC changed with each `down` and `up`.
+- **`up` replaces a target that does not hold its defined address and MAC**, for
+  example one created by hand or before the MACs were fixed. A target that does
+  hold them is left running.
+- **So a re-created target is the same target.** A `down` and `up` between two
+  runs changes nothing a scan stores. Only `down --images` changes one: the next
+  `up` rebuilds the SSH image.
 
 `tests/repo/test_live_scan_tooling.py` holds the isolation properties in code:
 
 - an internal, private subnet that overlaps none of the installation's networks;
 - the host address never a target;
 - digests on every image;
-- no published port and no host network in any container command.
+- no published port and no host network in any container command;
+- a fixed, locally administered MAC per target, outside the OUI registry;
+- `up` run against a stand-in for `docker`: it starts each target at its address
+  and MAC, leaves a correct one alone and replaces a wrong one.
 
 ## Running a check
 
@@ -145,8 +157,8 @@ alternation (before, after, before, after).
   - **Status.** This is a coverage defect in the probe, recorded in the log's
     §7. Until it is fixed, a run may report 7 or 8 findings.
 - **The stopped sweep's frames.** The ARP technique marks each answering host
-  active only after looking up its MAC vendor. For the targets' random MACs, that
-  lookup queries the database. The first frame, sampled at a 150 ms tick, holds
+  active only after looking up its MAC vendor. For the targets' MACs, which are
+  in no registry, that lookup queries the database. The first frame, sampled at a 150 ms tick, holds
   however many hosts those lookups have let through: one in some runs, all four
   in others. The stop is issued on that frame, so three things follow it:
 
@@ -155,10 +167,6 @@ alternation (before, after, before, after).
   - the settle time after the stop, about 0.6 s apart.
 
   The outcome does not change: `cancelled`, with no phase recorded.
-
-**Compare only against the same running targets.** Docker gives each target a
-random MAC address whenever it is created, so `targets.sh down` then `up` changes
-every asset's MAC.
 
 ## Limits
 

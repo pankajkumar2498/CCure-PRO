@@ -198,6 +198,17 @@ Before reading the first as a regression, repeat the runs in alternation
   comparison tolerates the first two and prints them. The settle time is
   wall-clock and is not compared at all.
 
+**A run can also fail outright.** This is a defect in the tooling, not variation,
+and B5 found it (refactoring log §6).
+
+- **The symptom.** The full audit ends `unreachable` with no host found, and the
+  stopped sweep finds only a few hosts.
+- **The cause.** `live_scan.sh` relies on Docker making the targets' network the
+  scanner's `eth0`, and Docker does not guarantee it: 1 of 12 trials put the
+  database network there. Scapy's raw ARP then leaves by the wrong interface.
+- **What to do.** Until the script enforces the order (log §7), discard such a
+  run and repeat it. Do not compare it.
+
 ## Limits
 
 - **No vulnerability feed.** The vulnerability-intelligence database is the

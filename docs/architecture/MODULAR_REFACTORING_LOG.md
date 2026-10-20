@@ -1243,19 +1243,182 @@ puts the next full run at the end of Phase B.
 - **The runtime check used the scripts' scratch driver**, not committed tooling: the live-scan
   tooling covers scans, and B4 changed no scan.
 
+### B5 — the network checks register their plugins with the check kernel
+
+Commit `54f912d`, committed in place.
+
+**The dependency.** Inspected on `3a38ea6`:
+
+- **What the module does.** `core/checks/legacy_plugins.py` verifies that every plugin the
+  network checks can dispatch is callable the way `VulnerabilityEngine` calls it.
+  `tests/scans/test_plugin_contract.py` is that guard.
+- **How it reached the engine:**
+  - a lazy import of `engines.vulnerability.plugin_selector`, for the dispatch tables;
+  - an `importlib.import_module("engines.vulnerability.plugins.<name>")` per plugin.
+- **The effect.** The kernel every capability imports depended on one engine: two upward edges
+  in the capability map. The second reach was a string, so no import graph saw it.
+- **The callers:**
+  - the guard test;
+  - `docs/audits/plugin-audit-2026-10-14/export_inventory.py`, a script inside a dated audit
+    record. It is unchanged and still runs: it imports the selector before calling the kernel.
+
+**The change: the plan's "the adapter moves to network checks and registers itself".**
+
+- **The kernel keeps the contract.** `PluginContract` and the two arities stay, and so do its
+  functions (`all_dispatchable_plugin_names`, `describe_plugin`, `validate_plugin_module`,
+  `validate_all_plugins`), with the same names, signatures and answers.
+- **It gains a registration point.** A `PluginSource` is an engine's dispatch table and a loader
+  that imports one plugin and raises whatever its import raises. `register_plugin_source` adds
+  one; `registered_plugin_sources` lists them. The kernel imports nothing outside the standard
+  library and `core.checks`, and nothing by name.
+- **The adapter moved into the selector,** reading its own tables: `dispatch_table()` and
+  `load_plugin_strictly()`. The selector registers them as `network_checks` when it is imported.
+- **Why the selector and not a separate adapter module.** The selector would have had to import
+  that module, and the module reads the selector's tables: an import cycle, which the ratchet
+  refuses.
+- **With nothing registered, every kernel function raises `NoPluginSource`.** It never answers
+  with an empty mapping, which would read as "every plugin is callable" about plugins nobody
+  looked at.
+- **Ambiguity is refused.** A plugin claimed by two sources raises, and so does a name in no
+  table when there is more than one source to ask. A source registered again under the same
+  name replaces the earlier one.
+- **Errors stay findings.** The loader is the old `importlib` call, not the selector's `_load`,
+  which logs and skips a broken plugin. A plugin's import error is still reported as one, and
+  the source is resolved before the `try`. So a `KeyError` raised inside a plugin's import stays
+  a finding about the plugin rather than becoming a lookup refusal.
+- **The guard test** imports the selector, which registers the plugins.
+
+**Interfaces: identical.** `interface_snapshot --compare` on `3a38ea6` and `54f912d` reports
+"interfaces identical".
+
+**Coupling** (`capability_map`):
+
+| Measure                                    | Before (`3a38ea6`) | After (`54f912d`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Upward edges                               |                 40 |            **38** |
+| Lateral edges                              |                 74 |                74 |
+| Largest cycle, all / top-level             |            22 / 13 |           22 / 13 |
+| Foreign-table references / writes          |            79 / 17 |           79 / 17 |
+| Cross-capability imports, top-level / lazy |          466 / 386 |     **467 / 384** |
+
+- **Removed:** `core.checks.legacy_plugins → engines.vulnerability` and
+  `→ engines.vulnerability.plugin_selector`. The baseline records the removal, and `CEILINGS`
+  lowers the upward edges to 38.
+- **Added:** `engines.vulnerability.plugin_selector → core.checks.legacy_plugins`, top-level.
+  It points down a layer.
+- **The plan's target, "check kernel depends on nothing above it", is met.** The check kernel's
+  only remaining cross-capability import is `core.checks.intrusive`'s lazy import of `config`,
+  which is `infra`, the shared layer below it. Its count of non-shared capabilities imported fell
+  from 1 to 0, the analysis's target for it (§12).
+- **It is still counted in the all-imports cycle,** through that `config` import, because `infra`
+  is itself in the cycle:
+  - the model registry `db.models` imports every capability's models;
+  - `core.celery_app` imports the platform registry.
+    That is outside B5.
+
+**Import cost** (`import_cost --compare`, first-party / all modules):
+
+- **At import, the kernel is unchanged** (7 / 42): its imports of the engine were always lazy.
+- **The selector and the vulnerability engine** each load one more module, the kernel's
+  `legacy_plugins`: 10 / 45 → 11 / 46 and 25 / 510 → 26 / 511.
+- **The difference is at call time.** Before, calling the kernel's functions imported the
+  selector and all fifteen plugins. Now, with nothing registered, they refuse and load no
+  engine. A test pins that.
+
+**Behaviour: every plugin-contract answer is unchanged.** One script recorded each answer the
+kernel gives, on `3a38ea6` and on a clean worktree of `54f912d` (with the selector imported).
+The two outputs are byte-identical:
+
+- the dispatch table (15 plugins, `cve_engine` and `nuclei_probe` serial);
+- all fifteen `PluginContract`s;
+- `validate_all_plugins` (no broken plugin) and `validate_plugin_module` for each;
+- the error for an unknown name:
+  `ModuleNotFoundError: No module named 'engines.vulnerability.plugins.<name>'`.
+
+**Tests.**
+
+| Step            | Command / targets                                                                                                                                                                                                                                                                            | Passed | Failed | Skipped | Notes                                                                                                                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| New and guard   | `tests/scans/test_plugin_source_registration.py` (8, new) and `tests/scans/test_plugin_contract.py` (22), on a clean worktree of `54f912d`                                                                                                                                                   |     30 |      0 |       0 | The kernel's imports; no `core.checks` edge above the kernel; the refusal when nothing is registered, with no engine loaded; the selector's own tables; the strict loader; the merge rules |
+| Mutation        | the two files, on a scratch worktree with: M1 the kernel importing the selector to register it; M2 an unregistered kernel answering with nothing; M3 the selector not registering; M4 the selector registering its `_load`, which logs and skips; M6 two sources allowed to claim one plugin |      — |      — |       — | Caught: M1 by 3 tests, M2 by 1, M3 at collection (the guard cannot list the plugins), M4 by 1, M6 by 1                                                                                     |
+| Targeted groups | `tests/assets tests/audit_boundary tests/compliance tests/credentialed tests/repo tests/scans tests/security tests/web`, the groups the selector named                                                                                                                                       |  6,306 |      0 |       2 | `alembic.ini`; the live OSV npm feed                                                                                                                                                       |
+| Architecture    | `check.py`; `capability_map --check`; pre-commit                                                                                                                                                                                                                                             |      — |      — |       — | All pass                                                                                                                                                                                   |
+
+**The full suite was not run.** The selector reported a targeted scope; §11 puts the next full run
+at the end of Phase B.
+
+**The dated audit script.** It ran on fresh worktrees of `3a38ea6` and `54f912d`:
+
+- **What is identical:** every plugin's contract, problems, trigger ports, dispatch and `run`
+  line, and every count (15 plugins, all loadable and contract-valid).
+- **What differs, as it should:**
+  - `plugin_selector.py`'s hash and symbols: `dispatch_table` and `load_plugin_strictly` were
+    added;
+  - two plugins' `test_references`, because the new test file names `snmp_probe` and
+    `cve_engine`.
+- **Fresh checkouts on both sides are required.** The main working tree holds 184 files with
+  CRLF line endings, which `core.autocrlf=input` keeps out of `git status`. A first comparison
+  against the main tree differed in 34 file hashes for that reason alone.
+
+**Live validation, before and after.**
+
+- **Why it was run.** §11 does not require it for B5. But B5 changed `plugin_selector`, which
+  every vulnerability audit runs.
+- **Set-up.** The live-scan tooling, against the targets with fixed MACs. In the repeat, a watcher
+  recorded each scanner's interfaces from inside its container while it ran.
+
+| Run       | Commit    | Scanner's `eth0`     | Full audit                                                                 | Stopped sweep: hosts in the first frame |
+| --------- | --------- | -------------------- | -------------------------------------------------------------------------- | --------------------------------------- |
+| `before`  | `3a38ea6` | not recorded         | **`unreachable`**: discovery found no host by ARP; 1 phase, nothing stored | 2                                       |
+| `after`   | `54f912d` | not recorded         | complete: 3 phases, 4 hosts, 4 services, 7 findings, 13 frames             | 4                                       |
+| `before2` | `3a38ea6` | the targets' network | the same as `after`                                                        | 1                                       |
+| `after2`  | `54f912d` | the targets' network | the same as `after`                                                        | 1                                       |
+
+**The comparisons:**
+
+- `before2` against `after2`: **identical apart from time.** Nothing even needed tolerating.
+- `before2` against `after`, and `after` against `after2`: identical apart from time, plus the two
+  timing differences, tolerated and printed (the stopped sweep's frames and `after_discovered`).
+- **Against `before`:** 9 differences, all from its failed discovery.
+
+**The failed run was the tooling, not B5.**
+
+- **The symptom.** Its full audit's discovery batch ended at 2.1 s with no host marked active by
+  ARP, and the stopped sweep found 2 hosts. That is the symptom B2 recorded when the scanner's
+  first interface is the database network rather than the targets' (§6, B2).
+- **The mechanism, measured.** `live_scan.sh` creates the scanner on the targets' network,
+  connects the database network, then starts it, and relies on Docker naming the first network
+  `eth0`. Docker does not guarantee that. In 12 trials of the same sequence on throwaway
+  networks, one put the second network on `eth0`. Neither network gives a default route that
+  would correct it.
+- **The defect predates B5.** It has been in the tooling since `22aa824`. It is recorded in §7
+  and not fixed here: it is outside B5.
+- **The attribution is by symptom.** The failed run's own interfaces were not recorded; the
+  watcher was added for the repeat.
+
+**Limitations.**
+
+- **The kernel answers only once an engine has registered.** A process that imports the kernel
+  alone gets `NoPluginSource`, by design. Today the guard test and the audit script both import
+  the selector first.
+- **Registration is process-global.** The tests that register a fake source restore the
+  registry afterwards.
+- **The check kernel stays in the all-imports cycle** through `infra`, as described above.
+
 ## 7. Decisions awaiting the project owner
 
-| #   | Decision                                                                                                                                                                                                                                                                  | From                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                   | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                          | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                   | analysis §13                                                       |
-| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                      | S2                                                                 |
-| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                       | S1                                                                 |
-| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                   | S2                                                                 |
-| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                    | S2b, §4                                                            |
-| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                         | S2b, §4                                                            |
-| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                             | B2, §6                                                             |
-| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import | B3, §6                                                             |
-| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                      | B3, §6                                                             |
-| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                             | B3, §6                                                             |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                  | From                                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                                   | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                          | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                                   | analysis §13                                                       |
+| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                                      | S2                                                                 |
+| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                                       | S1                                                                 |
+| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                                   | S2                                                                 |
+| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                                                                                                                                                    | S2b, §4                                                            |
+| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                                                                                                                                                         | S2b, §4                                                            |
+| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                                                                                                                                                             | B2, §6                                                             |
+| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import                                                                                                                                 | B3, §6                                                             |
+| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                                      | B3, §6                                                             |
+| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                                                                                                                                                             | B3, §6                                                             |
+| new | Make `scripts/validation/live_scan.sh` enforce the scanner's interface order. Docker does not guarantee that the first network becomes `eth0` (1 of 12 trials put the second there), and a scanner whose `eth0` is the database network finds no host by ARP. B5's first live run failed this way. For example: check `eth0` before scanning and refuse, or connect the database network only after start | B5, §6                                                             |

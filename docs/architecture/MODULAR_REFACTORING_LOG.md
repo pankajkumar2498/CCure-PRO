@@ -1054,9 +1054,95 @@ the run or after it. `tests/scans/test_vuln_scoring_split.py` pins that.
   differences, and only repeated, alternating runs separated them here. Two kinds were seen:
   - Nuclei's per-host error cutoff, described above;
   - the stopped sweep's first frame, which depends on how long the MAC-vendor lookups take.
-    `docs/ci/LIVE_SCAN_VALIDATION.md` now describes both.
+    `docs/ci/LIVE_SCAN_VALIDATION.md` now describes both. Since `3f7794f` the comparison
+    tolerates the second and prints it (below).
 - **Target MAC addresses are Docker's random ones.** A comparison across a re-creation of the
   targets therefore differs in every asset's MAC. Compare runs against the same running targets.
+  Fixed since `e7f7368` (below).
+
+### After B3: two live-validation improvements
+
+The owner asked for both on 20 Oct 2026, as tooling committed apart from application code.
+Neither changes application code.
+
+**`e7f7368`: each target's MAC address is fixed.**
+
+- **The problem.** Docker chose a random MAC whenever a target was created, so `targets.sh down`
+  then `up` changed every asset's MAC (B3, above).
+- **The address.**
+  - `targets.env` gives each target a MAC in Docker's classic `02:42:<IPv4 in hex>` form,
+    `02:42:ac:1e:fa:0a` to `…:0d`.
+  - It is locally administered, so no vendor's.
+  - It is absent from the bundled OUI registry (`Backend/data/manuf.txt`), so discovery looks it
+    up exactly as it did the random ones. The registry misses, the MAC-vendor cache is queried,
+    and a vendor fetch is queued.
+- **The script.**
+  - `targets.sh` starts each target with `--mac-address`.
+  - `up` replaces a running target that does not hold its defined address and MAC, and leaves
+    one that does alone.
+  - `status` prints each target's address and MAC.
+- **Docker 29.9 supports it on an internal network.** Measured on a throwaway network first:
+  `--mac-address` and `--network name=…,mac-address=…` both set the address.
+
+**`3f7794f`: the comparison tolerates timing-only frame differences.**
+
+- **What it tolerates** is the two things B3 measured:
+  - **Discovery's samples.** A phase-1 `running` frame that the next phase-1 `running` frame covers
+    completely: the same or more hosts, the same or higher counters, the same sweep size and keys.
+    The stop's `after_discovered` is compared as a sample.
+  - **The stop route's frame**, compared by count, not position.
+- **Tolerated is not hidden.** Every tolerated difference is printed (`tolerated: …`), and the
+  exit code stays 0. `--strict` is the exact comparison.
+- **What stays exact:**
+  - the last sample of every run of samples;
+  - a sample the next one does not cover;
+  - every port-scan and audit frame, whose counters move once per host;
+  - every terminal frame;
+  - every stored row. So the Nuclei variation still fails a comparison: it is a stored finding.
+- **Why the rule is this narrow.** Collapsing every run of `running` frames would also collapse
+  the audit's per-host frames (`scanned_hosts` 0 to 4), and a missing one would pass. A test pins
+  that it does not.
+
+**Tests.**
+
+| Check                                                                   | Passed | Failed | Skipped           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------- | -----: | -----: | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/repo/test_live_scan_tooling.py` on a clean worktree of `e7f7368` |     17 |      0 | 0                 | The original 13, and 4 for the MACs. `up` runs against a stand-in for `docker` that records each call                                                                                                                                                                                                                                                                                                                 |
+| The same file on `3f7794f`, the tree committed                          |     33 |      0 | 0                 | Adds 16 comparison tests, built on B3's own cancel frames                                                                                                                                                                                                                                                                                                                                                             |
+| Mutation                                                                |      — |      — | —                 | Caught: M1 a target started without `--mac-address` (2 tests); M2 `up` leaving any running target alone (1); M3 every sample "covered" (3); M4 the stop route's frame compared by position (1); M5 the keys and sweep-size check removed (2). M3 and M5 first survived: every regression case ended on a different last sample, which is compared exactly anyway. Three cases that end on the right sample were added |
+| `tests/repo tests/security`, the selector's groups, both changes        |  1,021 |      0 | 1 (`alembic.ini`) | 1,001 before, plus the 20 new                                                                                                                                                                                                                                                                                                                                                                                         |
+| `check.py`; pre-commit on both commits                                  |      — |      — | —                 | All pass                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+**Live verification.**
+
+- **The four paths of `up`**, against real Docker:
+  - the first `up` started each target at its address and MAC;
+  - a repeated `up` touched no container;
+  - a web target re-created by hand, with Docker's random MAC `3a:2e:0d:74:a2:00`, was
+    replaced, and its content rewritten;
+  - after `down` and `up`, the same four MACs, and ARP from inside the network answers with them.
+- **Across a re-creation.** A scan, `down` and `up` (four new container IDs), then a second scan,
+  both on `ad4aab7`:
+  - both stored the fixed MACs;
+  - they compare identical apart from time, under `--strict` too;
+  - against B3's `after3` (random MACs), the only difference is the MAC column of the assets.
+- **B3's six recorded runs**, 15 pairs, compared again:
+
+  | Pairs                                                         | Default                                                     | `--strict`                         |
+  | ------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------- |
+  | The 6 pairs among `before`, `before2`, `before3` and `after3` | identical                                                   | identical                          |
+  | The 4 pairs of `after2` with those                            | identical, with 2 tolerated (frames and `after_discovered`) | 2 differences                      |
+  | The 5 pairs with `after`                                      | 1 difference: the Nuclei finding                            | 3 differences (1 against `after2`) |
+
+**Limitations.**
+
+- **The scanner container's MAC is still random.** It never reaches a stored row or a compared
+  frame: the sweep reports only the four targets. So it was left alone.
+- **The tolerance covers the two shapes B3 measured.** Any other timing-dependent difference is
+  still reported as a difference, which is the safe direction. Repeat the runs in alternation, as
+  before.
+- **The Nuclei gap on Redis is unchanged**, and was not part of this work. A comparison can still
+  fail on it.
 
 ## 7. Decisions awaiting the project owner
 
@@ -1074,4 +1160,3 @@ the run or after it. `tests/scans/test_vuln_scoring_split.py` pins that.
 | new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import | B3, §6                                                             |
 | new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                      | B3, §6                                                             |
 | new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                             | B3, §6                                                             |
-| new | Make the live comparison tolerate the stopped sweep's timing (compare its outcome, not its frames), and pin the targets' MAC addresses in `targets.sh`                                                                                                                    | B3, §6                                                             |

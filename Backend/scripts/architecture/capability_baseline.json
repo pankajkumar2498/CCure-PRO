@@ -772,22 +772,10 @@
   },
   "core.benchmarks.pack": {
    "capabilities": [
-    "assets",
     "check_kernel",
-    "compliance",
-    "findings",
-    "infra",
-    "platform",
-    "reporting",
-    "scan_policy",
-    "scans",
-    "scheduling",
-    "topology",
-    "web_dast"
+    "infra"
    ],
-   "third_party": [
-    "sqlalchemy"
-   ]
+   "third_party": []
   },
   "core.checks.contract": {
    "capabilities": [
@@ -857,22 +845,10 @@
   },
   "core.scap.oval": {
    "capabilities": [
-    "assets",
     "check_kernel",
-    "compliance",
-    "findings",
-    "infra",
-    "platform",
-    "reporting",
-    "scan_policy",
-    "scans",
-    "scheduling",
-    "topology",
-    "web_dast"
+    "infra"
    ],
-   "third_party": [
-    "sqlalchemy"
-   ]
+   "third_party": []
   },
   "core.scheduling.recurrence": {
    "capabilities": [

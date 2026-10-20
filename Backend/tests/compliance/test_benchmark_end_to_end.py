@@ -24,7 +24,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from core.benchmarks import load_pack, load_pack_into_db
+from core.benchmarks import load_pack
+from core.benchmarks.loader import load_pack_into_db
 from core.benchmarks.selection import benchmark_checks_for_org
 from core.checks.contract import CheckOutcome
 from core.compliance_seeds import seed_path

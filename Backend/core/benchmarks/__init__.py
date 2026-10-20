@@ -28,20 +28,20 @@ worse failure than having no rule at all.
 
 Module map
 ──────────
-``pack``    the content format, and the parser that refuses to guess
-``loader``  writing a pack into the tables the compliance engine already has
+``pack``       the content format, and the parser that refuses to guess
+``loader``     writing a pack into the tables the compliance engine already has
+``selection``  which benchmark checks apply to a scan, read from those tables
+
+The package exports the ``pack`` names only. ``loader`` and ``selection`` need
+the database, so they are imported by name (``from core.benchmarks.loader
+import load_pack_into_db``). Re-exporting the loader here made every import of
+the package load SQLAlchemy and the model registry, the SCAP compiler's
+included, since importing ``core.benchmarks.pack`` runs this file first (B4,
+docs/architecture/MODULAR_REFACTORING_LOG.md §6).
 """
 
 from __future__ import annotations
 
-from core.benchmarks.loader import (
-    BENCHMARK_EVIDENCE_SOURCE,
-    BENCHMARK_THEME,
-    LoadResult,
-    control_row_id,
-    load_pack_into_db,
-    rule_row_id,
-)
 from core.benchmarks.pack import (
     ASSESSMENT_STATES,
     BenchmarkControl,
@@ -56,18 +56,12 @@ from core.benchmarks.pack import (
 
 __all__ = [
     "ASSESSMENT_STATES",
-    "BENCHMARK_EVIDENCE_SOURCE",
-    "BENCHMARK_THEME",
     "BenchmarkControl",
     "BenchmarkPack",
     "BenchmarkProfile",
-    "LoadResult",
     "PackError",
-    "control_row_id",
     "discover_packs",
     "dump_pack",
     "load_pack",
-    "load_pack_into_db",
     "parse_pack",
-    "rule_row_id",
 ]

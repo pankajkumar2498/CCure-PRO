@@ -1546,6 +1546,149 @@ at the end of Phase B.
 - **The engine still loads the model registry** through its own `Asset` and `Scan` access (above).
 - **Topology is not exercised live.** There is no SNMP target among the validation targets.
 
+### B7 — the PDF renderer takes its engine inputs from the payload
+
+Commit `234a423`, committed in place.
+
+**The dependency.** Inspected on `cd354fc`. `reporting/pdf_generator.py` imported two things from
+the engines, each for one methodology-appendix row:
+
+- **`COVERAGE_ROWS`** from `engines.credentialed.coverage`: three `(metadata key, label)` pairs
+  naming the credentialed coverage claims. The claims' text is already in the scan's metadata.
+- **`describe`** from `core.candidate_enumeration`: the sentence for a truncated candidate search.
+  That module imports `core.vuln_intel`, which loads SQLAlchemy and the configuration.
+- **The effect.** A renderer, meant to be a payload in and a document out, loaded engine code and
+  the database layer: two lateral edges, and the renderers inside the capability cycle.
+- **`csv_generator.py`**, which the plan also names, imports no engine (only `report_helpers` and
+  the check kernel), as it already did on `c0c0f4e`. It is unchanged.
+
+**The change: "coverage rows and candidate-enumeration notes passed in with the payload".**
+
+- **The builder.** `scans/report_inputs.py` builds `report_inputs`:
+
+  - the coverage `(key, label)` pairs;
+  - the truncated-search notes, described for the summary's list and the metadata's list
+    separately, since the renderer still chooses between them.
+
+  `with_report_inputs(result)` attaches them to a shallow copy of the payload.
+
+- **Built when a report is rendered, never stored with the scan.** So a report regenerated for an
+  old scan gets them exactly as a new one does.
+- **The callers wrap their payloads.** These are the two production callers: the orchestrator's
+  `generate_phase_report` (all four scan-time report paths in `core/tasks.py` go through it) and the
+  router's `_load_scan_report_paths` (regeneration on download).
+- **The renderer refuses rather than drops.** It rejects a payload without `report_inputs`, and
+  notes that do not match their truncation list. A report that silently lost those rows would read
+  as a more complete assessment than the scan made.
+- **Why the builder sits in `scans`.** It imports two layer-3 capabilities, so it must sit above
+  them. The orchestrator (`scans`, layer 5) calls it, so it cannot sit above layer 5. In `scans`
+  both directions point down or stay inside one capability. It is mapped in `capability_map`.
+- **Every direct caller passes the inputs:** the tests that render a technical report or call the
+  two helpers, and `scripts/verification/verify_report_integrity.py`.
+- **The RBAC authorization inventory is regenerated.** It records each guard's line, and five
+  guards in `routers/reports.py` moved down three lines. The targeted run caught it (below).
+
+**Golden: report bytes identical, the plan's criterion.** This is the Phase 5 method (§3.1 of
+`PHASE5_AUDIT_INTEGRATION_BOUNDARIES.md`): capture twice before, then after.
+
+- **What was rendered.** A scratch capture rendered 11 payloads to their executive and technical
+  PDFs: 22 files, deterministically (ReportLab `invariant` mode, the renderers' clock frozen).
+  - The payloads are the integrity script's sample, plus variants covering every branch of the
+    two helpers:
+    - full and partial credentialed coverage;
+    - truncations in the summary (three, and eight for "and N more");
+    - in the metadata only;
+    - in both, where the summary wins;
+    - an empty list, and absent;
+    - all of it together, and a discovery-only scan.
+  - On B7 each payload was wrapped with `with_report_inputs`, as production does.
+- **The capture is sensitive.** Ten of the 11 technical PDFs differ from one another. The
+  eleventh, the sample, is the same as "absent", correctly: the sample records no truncation.
+
+| Capture                                                                                               | Result                                                                          |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `cd354fc`, twice                                                                                      | identical: the capture is deterministic                                         |
+| B7 working tree, then a clean worktree of `234a423`                                                   | **byte-identical** to `cd354fc`, all 22                                         |
+| Through the production wrapper, `ScanOrchestrator.generate_phase_report`, raw payloads, on both trees | both PDFs for all 11 on each; identical between trees and to the direct capture |
+
+**Interfaces: identical** (`interface_snapshot --compare`, `cd354fc` against B7).
+
+**Coupling** (`capability_map`):
+
+| Measure                                    | Before (`cd354fc`) | After (`234a423`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Lateral edges                              |                 74 |            **72** |
+| Largest cycle, all imports                 |                 22 | **16** (and 4, 2) |
+| Largest cycle, top-level                   |                 13 |            **12** |
+| Upward edges                               |                 38 |                38 |
+| Foreign-table references / writes          |            79 / 17 |           79 / 17 |
+| Cross-capability imports, top-level / lazy |          465 / 384 |         466 / 384 |
+
+- **The two lateral edges are gone:** `reporting.pdf_generator` → `core.candidate_enumeration` and
+  → `engines.credentialed.coverage`. The builder's imports of them point down a layer.
+- **The capability knot split.** The 22-capability cycle became three:
+  - 16 Audit feature capabilities;
+  - 4: `check_kernel`, `infra`, `platform`, `renderers`;
+  - 2: `scan_kernel`, `vuln_intel`.
+- **The renderers left the top-level cycle.** `CEILINGS` now holds the largest cycle at 16, the
+  top-level at 12 and the lateral edges at 72.
+- **What keeps the renderers in the 4-cycle** is one lazy edge into them:
+  `ccure_platform.audit_log.export` → `reporting.report_helpers`, the platform's audit-log export
+  borrowing a renderer helper. That edge is not the renderers importing anything, so it is
+  outside B7. It is recorded in §7.
+
+**Import cost** (first-party / all modules):
+
+| Module                                                         |     Before |      After | Stopped loading                                                              |
+| -------------------------------------------------------------- | ---------: | ---------: | ---------------------------------------------------------------------------- |
+| `reporting.pdf_generator`                                      |   24 / 380 |   15 / 218 | SQLAlchemy, `config`, `core.vuln_intel`, both engine modules                 |
+| `reporting.availability`                                       |   25 / 381 |   16 / 219 | the same (it imports the PDF renderer)                                       |
+| `orchestrator.scan_orchestrator`                               |   60 / 960 |   58 / 958 | the coverage module at import: the orchestrator now loads it when it renders |
+| `routers.reports`                                              | 121 / 1269 | 122 / 1270 | none (adds `scans.report_inputs`)                                            |
+| `reporting.csv_generator`, `host_assessment`, `report_helpers` |  unchanged |  unchanged | none                                                                         |
+
+**Tests.**
+
+| Step            | Command / targets                                                                                                                                                                                                                                                                                                            | Passed | Failed | Skipped | Notes                                                                                                                                                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New             | `tests/reports/test_renderer_report_inputs.py`                                                                                                                                                                                                                                                                               |      9 |      0 |       0 | Renderer edges and load; the two refusals; what the inputs carry; the payload left alone; both callers statically; the router's regeneration end to end against the database                                                            |
+| Mutation        | the new file, on a scratch worktree with: M1 the renderer importing the coverage rows again; M2 a missing input defaulted instead of refused; M3 the router rendering without inputs; M4 the orchestrator rendering without them; M5 the builder dropping the metadata's notes; M6 the renderer not checking the notes match |      — |      — |       — | Caught: M1 by 2 tests, M2 by 1, M3 by 2 (static and the router end to end), M4 by 1 (static: the orchestrator swallows the error, so only the static test can see it), M5 by 1, M6 by 1                                                 |
+| Focused         | the new file with every directly affected file and `test_report_integrity`                                                                                                                                                                                                                                                   |    231 |      0 |       0 | Before the router test was added                                                                                                                                                                                                        |
+| Targeted groups | `tests/audit tests/compliance tests/credentialed tests/rbac tests/repo tests/reports tests/scans tests/security tests/topology`, the groups the selector named                                                                                                                                                               |  6,485 |  **2** |     210 | Both failures were the RBAC inventory's stale line numbers (above). After regenerating it, `tests/rbac tests/repo`: 1,381 passed, 0 failed, 2 skipped. The 210 skips are the audit-chain and retention DBA bootstraps and the usual two |
+| Committed tree  | a clean worktree of `234a423`: the B7 file, every directly affected file and both inventory tests; `build_migration_inventory --check`                                                                                                                                                                                       |    201 |      0 |       0 | "inventory is current"                                                                                                                                                                                                                  |
+| Architecture    | `check.py`; `capability_map --check`; pre-commit                                                                                                                                                                                                                                                                             |      — |      — |       — | All pass                                                                                                                                                                                                                                |
+
+**The full suite was not run.** The selector reported a targeted scope; §11 puts the next full run
+at the end of Phase B.
+
+**No live scan.**
+
+- **Not required.** §11 requires live scans for B2, B3, C2, C3 and C6, not B7.
+- **It could not observe B7 anyway.** The harness never looks at reports. The orchestrator is
+  built `silent=True` and `generate_phase_report` turns any failure into "no report", so a broken
+  render inside a live scan leaves no trace.
+- **What validates the runtime paths instead:**
+  - the orchestrator golden (the production wrapper, all 11 payloads, identical);
+  - the router test (the regeneration function against the database).
+
+**A pre-existing failure the verification script shows.**
+
+- **The symptom.** `scripts/verification/verify_report_integrity.py` exits 1 on `cd354fc` and on
+  B7 alike, with the same output: the technical report lacks the provenance marker "How this was
+  detected".
+- **The cause.** That heading stopped being printed on 22 Aug 2026 (`f30e1df`, before this
+  branch). It is now a code comment, and the per-finding line reads "Detection: …". The script's
+  marker list is stale.
+- **Not fixed here;** recorded in §7.
+
+**Limitations.**
+
+- **The renderers stay in a 4-capability cycle** through the platform's audit-log export (above).
+- **`web_pdf_generator`** is classified with web DAST and still imports `scan_helpers`. It is not
+  one of the renderers B7 named.
+- **The golden covers the two touched helpers and whole reports for 11 payloads.** It is not every
+  report the product can produce; the targeted groups cover the rest of the renderer's behaviour.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                  | From                                                               |
@@ -1563,3 +1706,5 @@ at the end of Phase B.
 | new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                      | B3, §6                                                             |
 | new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                             | B3, §6                                                             |
 | new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                   | B6, §6                                                             |
+| new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle                                                                                  | B7, §6                                                             |
+| new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                     | B7, §6                                                             |

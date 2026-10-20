@@ -7,8 +7,6 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Sequence
-from datetime import date, datetime
-from decimal import Decimal
 from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
@@ -19,6 +17,16 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+
+# Pure normalisation and priority, moved to core/vuln_scoring.py in B3 so that
+# using them no longer loads this module's database layer. Re-exported: the
+# names here are those same functions, for every existing caller.
+from core.vuln_scoring import (  # noqa: E402,F401
+    _json_safe,
+    compute_priority,
+    merge_alias_fields,
+    title_case_severity,
+)
 
 CVSS_VERSION_ORDER = {
     "4.0": 4,
@@ -45,53 +53,6 @@ SERVICE_ALIASES = {
     "rdp": ["rdp", "remote desktop"],
     "mssql": ["mssql", "sql server", "microsoft sql server"],
 }
-
-
-def title_case_severity(severity: Any, cvss_score: Any = 0.0) -> str:
-    text = str(severity or "").strip().upper()
-    if text in {"CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"}:
-        return "Info" if text == "NONE" else text.title()
-    try:
-        score = float(cvss_score or 0.0)
-    except (TypeError, ValueError):
-        score = 0.0
-    if score >= 9.0:
-        return "Critical"
-    if score >= 7.0:
-        return "High"
-    if score >= 4.0:
-        return "Medium"
-    if score > 0:
-        return "Low"
-    return "Info"
-
-
-def compute_priority(
-    cvss_score: Any = 0.0,
-    epss_score: Any = 0.0,
-    in_kev: bool = False,
-    has_exploit: bool = False,
-) -> tuple[float, str]:
-    try:
-        cvss = float(cvss_score or 0.0)
-    except (TypeError, ValueError):
-        cvss = 0.0
-    try:
-        epss = float(epss_score or 0.0)
-    except (TypeError, ValueError):
-        epss = 0.0
-
-    if in_kev:
-        return 100.0, "P0"
-
-    score = (epss * 40.0) + (cvss * 4.0) + (15.0 if has_exploit else 0.0)
-    if epss >= 0.70 or (has_exploit and cvss >= 7.0):
-        return round(score, 2), "P1"
-    if cvss >= 9.0:
-        return round(score, 2), "P2"
-    if cvss >= 7.0 or epss >= 0.30:
-        return round(score, 2), "P3"
-    return round(score, 2), "P4"
 
 
 def extract_search_terms(raw_text: str, include_aliases: bool = True) -> list[str]:
@@ -221,20 +182,6 @@ def as_list(value: Any) -> list[Any]:
     return [value]
 
 
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    if isinstance(value, list):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    return value
-
-
 @lru_cache(maxsize=1)
 def get_vuln_engine() -> Engine:
     # The worker's parent process connects this engine at import (core/utils.py
@@ -290,31 +237,6 @@ def get_feed_freshness() -> dict[str, Any]:
     if not row:
         return blank
     return {"last_modified": row[0], "cve_count": row[1]}
-
-
-def merge_alias_fields(record: dict[str, Any]) -> dict[str, Any]:
-    record = _json_safe(record)
-    cve_id = record.get("cve_id") or record.get("cve")
-    description = record.get("description") or record.get("desc") or ""
-    cvss_score = record.get("cvss_score", record.get("cvss", 0.0))
-    severity = title_case_severity(record.get("severity"), cvss_score)
-    out = dict(record)
-    out["cve_id"] = cve_id
-    out["cve"] = cve_id
-    out["description"] = description
-    out["desc"] = description
-    out["cvss_score"] = float(cvss_score or 0.0)
-    out["cvss"] = float(cvss_score or 0.0)
-    out["severity"] = severity
-    priority_score, priority_level = compute_priority(
-        cvss_score=out.get("cvss_score", 0.0),
-        epss_score=out.get("epss_score", 0.0),
-        in_kev=bool(out.get("in_kev")),
-        has_exploit=bool(out.get("has_exploit")),
-    )
-    out.setdefault("priority_score", priority_score)
-    out.setdefault("priority_level", priority_level)
-    return out
 
 
 def build_sql_or_clauses(

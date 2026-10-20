@@ -526,7 +526,7 @@
   ],
   [
    "core.risk",
-   "core.vuln_intel"
+   "core.vuln_scoring"
   ],
   [
    "core.scan_policy.validation",
@@ -836,8 +836,7 @@
     "vuln_intel"
    ],
    "third_party": [
-    "scapy",
-    "sqlalchemy"
+    "scapy"
    ]
   },
   "core.nmap.wrapper": {

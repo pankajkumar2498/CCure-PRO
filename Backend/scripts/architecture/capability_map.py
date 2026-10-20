@@ -186,6 +186,8 @@ PREFIXES: dict[str, str] = {
     # vulnerability intelligence
     "core.cve_database": "vuln_intel",
     "core.vuln_intel": "vuln_intel",
+    # Pure priority and normalisation, split from the database module in B3.
+    "core.vuln_scoring": "vuln_intel",
     "scans.nvd_sync": "vuln_intel",
     "scans.cve_engine": "vuln_intel",
     "routers.admin_nvd": "vuln_intel",

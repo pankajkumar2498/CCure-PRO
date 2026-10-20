@@ -310,9 +310,11 @@ Two things Phase 3 deliberately left, which are **not** violations:
   new paths. Application code's limiter imports were migrated in B1
   (16 Oct 2026, `docs/architecture/MODULAR_REFACTORING_LOG.md` §6); the alias
   stays for tests and scripts. The two `scans.*` aliases move later (C3).
-- **The discovery engine still loads SQLAlchemy**, via `core.risk` →
-  `core.vuln_intel`. It breaks no rule; it stops the engine running without the
-  database layer, and is refactored only when a phase needs that.
+- **The discovery engine no longer loads SQLAlchemy** (B3, 20 Oct 2026). It came
+  in through `core.risk` → `core.vuln_intel`, for two pure functions; they now
+  live in `core/vuln_scoring.py`, which `core.vuln_intel` re-exports. The port
+  and network-check engines still load the CVE database through `core.utils`
+  (`docs/architecture/MODULAR_REFACTORING_LOG.md` §6).
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.

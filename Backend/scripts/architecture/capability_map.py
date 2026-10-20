@@ -264,6 +264,7 @@ PREFIXES: dict[str, str] = {
     "scans.notification_vocabulary": "scans",
     "scans.policy_binding": "scans",
     "scans.progress": "scans",
+    "scans.report_inputs": "scans",
     "scans.scan_access": "scans",
     "scan_helpers": "scans",
     "orchestrator.scan_orchestrator": "scans",
@@ -761,13 +762,17 @@ def measure(root: Path = BACKEND_ROOT) -> dict:
 #: baseline larger than any of them is refused, so regenerating the baseline
 #: cannot admit new coupling. Lowering one is how progress is locked in.
 CEILINGS = {
-    "largest_cycle": 22,
-    "largest_cycle_top_level": 13,
+    # 22 and 13 when introduced; B7 (the renderers take their engine inputs
+    # from the payload) split the 22 into 16, 4 and 2, and took the renderers
+    # out of the top-level cycle.
+    "largest_cycle": 16,
+    "largest_cycle_top_level": 12,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
     # network checks register their plugins with the check kernel) removed 2.
     "upward_edges": 38,
-    "lateral_edges": 74,
+    # 74 when introduced; B7 removed the PDF renderer's two engine imports.
+    "lateral_edges": 72,
     # 80 when introduced; B2 moved the web_scans settler out of scans.
     "foreign_table_references": 79,
     "foreign_table_writes": 17,

@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from core.rate_limiter import limiter
 from fastapi.responses import FileResponse
 from reporting.pdf_generator import ScanReportGenerator
+from scans.report_inputs import with_report_inputs
 from scan_helpers import (
     apply_phase1_summary_hints,
     log,
@@ -178,7 +179,9 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     }
     apply_phase1_summary_hints(result, db, str(scan.created_by), scan.id)
 
-    report_paths = ScanReportGenerator(output_dir=_REPORTS_DIR).generate(result, key)
+    report_paths = ScanReportGenerator(output_dir=_REPORTS_DIR).generate(
+        with_report_inputs(result), key
+    )
     report_paths = {k: v for k, v in report_paths.items() if v and os.path.isfile(v)}
     if report_paths:
         if report_paths.get("executive_pdf"):

@@ -602,14 +602,13 @@ def test_suppressed_candidates_reach_the_report():
 def test_methodology_appendix_prints_the_coverage_the_scan_recorded():
     from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import ScanFindings
+    from scans.report_inputs import report_inputs
 
     coverage = credentialed_coverage(network_scanned=False)
+    meta = {**coverage, "listeners_exposed": 0, "listeners_host_only": 3}
     rows = dict(
         _scan_configuration(
-            {**coverage, "listeners_exposed": 0, "listeners_host_only": 3},
-            {},
-            ScanFindings(),
-            "credentialed",
+            meta, {}, ScanFindings(), "credentialed", report_inputs(meta, {})
         )
     )
 
@@ -626,9 +625,11 @@ def test_appendix_omits_credentialed_rows_for_an_ordinary_scan():
     """
     from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import ScanFindings
+    from scans.report_inputs import report_inputs
 
+    meta = {"port_range": "1-1000"}
     rows = dict(
-        _scan_configuration({"port_range": "1-1000"}, {}, ScanFindings(), "asset")
+        _scan_configuration(meta, {}, ScanFindings(), "asset", report_inputs(meta, {}))
     )
     assert "Network reachability" not in rows
     assert "Unauthenticated checks" not in rows

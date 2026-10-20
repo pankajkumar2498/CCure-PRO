@@ -10,6 +10,7 @@ import tempfile
 
 import reporting.pdf_generator as pdf_generator
 from reporting.pdf_generator import ScanReportGenerator
+from scans.report_inputs import with_report_inputs
 
 
 def test_report_generation_empty_data():
@@ -49,7 +50,7 @@ def test_report_generation_empty_data():
         }
 
         gen = ScanReportGenerator(output_dir=temp_dir)
-        paths = gen.generate(result, scan_type="credentialed_scan")
+        paths = gen.generate(with_report_inputs(result), scan_type="credentialed_scan")
 
         assert "executive_pdf" in paths
         assert "technical_pdf" in paths
@@ -138,7 +139,7 @@ def test_report_generation_extreme_load():
         }
 
         gen = ScanReportGenerator(output_dir=temp_dir)
-        paths = gen.generate(result, scan_type="credentialed_scan")
+        paths = gen.generate(with_report_inputs(result), scan_type="credentialed_scan")
 
         assert "executive_pdf" in paths
         assert "technical_pdf" in paths
@@ -246,7 +247,7 @@ def test_table_header_text_contrasts_with_the_header_fill():
     pdf_generator._grid = spy
     try:
         ScanReportGenerator(output_dir=temp_dir).generate(
-            result, scan_type="vulnerability_audit"
+            with_report_inputs(result), scan_type="vulnerability_audit"
         )
     finally:
         pdf_generator._grid = original_grid

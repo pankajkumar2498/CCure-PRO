@@ -20,6 +20,7 @@ from engines.vulnerability.vulnerability_engine import VulnerabilityEngine
 from native_rbac import create_user, fixture_role, grant_permissions
 from reporting.exports import export_payload, scan_context_rows
 from reporting.pdf_generator import ScanReportGenerator
+from scans.report_inputs import with_report_inputs
 from scans.db_helpers import _phase_summary_payload
 
 IP = "192.0.2.15"
@@ -146,7 +147,7 @@ def test_d09_failed_outcome_survives_persistence_scan_api_and_exports(
         generator.generate_executive_pdf,
         generator.generate_technical_pdf,
     ):
-        generate(result, "vulnerability_audit")
+        generate(with_report_inputs(result), "vulnerability_audit")
         story = doc.build.call_args.args[0]
         text = " ".join(f.getPlainText() for f in story if hasattr(f, "getPlainText"))
         # The technical report carries the coverage in its methodology table.

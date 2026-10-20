@@ -3,27 +3,31 @@
  "cycles": [
   [
    "assets",
-   "check_kernel",
    "compliance",
    "config_audit",
    "credential_vault",
    "credentialed_audit",
    "discovery",
    "findings",
-   "infra",
    "network_checks",
-   "platform",
    "port_inventory",
    "remediation",
-   "renderers",
-   "scan_kernel",
    "scan_policy",
    "scans",
    "scheduling",
    "task_hub",
    "topology",
-   "vuln_intel",
    "web_dast"
+  ],
+  [
+   "check_kernel",
+   "infra",
+   "platform",
+   "renderers"
+  ],
+  [
+   "scan_kernel",
+   "vuln_intel"
   ]
  ],
  "cycles_top_level": [
@@ -35,7 +39,6 @@
    "credentialed_audit",
    "findings",
    "network_checks",
-   "renderers",
    "scan_policy",
    "scans",
    "scheduling",
@@ -613,14 +616,6 @@
    "ccure_audit.services.finding_read"
   ],
   [
-   "reporting.pdf_generator",
-   "core.candidate_enumeration"
-  ],
-  [
-   "reporting.pdf_generator",
-   "engines.credentialed.coverage"
-  ],
-  [
    "reporting.web_pdf_generator",
    "reporting.report_helpers"
   ],
@@ -939,15 +934,11 @@
   "reporting.pdf_generator": {
    "capabilities": [
     "check_kernel",
-    "credentialed_audit",
     "infra",
-    "network_checks",
-    "scans",
-    "vuln_intel"
+    "scans"
    ],
    "third_party": [
-    "reportlab",
-    "sqlalchemy"
+    "reportlab"
    ]
   },
   "reporting.xlsx_generator": {

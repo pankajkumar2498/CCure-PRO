@@ -1459,7 +1459,11 @@ class ScanOrchestrator:
         if not self._pdf:
             return {}
         try:
-            return self._pdf.generate(resp, scan_type)
+            # The renderer imports no engine; what it needs from them travels
+            # with the payload (B7).
+            from scans.report_inputs import with_report_inputs
+
+            return self._pdf.generate(with_report_inputs(resp), scan_type)
         except Exception as exc:
             self._log(f"[WARN] PDF generation failed: {exc}")
             return {}

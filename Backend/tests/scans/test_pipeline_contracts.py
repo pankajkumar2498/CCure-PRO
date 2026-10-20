@@ -545,9 +545,10 @@ def test_report_does_not_invent_scan_configuration():
     """
     from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import build_scan_report
+    from scans.report_inputs import report_inputs
 
     findings = build_scan_report({"data": []})
-    rows = dict(_scan_configuration({}, {}, findings, "phase1"))
+    rows = dict(_scan_configuration({}, {}, findings, "phase1", report_inputs({}, {})))
 
     assert rows["Service detection"] == "Not recorded"
     assert rows["OS fingerprinting"] == "Not recorded"
@@ -557,6 +558,7 @@ def test_report_does_not_invent_scan_configuration():
 def test_recorded_configuration_reaches_the_report():
     from reporting.pdf_generator import _scan_configuration
     from scans.finding_normalizer import build_scan_report
+    from scans.report_inputs import report_inputs
 
     findings = build_scan_report({"data": []})
     summary = {
@@ -566,7 +568,9 @@ def test_recorded_configuration_reaches_the_report():
         "timing_template": "Nmap -T4 (normal intensity)",
         "scanner": "Nmap 7.94",
     }
-    rows = dict(_scan_configuration({}, summary, findings, "phase3"))
+    rows = dict(
+        _scan_configuration({}, summary, findings, "phase3", report_inputs({}, summary))
+    )
 
     assert rows["Port selection"].startswith("System ports 1-1024")
     assert rows["Scanner engine"] == "Nmap 7.94"

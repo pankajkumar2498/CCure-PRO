@@ -567,6 +567,7 @@ def test_the_methodology_appendix_carries_the_policy():
     silently reuse the pre-existing "Scan policy" row, which is the scan *type*.
     """
     from reporting.pdf_generator import _scan_configuration
+    from scans.report_inputs import report_inputs
 
     class _F:
         reachable_hosts = []
@@ -590,6 +591,8 @@ def test_the_methodology_appendix_carries_the_policy():
         {},
         _F(),
         "vulnerability_audit",
+        # Neither the metadata nor the summary records coverage or truncation.
+        report_inputs({}, {}),
     )
     labels = {label for label, _value in rows}
     assert "Assessment policy" in labels

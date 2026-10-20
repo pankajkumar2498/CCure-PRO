@@ -32,7 +32,6 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from core.candidate_enumeration import describe as describe_truncated_search
 
 from reporting.report_helpers import (
     NumberedCanvas,
@@ -64,7 +63,6 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-from engines.credentialed.coverage import COVERAGE_ROWS
 from reporting.host_assessment import (
     HostAssessment,
     ListenerExposure,
@@ -572,17 +570,41 @@ def _boxed(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _truncated_searches_row(meta: dict, summary: dict) -> tuple | None:
+def _report_inputs(result: dict) -> dict:
+    """
+    What the engines contribute to the report, carried by the payload (B7).
+
+    ``scans.report_inputs.with_report_inputs`` attaches it. A payload without
+    it is refused rather than rendered without the coverage and truncation
+    rows, which would read as a more complete assessment than the scan made.
+    """
+    inputs = result.get("report_inputs")
+    if not isinstance(inputs, dict) or not {
+        "coverage_rows",
+        "truncated_search_notes",
+    } <= set(inputs):
+        raise ValueError(
+            "the report payload carries no report_inputs; wrap it with "
+            "scans.report_inputs.with_report_inputs before rendering"
+        )
+    return inputs
+
+
+def _truncated_searches_row(meta: dict, summary: dict, notes: dict) -> tuple | None:
     """
     Which candidate searches stopped at their row cap, or None if unrecorded.
 
     A truncated search leaves candidates that were never evaluated. Scans
     before 14 Oct 2026 did not record this, and for them the row is left out
     rather than printed as "None", which would claim every search completed.
+
+    ``notes`` describes each truncated search, per source, in the order the
+    source lists them (``report_inputs["truncated_search_notes"]``).
     """
-    for source in (summary, meta):
+    for name, source in (("summary", summary), ("metadata", meta)):
         if isinstance(source, dict) and "candidate_searches_truncated" in source:
             truncated = source.get("candidate_searches_truncated") or []
+            described = notes.get(name)
             break
     else:
         return None
@@ -591,13 +613,18 @@ def _truncated_searches_row(meta: dict, summary: dict) -> tuple | None:
             "Candidate searches truncated",
             "None — every candidate search ran to completion",
         )
-    shown = "; ".join(describe_truncated_search(t) for t in truncated[:6])
+    if not isinstance(described, list) or len(described) != len(truncated):
+        raise ValueError(
+            f"report_inputs describe {len(described or [])} of the {len(truncated)} "
+            f"truncated searches in the {name}; rebuild them with with_report_inputs"
+        )
+    shown = "; ".join(described[:6])
     more = f"; and {len(truncated) - 6} more" if len(truncated) > 6 else ""
     return ("Candidate searches truncated", f"{len(truncated)} — {shown}{more}")
 
 
 def _scan_configuration(
-    meta: dict, summary: dict, findings: ScanFindings, scan_type: str
+    meta: dict, summary: dict, findings: ScanFindings, scan_type: str, inputs: dict
 ) -> List[tuple]:
     """
     The scan's own parameters, for the methodology appendix.
@@ -605,6 +632,9 @@ def _scan_configuration(
     Reports what was configured, never what was assumed: a parameter the scan
     did not record is stated as unrecorded so the reader can tell the
     difference between "all ports scanned" and "we did not write it down".
+
+    ``inputs`` is the payload's ``report_inputs``: the credentialed coverage
+    rows and the truncated-search notes, which the renderer does not import.
     """
 
     def first(*keys, default="Not recorded") -> str:
@@ -675,7 +705,9 @@ def _scan_configuration(
                 ),
             )
         )
-        truncated_row = _truncated_searches_row(meta, summary)
+        truncated_row = _truncated_searches_row(
+            meta, summary, inputs["truncated_search_notes"]
+        )
         if truncated_row is not None:
             rows.append(truncated_row)
         coverage = summary.get("network_plugin_coverage") or meta.get(
@@ -704,7 +736,7 @@ def _scan_configuration(
     # Rows a scan that authenticated adds to the above. They are appended only
     # when the scan recorded them: printing "Not recorded" against network
     # reachability on an ordinary port scan would imply the question applied.
-    for key, label in COVERAGE_ROWS:
+    for key, label in inputs["coverage_rows"]:
         value = first(key, default="")
         if value:
             rows.append((label, value))
@@ -3111,6 +3143,7 @@ class ScanReportGenerator:
         findings = build_scan_report(result)
         meta = result.get("metadata", {}) or {}
         summary = result.get("summary", {}) or {}
+        inputs = _report_inputs(result)
         styles = self.styles
 
         tech_title = _report_title(scan_type, "technical")
@@ -3537,7 +3570,9 @@ class ScanReportGenerator:
                 _p("<b>Value</b>", styles["th"], escape=False),
             ]
         ]
-        for label, value in _scan_configuration(meta, summary, findings, scan_type):
+        for label, value in _scan_configuration(
+            meta, summary, findings, scan_type, inputs
+        ):
             config_rows.append(
                 [
                     _p(label, styles["body"]),

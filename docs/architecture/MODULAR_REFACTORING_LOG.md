@@ -1392,7 +1392,8 @@ at the end of Phase B.
   networks, one put the second network on `eth0`. Neither network gives a default route that
   would correct it.
 - **The defect predates B5.** It has been in the tooling since `22aa824`. It is recorded in §7
-  and not fixed here: it is outside B5.
+  and not fixed here: it is outside B5. Fixed in `44cb889`, before B6, which also found the exact mechanism: Scapy follows the order
+  Docker attaches the networks in, not their names (below).
 - **The attribution is by symptom.** The failed run's own interfaces were not recorded; the
   watcher was added for the repeat.
 
@@ -1405,20 +1406,160 @@ at the end of Phase B.
   registry afterwards.
 - **The check kernel stays in the all-imports cycle** through `infra`, as described above.
 
+### Before B6: the live-scan harness sets Scapy's interface
+
+Commit `44cb889`, tooling only, before B6, as the owner asked on 20 Oct 2026. It settles the §7
+item B5 added.
+
+**What B5's failed run was.** Each finding was measured on throwaway internal networks, in the
+backend image.
+
+- **Docker does not guarantee attach order.** Created on one network and connected to a
+  second before starting, a container got the second network as `eth0` in 1 of 12 trials (B5).
+- **Pinning interface names does not help.** Docker obeys an explicit name
+  (`com.docker.network.endpoint.ifname`): 20 of 20 trials, and 12 of 12 when the names were
+  inverted. But Scapy does not choose by name.
+- **What Scapy follows is attach order.** With no default route, Scapy takes the interface of the
+  broadest route it knows. That is the multicast route `224.0.0.0/4`, present on every interface
+  and listed in attach order. With the database network attached first, Scapy's default was the
+  database interface whatever the names said.
+- **That is what broke discovery.** With the database network attached first, ARP to the SSH
+  target from Scapy's default interface got no reply in 3 of 3 trials. From the targets'
+  interface, it was answered in 3 of 3.
+
+**The fix.**
+
+- **The harness sets `scapy.conf.iface` before any scan,** to the interface holding the scanner's
+  address on the targets' network. `live_scan.sh` passes that address as
+  `CCURE_LIVE_SCANNER_ADDRESS`.
+- **It refuses before creating anything** if no interface, or more than one, holds the address.
+- **The result records the choice:** the interface used (`pinned`) and the one Scapy would have
+  used (`scapy_default`).
+- **This mirrors production.** On the worker's host network, Scapy's default is the interface of
+  the default route, the one facing the targets.
+- **The application's code path is unchanged.** `srp` reads `conf.iface` either way, and no
+  discovery or port code names an interface.
+- **The scripts are now executable.** `22aa824` committed `live_scan.sh` and `targets.sh` as
+  `100644`, because `core.filemode` is false here. In a fresh checkout the documented
+  invocations failed with "permission denied". They are recorded as `100755`.
+
+**Verification.**
+
+| Check                                                      | Result                                                                                                                                                                                 |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/repo/test_live_scan_tooling.py`, the tree committed | 37 passed: the 33 before and 4 new (the interface choice; Scapy pointed at it in the order B5 failed in; the refusal before anything is created, twice)                                |
+| Mutations                                                  | Caught: T1 `main()` not pinning (2 tests); T2 the pin not setting `conf.iface` (1); T3 falling back to the first interface (2); T4 the script not passing the address (1)              |
+| The harness's own pin, in the backend image                | Targets attached first: Scapy's default already right, kept. Database first: default `eth0` (database), moved to `eth1`. No interface holding the address: refused, naming what it saw |
+| Live, database network created first, fixed tooling        | The run's own record: `scapy_default` `eth0`, `pinned` `eth1`. It completed: 4 hosts, 4 services, 7 findings, 13 frames                                                                |
+| Live, the same set-up, old tooling                         | Also completed. Docker evidently attached the targets' network first in that run: reversing the creation order shifts the odds, it does not force the order                            |
+| Live, normal order, fixed tooling                          | B6's pair (below): both runs recorded `scapy_default` and `pinned` as `eth0` (`172.30.250.5`) and completed                                                                            |
+
+**What proves the fix.** It is the fixed run's own record, together with the direct ARP test.
+The run recorded the configuration in which ARP gets no reply, and completed anyway. There is no
+forced old-against-new reproduction: the old tooling's failure cannot be forced from outside
+Docker.
+
+### B6 — the topology engine takes the organisation's slug from its task
+
+Commit `ff7ddca`, committed in place.
+
+**The dependency.** `core/topology/engine.py:57` imported `ccure_platform.api` at module level.
+It was used once, in `run_topology_mapping`:
+
+- **The lookup:** `platform_api.organisation(db, org_id)`, for the organisation's slug, or its id
+  when the organisation no longer exists.
+- **Why the slug matters.** Every network-link id is derived from it (`gen_network_link_id`), so a
+  different value re-keys every link.
+- **The cost of the import.** The SNMP engine loaded FastAPI, python-jose, Starlette and Redis.
+
+**The change: "identity lookups passed in by the task".**
+
+- **`run_topology_mapping` takes `org_slug`**, keyword-only and required. It is required rather
+  than defaulted, so a caller that forgot it cannot fall back silently and re-key every link.
+- **The task resolves it.** `run_topology_mapping_task` (`core/tasks.py`, which already imported
+  the platform API) applies the engine's old rule.
+- **The four test calls** pass `org.slug`, which is what the old lookup returned for them.
+- **Behaviour is unchanged.** The slug and the fallback are the same, so the link ids are too. A
+  new test pins that links are keyed by the slug passed in.
+
+**Interfaces: identical.** `interface_snapshot --compare` on `44cb889` and `ff7ddca` reports
+"interfaces identical".
+
+**Coupling** (`capability_map`).
+
+- **Two top-level cross-capability edges went** (467 → 465): `core.topology.engine` →
+  `ccure_platform` and → `ccure_platform.api`. The task module's platform imports are unchanged.
+- **Every other count is unchanged:** upward 38, lateral 74, the cycle at 22/13, foreign 79/17,
+  lazy 384.
+- **The baseline records the engine's smaller load profile:** FastAPI, `jose` and Redis are gone,
+  and SQLAlchemy stays.
+
+**Import cost** (first-party / all modules):
+
+| Module                                            |    Before |     After | Stopped loading                                                    |
+| ------------------------------------------------- | --------: | --------: | ------------------------------------------------------------------ |
+| `core.topology.engine`                            |  62 / 632 |  32 / 345 | the platform API, FastAPI, `jose`, Starlette, Redis                |
+| `routers.topology`                                |  61 / 631 |  61 / 631 | none: the router imports the platform API itself, as the HTTP edge |
+| `core.tasks`, `core.topology.client`, `.identity` | unchanged | unchanged | none                                                               |
+
+**The plan's target is half met.** "No FastAPI" holds. "~15 modules" does not: 32 remain.
+
+- **Why:** the engine still imports `db.models` for `Asset` and `Scan`.
+- **What loads with it:** the model registry brings in `config`, `db`, every capability's models
+  and the platform's own models, which is 28 of the 32 modules.
+- **What is topology's own:** 4 modules, `core.topology`, the engine, `identity` and
+  `db.models.topology`.
+- **What reaching ~15 would take:** moving the engine's database reads and writes behind a port.
+  That is the "writes assets" coupling the analysis lists for topology; it is recorded in §7.
+
+**Tests.**
+
+| Step             | Command / targets                                                                                                                                                                                                                 | Passed | Failed | Skipped | Notes                                                                                                                                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| New and topology | `tests/topology` (80 before, 7 new in `test_topology_engine_platform_free.py`), on a clean worktree of `ff7ddca`                                                                                                                  |     87 |      0 |       0 | The engine names no platform module; no `core.topology` edge into the platform; no web stack loaded; `org_slug` required; links keyed by the slug passed in; the task passes the slug, with the old fallback |
+| Mutation         | the new file, on a scratch worktree with: M1 the engine importing the platform API again; M2 `org_slug` defaulted; M3 the task not passing it; M4 the task passing the id; M5 the engine keying links by the id                   |      — |      — |       — | Caught: M1 by 3 tests, M2 by 1, M3 by 2, M4 by 1, M5 by 1                                                                                                                                                    |
+| Targeted groups  | `tests/assets tests/auth tests/compliance tests/credentialed tests/modules tests/rbac tests/repo tests/reports tests/scans tests/security tests/topology tests/web`, the groups the selector named (`core/tasks.py` reaches most) |  7,555 |      0 |       3 | Audit retention not installed; `alembic.ini`; the live OSV npm feed                                                                                                                                          |
+| Architecture     | `check.py`; `capability_map --check`; `identity_boundary` (unchanged: 3 importers, 2 queries); pre-commit                                                                                                                         |      — |      — |       — | All pass                                                                                                                                                                                                     |
+
+**The full suite was not run.** The selector reported a targeted scope; §11 puts the next full run
+at the end of Phase B.
+
+**Live validation.**
+
+- **Not required.** §11 does not require it for B6, and the harness cannot exercise topology: no
+  target speaks SNMP, and the topology task runs only when a scan carries SNMP settings. The
+  topology tests drive the real engine against the real database, with stubbed SNMP walks.
+- **Run anyway, for two reasons:**
+  - B6 changed `core/tasks.py`, which every scan loads;
+  - it is the fixed tooling's first use in the normal order.
+
+| Run      | Commit    | Interface (`pinned` / `scapy_default`) | Full audit                                                     | Stopped sweep |
+| -------- | --------- | -------------------------------------- | -------------------------------------------------------------- | ------------- |
+| `before` | `44cb889` | `eth0` / `eth0`, `172.30.250.5`        | complete: 3 phases, 4 hosts, 4 services, 7 findings, 13 frames | `cancelled`   |
+| `after`  | `ff7ddca` | `eth0` / `eth0`, `172.30.250.5`        | the same                                                       | `cancelled`   |
+
+**Identical apart from time**, with nothing even needing tolerance. The scan rows, phases, assets
+(with the fixed MACs), services, findings, task results and every frame match.
+
+**Limitations.**
+
+- **The engine still loads the model registry** through its own `Asset` and `Scan` access (above).
+- **Topology is not exercised live.** There is no SNMP target among the validation targets.
+
 ## 7. Decisions awaiting the project owner
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                  | From                                                               |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                                   | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                          | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                                   | analysis §13                                                       |
-| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                                      | S2                                                                 |
-| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                                       | S1                                                                 |
-| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                                   | S2                                                                 |
-| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                                                                                                                                                    | S2b, §4                                                            |
-| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                                                                                                                                                         | S2b, §4                                                            |
-| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                                                                                                                                                             | B2, §6                                                             |
-| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import                                                                                                                                 | B3, §6                                                             |
-| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                                      | B3, §6                                                             |
-| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                                                                                                                                                             | B3, §6                                                             |
-| new | Make `scripts/validation/live_scan.sh` enforce the scanner's interface order. Docker does not guarantee that the first network becomes `eth0` (1 of 12 trials put the second there), and a scanner whose `eth0` is the database network finds no host by ARP. B5's first live run failed this way. For example: check `eth0` before scanning and refuse, or connect the database network only after start | B5, §6                                                             |
+| #   | Decision                                                                                                                                                                                                                                                                  | From                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                   | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                          | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                   | analysis §13                                                       |
+| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                      | S2                                                                 |
+| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                       | S1                                                                 |
+| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                   | S2                                                                 |
+| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                    | S2b, §4                                                            |
+| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                         | S2b, §4                                                            |
+| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                             | B2, §6                                                             |
+| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import | B3, §6                                                             |
+| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                      | B3, §6                                                             |
+| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                             | B3, §6                                                             |
+| new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                   | B6, §6                                                             |

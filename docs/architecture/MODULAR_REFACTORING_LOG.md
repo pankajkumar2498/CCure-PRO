@@ -805,25 +805,273 @@ Two things the first live attempts settled:
   - The credentialed path, which B2 did not touch.
   - The web DAST pipeline. B2 moved only its settler, which `tests/web` covers, including the
     database-down case.
-- **Kept as scratch, not committed:** the live harness and its driver. See §7.
+- **Kept as scratch, not committed:** the live harness and its driver. They were committed
+  before B3, as `22aa824`.
 - **The engines still load SQLAlchemy** through `core.risk` and `core.utils`. That is B3.
 - **The port engine still loads Redis** through the nmap process lease.
 - **The port and network-check engines take no cancellation token,** because they never polled
   for cancellation. Adding a check would change when a stop takes effect, which is a behaviour
   change for its own decision.
 
+### Before B3: the live-scan tooling
+
+Commit `22aa824`, committed in place before B3, as the owner asked on 20 Oct 2026.
+
+B2's live validation ran from scratch scripts (§7). They are now `scripts/validation/`, and
+[`../ci/LIVE_SCAN_VALIDATION.md`](../ci/LIVE_SCAN_VALIDATION.md) is the procedure.
+
+- **`targets.env`** defines the targets once:
+  - the internal network `172.30.250.0/24`;
+  - an OpenSSH host (`.10`), nginx serving a dummy `.env` and `.git/config` (`.11`), Redis
+    without authentication (`.12`) and PostgreSQL (`.13`);
+  - two empty addresses (`.14`, `.15`);
+  - every image pinned by digest;
+  - the host's own address on the bridge (`.1`), named so that no scan includes it.
+- **`targets.sh up|status|down`** manages them.
+  - It is idempotent.
+  - It creates only an internal network, and refuses an existing one that is not internal.
+  - It writes the web target's dummy content at start-up, so nothing secret-shaped is committed.
+  - It gives PostgreSQL a random password per start.
+- **`live_scan.sh <label> <commit> <out-dir>`** runs one commit's code (`git archive`) in the
+  backend image, the way the scanner worker runs. It uses a throwaway PostgreSQL and Redis on a
+  per-run internal network, and removes them on exit.
+- **`live_scan_harness.py`** is B2's harness. It dispatches and stops scans as the routes do, and
+  refuses a target list that holds the host's address.
+- **`compare_live_scans.py`** compares two results, ignoring only wall-clock time.
+
+**Tests.** `tests/repo/test_live_scan_tooling.py` holds what can drift without Docker:
+
+- **Isolation:**
+  - a private /24 that overlaps none of the installation's networks;
+  - internal networks only;
+  - no published port or host network in any container command;
+  - the host never a target;
+  - every image by digest.
+- **The scripts:** both parse.
+- **The harness:**
+  - importing it runs nothing;
+  - its dispatch keywords equal the host-discovery route's;
+  - it refuses a target list holding the host;
+  - its read-back queries run against the real schema;
+  - its stop does what the stop route does.
+- **The comparison** ignores time and names everything else.
+
+| Check                                              | Passed | Failed | Skipped             |
+| -------------------------------------------------- | -----: | -----: | ------------------- |
+| `tests/repo/test_live_scan_tooling.py` (new)       |     13 |      0 | 0                   |
+| `tests/repo`                                       |    738 |      0 | 1 (`alembic.ini`)   |
+| `tests/security`                                   |    263 |      0 | 0                   |
+| `python3 -I Backend/scripts/architecture/check.py` |      — |      — | all six checks `ok` |
+| Pre-commit                                         |      — |      — | passed              |
+
+Its first use is B3's "before" run below. It reproduced B2's figures: 7 findings and 13 frames.
+
+### B3 — discovery stops loading the vulnerability-intelligence database layer
+
+Commit `ad4aab7`, committed in place.
+
+**Where the dependency was.** Inspected on `22aa824`:
+
+- **`core.risk`** imported `compute_priority` and `merge_alias_fields` from `core.vuln_intel`, at
+  top level, to merge duplicate findings. `core.vuln_intel` holds the queries against the
+  `vuln_intel` database, and importing it loads SQLAlchemy, `config` and `db.fork_safety`.
+- **Discovery** imports `core.risk` for OS fingerprinting (through its ICMP and TCP-SYN
+  techniques and the enrichment). So importing the discovery engine loaded 474 modules, the
+  database layer among them, for two pure functions.
+- **The network-check engine** imports `core.risk` too. The port and network-check engines also
+  import `core.utils` (for `extract_version` and `TokenBucket`). `core.utils` builds the CVE
+  database client when it is imported (`CVE_DB = get_cve_database()`) for `lookup_cve`, whose
+  only engine caller is the `cve_engine` network-check plugin.
+
+**The change.** The smallest safe change: the pure helpers move, and the CVE lookup stays.
+
+- **The move.** `title_case_severity`, `compute_priority`, `_json_safe` and `merge_alias_fields`
+  moved, byte-identical, from `core/vuln_intel.py` to the new `core/vuln_scoring.py`, which
+  imports only the standard library. `merge_alias_fields` calls the other three, so they move
+  together.
+- **The re-export.** `core.vuln_intel` re-exports all four. Every other caller gets the same
+  function objects under the old name: `core.cve_database`, the credentialed matcher, and the
+  dashboard, findings and asset routers.
+- **The one changed import.** `core.risk` now imports from `core.vuln_scoring`.
+- **The classification.** `core.vuln_scoring` is classified with `vuln_intel`, which owns the
+  priority ladder. Classifying it with the scan kernel would have made the two capabilities import
+  each other: `core.utils` already imports `core.cve_database`.
+- **Behaviour is unchanged.** The functions are the same objects, and a test pins it. No other
+  call site, route, task, table or log line changed.
+
+**Half B is deferred.** Moving `core.utils`' CVE database client too, measured on a scratch copy:
+
+- **What it would gain.** The port engine would load 448 modules instead of 568, and the
+  network-check engine 339 instead of 510, neither with SQLAlchemy.
+- **Why it waits:**
+  - **It changes when the vulnerability database is first contacted.** `CVEDatabase.__init__`
+    probes it (`can_connect_vuln_db()`) and logs the backend it chose. Today that happens when
+    `core.utils` is first imported, in every process that imports it; moved, it would happen at
+    the first CVE lookup. That is a behaviour change, not a dependency cut.
+  - **Another caller.** `scripts/verification/verify_install.py` imports `lookup_cve` from
+    `core.utils`.
+  - **The live check cannot validate it.** The throwaway vulnerability database matches no CVE,
+    so a broken lookup and a working one produce the same scans.
+- It is listed in §7.
+
+**Interfaces: identical.** `interface_snapshot --compare` on `22aa824` and `ad4aab7` reports
+"interfaces identical": routes, route limits, Celery tasks, the beat schedule and the OpenAPI
+digest. `scripts.openapi.generate --check` exits 0, and the RBAC inventory is current.
+
+**Coupling** (`capability_map`):
+
+| Measure                                    | Before (`22aa824`) | After (`ad4aab7`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Modules classified                         |                483 |           **484** |
+| Upward edges                               |                 40 |                40 |
+| Lateral edges                              |                 74 |                74 |
+| Largest cycle, all / top-level             |            22 / 13 |           22 / 13 |
+| Foreign-table references / writes          |            79 / 17 |           79 / 17 |
+| Cross-capability imports, top-level / lazy |          466 / 386 |         466 / 386 |
+
+- **One lateral edge replaced by another** between the same two capabilities:
+  `core.risk → core.vuln_intel` became `core.risk → core.vuln_scoring`. The count is unchanged
+  because the coupling is now to the pure part only. The baseline records the new edge.
+- **The discovery engine's load profile** in the baseline no longer lists SQLAlchemy.
+- **`CEILINGS` are unchanged:** no ceiling measure fell.
+
+**Import cost** (`import_cost --compare`, first-party / all modules):
+
+| Module                                       |   Before |    After | Watched modules that stopped loading                      |
+| -------------------------------------------- | -------: | -------: | --------------------------------------------------------- |
+| `core.discovery.engine`                      | 20 / 474 | 17 / 367 | SQLAlchemy, `config`, `core.vuln_intel`, `db.fork_safety` |
+| `core.discovery.enrichment`                  | 21 / 476 | 18 / 369 | the same                                                  |
+| `core.discovery.techniques.tcp_syn`          | 20 / 474 | 17 / 367 | the same                                                  |
+| `core.risk`                                  |  7 / 461 |  4 / 319 | the same                                                  |
+| `engines.port.port_engine`                   | 23 / 567 | 24 / 568 | none (still `core.utils` → `core.cve_database`)           |
+| `engines.vulnerability.vulnerability_engine` | 24 / 509 | 25 / 510 | none (the same)                                           |
+| `orchestrator.scan_orchestrator`             | 58 / 958 | 59 / 959 | none                                                      |
+| `core.vuln_intel`                            |  5 / 248 |  6 / 249 | —                                                         |
+| `core.cve_database`                          |  6 / 252 |  7 / 253 | —                                                         |
+| `core.vuln_scoring` (new)                    |        — |   2 / 19 | loads none of them                                        |
+
+The modules that gained one gained `core.vuln_scoring` itself. At run time, the same probe as
+B2's runs the discovery engine with no orchestrator: it loads none of the watched modules, before
+the run or after it. `tests/scans/test_vuln_scoring_split.py` pins that.
+
+**Tests.**
+
+| Step                   | Command / targets                                                                                                                                                                                                                  | Passed | Failed | Skipped | Notes                                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New                    | `tests/scans/test_vuln_scoring_split.py`                                                                                                                                                                                           |     14 |      0 |       0 | Re-export identity; stdlib-only imports; no `core.risk` edge to `vuln_intel`; discovery imports and runs without the database layer; behaviour                                   |
+| Mutation               | the new file, on a scratch worktree with: M1 `core.risk` importing from `core.vuln_intel` again; M2 the P2 boundary in `compute_priority` moved from CVSS 9.0 to 9.5; M3 a wrapper copy of `compute_priority` in `core.vuln_intel` |      — |      — |       — | Caught: M1 by 2 tests, M2 by 1, M3 by 1. M3's first attempt put the copy before the re-export, which rebound the name, so it was not a mutation; redone at the end of the module |
+| Targeted groups        | `tests/assets tests/compliance tests/credentialed tests/repo tests/scans tests/security`, the groups the selector named                                                                                                            |  5,568 |      0 |       1 | `alembic.ini`                                                                                                                                                                    |
+| Architecture           | `check.py`; `capability_map --check`; `openapi.generate --check`; `build_migration_inventory --check`; pre-commit                                                                                                                  |      — |      — |       — | All pass                                                                                                                                                                         |
+| **Full backend suite** | `scripts/ci/local_guard_tests.sh tests`, on a clean detached worktree of `ad4aab7`                                                                                                                                                 |  7,938 |  **0** |     211 | 14 min 45 s: B2's 7,911 plus the 13 tooling and 14 B3 tests; the same 211 environmental skips                                                                                    |
+
+**Live validation, before and after.**
+
+- **Set-up.** The tooling above, against the same running targets, with
+  `ccure-audit-pro-backend:latest` (`3a0dde6d4580`).
+- **Six runs, alternating** between `22aa824` and `ad4aab7`. The first pair differed, so the runs
+  were repeated until each difference could be placed.
+- **The same in every run.**
+  - The full audit completed: 3 phases, 4 active hosts and 2 inactive, 4 services and 13
+    frames.
+  - The stopped sweep ended `cancelled`, with no phase recorded.
+
+| Run       | Commit    | Full audit            | Stopped sweep: hosts in the first frame; settled after the stop |
+| --------- | --------- | --------------------- | --------------------------------------------------------------- |
+| `before`  | `22aa824` | 7 findings, 320 s     | 1; 9.1 s                                                        |
+| `after`   | `ad4aab7` | **8 findings**, 316 s | **4; 8.5 s**                                                    |
+| `before2` | `22aa824` | 7 findings, 308 s     | 1; 9.1 s                                                        |
+| `after2`  | `ad4aab7` | 7 findings, 321 s     | **4; 8.5 s**                                                    |
+| `before3` | `22aa824` | 7 findings, 319 s     | 1; 9.1 s                                                        |
+| `after3`  | `ad4aab7` | 7 findings, 291 s     | 1; 9.1 s                                                        |
+
+**Result: no difference attributable to B3.**
+
+- `after3` is identical, apart from time, to all three `22aa824` runs. So are the three
+  `22aa824` runs to each other.
+- Every difference the comparison reported between the commits also appears between two runs of
+  `ad4aab7` itself: `after` against `after2` (the finding), and `after2` against `after3` (the
+  frames).
+- What each difference is, measured:
+
+- **One more finding:** `CCURE-CHK-NUCLEI-CVE-2025-46817` (critical) on the Redis target, from
+  the Nuclei probe. To test it, the probe's own command line ran on its own, in the same image,
+  on the same network and against the same target, with no CCure code:
+
+  | Variant                                                     | Matches | Time      |
+  | ----------------------------------------------------------- | ------: | --------- |
+  | As the probe runs it (five runs)                            |       0 | 161–193 s |
+  | Host-error cutoff disabled (`-nmhe`)                        |      10 | 890 s     |
+  | Only the non-HTTP template types (`-pt tcp,javascript,ssl`) |      10 | 27 s      |
+
+  - **The 10 matches:**
+    - CVE-2025-46817 and CVE-2025-49844 (critical);
+    - CVE-2025-46818 and CVE-2025-46819 (high);
+    - `exposed-redis`;
+    - `redis-default-logins`, five times.
+  - **The mechanism.**
+    - The probe hands a non-HTTP port to Nuclei as a bare `host:port`.
+    - Nuclei (v3.11.1) runs its HTTP templates against it too, and each one fails.
+    - After its per-host error cutoff (`-max-host-error`, default 30) it drops the host. It logged
+      "Skipped 172.30.250.12:6379 from target list as found unresponsive 50 times".
+    - Whether a Redis template has run by then depends on scheduling at `-c 50`. In the scans, one
+      got through in one run of six.
+  - **Why it is not B3.** B3 changed nothing on that path. The functions it moved are the same
+    objects, and the probe's command line and its parsing are untouched.
+  - **It is a pre-existing false negative**, and a serious one: on this target the probe misses
+    two critical CVEs most of the time. It is recorded in §7, not fixed here, because it is outside
+    B3.
+
+- **The stopped sweep's frames.**
+  - **What the frame shows.** Scapy returns every ARP reply at once. `arp.probe` then marks
+    hosts active one by one, each only after `classify_mac` returns. For the targets' random MACs
+    that means two queries of the MAC-vendor cache and a queued fetch from `api.macvendors.com`,
+    which cannot succeed on an internal network.
+  - **What it measures.** The live publisher samples every 150 ms. Its first frame holds however
+    many hosts those lookups have let through: one in four runs, four in two.
+  - **What follows from it.** The stop is issued on that frame, so `after_discovered` follows it.
+    The frame that later reports all four hosts is either needed (4 frames) or not (3). The task
+    settles either 9.1 s or 8.5 s after the stop, the 0.6 s the other three lookups took.
+  - **Why it is not B3.** `after3` shows the "one host" pattern on `ad4aab7`, and the code that
+    runs here is the same on both commits. B3 changed one import in `core.risk`, and discovery
+    calls none of the moved functions.
+
+**Limitations.**
+
+- **Not exercised live: CVE matching.**
+  - The vulnerability database was the throwaway one, so no run matched a CVE.
+  - B3 moved the functions that merge and grade CVE records. The behaviour tests and the full
+    suite cover them.
+- **The port and network-check engines still load SQLAlchemy,** through `core.utils` →
+  `core.cve_database`. That is half B, deferred above.
+- **Discovery still reaches the application database lazily.** The ARP techniques call
+  `core.oui_lookup`. When an address's OUI is not in the bundled registry, it reads its
+  MAC-vendor cache (`MacVendorCache`) through `db.base` and `db.models`. The targets' Docker MACs
+  are never in that registry, so the live runs took this path.
+  - It is not B3's dependency: the application database, not vulnerability intelligence.
+  - It loads nothing at import.
+  - It is recorded in §7.
+- **The comparison cannot tell a scan's own variation from a change.** It reports both as
+  differences, and only repeated, alternating runs separated them here. Two kinds were seen:
+  - Nuclei's per-host error cutoff, described above;
+  - the stopped sweep's first frame, which depends on how long the MAC-vendor lookups take.
+    `docs/ci/LIVE_SCAN_VALIDATION.md` now describes both.
+- **Target MAC addresses are Docker's random ones.** A comparison across a re-creation of the
+  targets therefore differs in every asset's MAC. Compare runs against the same running targets.
+
 ## 7. Decisions awaiting the project owner
 
-| #   | Decision                                                                                                                                                                                                               | From                                                               |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                       | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                | analysis §13                                                       |
-| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                   | S2                                                                 |
-| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                    | S1                                                                 |
-| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                | S2                                                                 |
-| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage` | S2b, §4                                                            |
-| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                      | S2b, §4                                                            |
-| new | Commit the live-validation harness and its driver (scratch in B2) as tooling, for the live validations §11 still requires (B3, C2, C3, C6)                                                                             | B2, §6                                                             |
-| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                          | B2, §6                                                             |
-| new | Standing scan targets for the VM. `CLAUDE.md`'s "Test targets" name Windows-era containers that do not exist here; B2 built disposable ones and removed them                                                           | B2, §6                                                             |
+| #   | Decision                                                                                                                                                                                                                                                                  | From                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                   | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                          | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                   | analysis §13                                                       |
+| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                      | S2                                                                 |
+| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                       | S1                                                                 |
+| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                   | S2                                                                 |
+| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                    | S2b, §4                                                            |
+| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                         | S2b, §4                                                            |
+| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                             | B2, §6                                                             |
+| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import | B3, §6                                                             |
+| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                      | B3, §6                                                             |
+| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                             | B3, §6                                                             |
+| new | Make the live comparison tolerate the stopped sweep's timing (compare its outcome, not its frames), and pin the targets' MAC addresses in `targets.sh`                                                                                                                    | B3, §6                                                             |

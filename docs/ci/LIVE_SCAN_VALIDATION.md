@@ -107,8 +107,8 @@ wall-clock values. It exits 1 and names each difference.
 ## What to expect
 
 A vulnerability audit of these targets, measured on 19 Oct 2026 with
-`ccure-audit-pro-backend:3212d6b…` (`3a0dde6d4580`). It is the same on `98f33d1`
-and on `6986194`.
+`ccure-audit-pro-backend:3212d6b…` (`3a0dde6d4580`). It is the same on `98f33d1`,
+`6986194`, `22aa824` and `ad4aab7`, apart from the variation described below.
 
 - **Hosts:** 3 phases complete. 4 hosts are active (`.10`–`.13`) and 2 inactive.
 - **Services:** OpenSSH 9.6p1 on 22, nginx on 80, Redis 7.4 on 6379, PostgreSQL
@@ -126,6 +126,39 @@ batch boundary after the stop.
 
 These figures depend on the image's tools and templates. A comparison is between
 two commits run on the same image and the same targets, not against this list.
+
+## Known variation between runs
+
+Two differences can appear between runs of the same code. B3 measured both
+(refactoring log §6). Before reading either as a regression, repeat the runs in
+alternation (before, after, before, after).
+
+- **An extra Nuclei finding on the Redis target**, most often
+  `CCURE-CHK-NUCLEI-CVE-2025-46817`.
+  - **Why it happens.** The Nuclei probe hands a non-HTTP port to Nuclei as a
+    bare `host:port`, and Nuclei runs its HTTP templates against it too. Each
+    one fails, and after its per-host error cutoff Nuclei drops the host.
+    Whether a Redis template has run by then depends on scheduling.
+  - **Measured.** Run on its own, as the probe runs it, Nuclei matched nothing
+    on Redis in five runs. With only the non-HTTP template types it matched 10
+    templates in 27 s.
+  - **Status.** This is a coverage defect in the probe, recorded in the log's
+    §7. Until it is fixed, a run may report 7 or 8 findings.
+- **The stopped sweep's frames.** The ARP technique marks each answering host
+  active only after looking up its MAC vendor. For the targets' random MACs, that
+  lookup queries the database. The first frame, sampled at a 150 ms tick, holds
+  however many hosts those lookups have let through: one in some runs, all four
+  in others. The stop is issued on that frame, so three things follow it:
+
+  - the frame count, 3 or 4;
+  - the stop's `after_discovered`;
+  - the settle time after the stop, about 0.6 s apart.
+
+  The outcome does not change: `cancelled`, with no phase recorded.
+
+**Compare only against the same running targets.** Docker gives each target a
+random MAC address whenever it is created, so `targets.sh down` then `up` changes
+every asset's MAC.
 
 ## Limits
 

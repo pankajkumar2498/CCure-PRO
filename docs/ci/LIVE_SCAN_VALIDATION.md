@@ -113,8 +113,35 @@ phases, and the assets, services and findings, and writes `<out-dir>/<label>.jso
 and `<label>.log`.
 
 **The comparison** checks each run's scan row, phases, assets, services,
-findings, task result and every progress frame in order. It excludes only
+findings, task result and every progress frame in order, and excludes
 wall-clock values. It exits 1 and names each difference.
+
+**What it tolerates: two things B3 measured as timing alone.** A difference in
+either is printed as `tolerated:` and does not fail the comparison:
+
+- **Discovery's sampled frames.** While a batch runs, discovery publishes the
+  hosts found so far every 150 ms, so the number of these frames, and how many
+  hosts the first one holds, varies.
+  - A phase-1 `running` frame is treated as a sample when the next phase-1
+    `running` frame covers it completely: the same or more hosts, the same or
+    higher counters, the same sweep size and fields. A sample may be present in
+    one run and absent in the other.
+  - The cancel run's stop is issued on the first sample, so the stop's
+    `after_discovered` is a sample too.
+- **Where the stop route's frame lands.** It is published from another thread, so
+  its position among the engine's frames varies. Whether it was sent, and how
+  many times, is still compared.
+
+**Everything else is compared exactly**, including:
+
+- the last sample of every run of samples, and a sample the next one does not
+  cover (a host reported and then gone, or another sweep size);
+- every frame of the port scan and the audit, whose counters move once per host;
+- every terminal frame;
+- every stored row, findings included. The Nuclei variation below therefore
+  still fails a comparison.
+
+`--strict` compares everything exactly, as the comparison did before.
 
 ## What to expect
 
@@ -142,8 +169,9 @@ two commits run on the same image and the same targets, not against this list.
 ## Known variation between runs
 
 Two differences can appear between runs of the same code. B3 measured both
-(refactoring log §6). Before reading either as a regression, repeat the runs in
-alternation (before, after, before, after).
+(refactoring log §6). The comparison tolerates the second and reports the first.
+Before reading the first as a regression, repeat the runs in alternation
+(before, after, before, after).
 
 - **An extra Nuclei finding on the Redis target**, most often
   `CCURE-CHK-NUCLEI-CVE-2025-46817`.
@@ -166,7 +194,9 @@ alternation (before, after, before, after).
   - the stop's `after_discovered`;
   - the settle time after the stop, about 0.6 s apart.
 
-  The outcome does not change: `cancelled`, with no phase recorded.
+  The outcome does not change: `cancelled`, with no phase recorded. The
+  comparison tolerates the first two and prints them. The settle time is
+  wall-clock and is not compared at all.
 
 ## Limits
 

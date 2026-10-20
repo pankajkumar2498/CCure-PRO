@@ -17,7 +17,9 @@ drift silently:
   host-discovery route uses, and stops one the way the stop route does;
 * the harness's queries run against the real schema (B2's first run queried a
   column that does not exist);
-* the comparison names every difference except time.
+* the comparison names every difference except time, and tolerates only the
+  two things B3 measured as timing: discovery's sampled frames and where the
+  stop route's frame lands.
 """
 
 import importlib.util
@@ -361,6 +363,9 @@ def test_the_harness_stops_a_scan_as_the_stop_route_does(db_session, monkeypatch
     assert frames == [
         (scan_id, 1, {"status": "cancelled", "reason": "Scan cancelled by user."})
     ]
+    # The comparison recognises this frame by its content.
+    _, phase, progress = frames[0]
+    assert {"phase": phase, **progress} == _load("compare_live_scans").ROUTE_STOP_FRAME
     # A scan already over is left alone, as the route leaves it.
     assert harness.stop_like_the_route(scan_id) is False
 
@@ -440,3 +445,164 @@ def test_the_comparison_ignores_time_and_names_everything_else(tmp_path):
         text=True,
     )
     assert same.returncode == 0 and "identical apart from time" in same.stdout
+
+
+# ── The comparison's timing tolerance ────────────────────────────────────────
+#
+# The frames are B3's own (refactoring log §6): the cancel run's frames of
+# `before` (22aa824) and `after2` (ad4aab7), which differed only because the
+# first discovery sample held one host in one run and four in the other.
+
+HOSTS = ["172.30.250.10", "172.30.250.11", "172.30.250.12", "172.30.250.13"]
+STOP = {"phase": 1, "status": "cancelled", "reason": "Scan cancelled by user."}
+END = {"phase": 1, "status": "cancelled"}
+
+
+def _sample(hosts, total=253):
+    n = len(hosts)
+    return {
+        "phase": 1,
+        "status": "running",
+        "discovered": n,
+        "active": n,
+        "total_ips": total,
+        "host_ips": hosts,
+    }
+
+
+def _cancel_run(frames, after_discovered):
+    run = _result([])["cancel"]
+    run["frames"] = [dict(f, t=i * 0.5) for i, f in enumerate(frames)]
+    run["stop"] = {
+        "applied": True,
+        "after_discovered": after_discovered,
+        "task_returned_s_after_stop": 9.1,
+    }
+    return run
+
+
+B3_BEFORE = [_sample(HOSTS[:1]), STOP, _sample(HOSTS), END]
+B3_AFTER = [_sample(HOSTS), STOP, END]
+
+
+def _with_cancel(frames, after_discovered):
+    result = _result([])
+    result["cancel"] = _cancel_run(frames, after_discovered)
+    return result
+
+
+def test_the_b3_timing_differences_are_tolerated_and_still_shown(tmp_path):
+    compare = _load("compare_live_scans")
+    before = _with_cancel(B3_BEFORE, 1)
+    after = _with_cancel(B3_AFTER, 4)
+    differences, tolerated = compare.classify(before, after)
+    assert differences == []
+    assert len(tolerated) == 2
+    assert compare.compare(before, after) == []
+    # --strict is the comparison before B3: both count.
+    assert len(compare.compare(before, after, strict=True)) == 2
+
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps(before))
+    b.write_text(json.dumps(after))
+    tool = [sys.executable, str(VALIDATION / "compare_live_scans.py")]
+    done = subprocess.run(tool + [str(a), str(b)], capture_output=True, text=True)
+    assert done.returncode == 0
+    assert done.stdout.count("tolerated: ") == 2
+    assert "2 timing-dependent difference(s)" in done.stdout
+    strict = subprocess.run(
+        tool + ["--strict", str(a), str(b)], capture_output=True, text=True
+    )
+    assert strict.returncode == 1 and "2 difference(s)" in strict.stdout
+
+
+@pytest.mark.parametrize(
+    "frames, after_discovered, what",
+    [
+        ([_sample(HOSTS[:3]), STOP, END], 3, "a host missing from discovery"),
+        ([_sample(HOSTS), STOP], 4, "no terminal frame from the engine"),
+        ([_sample(HOSTS), END], 4, "no frame from the stop route"),
+        ([_sample(HOSTS), STOP, STOP, END], 4, "the stop route's frame twice"),
+        (
+            [_sample(HOSTS), _sample(HOSTS[:1]), STOP, END],
+            4,
+            "a sample going backwards",
+        ),
+        ([_sample(HOSTS, total=254), STOP, END], 4, "a different sweep size"),
+        # An earlier sample is dropped only when the next one covers it. These
+        # end on the right sample, so only that rule can catch them.
+        (
+            [_sample([*HOSTS, "172.30.250.14"]), _sample(HOSTS), STOP, END],
+            5,
+            "a host reported, then gone",
+        ),
+        (
+            [_sample(HOSTS[:1], total=254), _sample(HOSTS), STOP, END],
+            1,
+            "an early sample with another sweep size",
+        ),
+        (
+            [dict(_sample(HOSTS[:1]), error="x"), _sample(HOSTS), STOP, END],
+            1,
+            "an early sample carrying another field",
+        ),
+        ([_sample(HOSTS), STOP, {"phase": 1, "status": "failed"}], 4, "a failed end"),
+        (B3_AFTER, None, "no stop issued"),
+    ],
+)
+def test_a_real_difference_in_the_cancel_run_is_still_a_difference(
+    frames, after_discovered, what
+):
+    compare = _load("compare_live_scans")
+    differences = compare.compare(
+        _with_cancel(B3_BEFORE, 1), _with_cancel(frames, after_discovered)
+    )
+    assert differences, what
+
+
+#: The full run's frames as B3 recorded them, less the time.
+FULL_FRAMES = [
+    _sample(HOSTS, total=6),
+    dict(_sample(HOSTS, total=6), discovered=6),
+    dict(_sample(HOSTS, total=6), discovered=6, status="enriching"),
+    {"phase": 2, "status": "running", "total_hosts": 4},
+    {"phase": 2, "status": "running", "scanned_hosts": 4, "total_hosts": 4},
+    *(
+        {"phase": 3, "status": "running", "scanned_hosts": n, "total_hosts": 4}
+        for n in range(5)
+    ),
+    {"phase": 3, "status": "complete", "scanned_hosts": 6, "total_hosts": 6},
+    {"phase": 2, "status": "complete", "scanned_hosts": 6, "total_hosts": 6},
+    {"phase": 1, "status": "complete", "discovered": 4, "total_ips": 6},
+]
+
+
+def _with_full(frames):
+    result = _result([])
+    result["full"]["frames"] = [dict(f, t=float(i)) for i, f in enumerate(frames)]
+    return result
+
+
+@pytest.mark.parametrize(
+    "drop, what",
+    [
+        (1, "the batch's own discovery frame"),
+        (6, "a per-host progress frame of the audit"),
+        (12, "the end of discovery"),
+    ],
+)
+def test_a_missing_frame_outside_the_samples_is_still_a_difference(drop, what):
+    """A frame the engine publishes once per event, not per tick, is never a sample."""
+    compare = _load("compare_live_scans")
+    fewer = [f for i, f in enumerate(FULL_FRAMES) if i != drop]
+    assert compare.compare(_with_full(FULL_FRAMES), _with_full(fewer)), what
+
+
+def test_a_discovery_sample_the_batch_frame_covers_is_tolerated():
+    """The same tolerance in the full run: the first sample may hold fewer hosts."""
+    compare = _load("compare_live_scans")
+    early = [_sample(HOSTS[:1], total=6), *FULL_FRAMES]
+    differences, tolerated = compare.classify(
+        _with_full(FULL_FRAMES), _with_full(early)
+    )
+    assert differences == [] and len(tolerated) == 1

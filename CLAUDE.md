@@ -292,6 +292,11 @@ prints the graph; `--violations` lists every rule-breaking edge.
   `architecture-guards` pre-commit hook runs it on every backend commit.
 - `scripts/ci/local_guard_tests.sh` runs the database-backed guard tests in
   throwaway containers.
+- `scripts/validation/` runs live scans with a commit's code against disposable
+  targets on an internal Docker network, before and after a scan-path change,
+  and compares what they stored (`docs/ci/LIVE_SCAN_VALIDATION.md`). These are
+  the VM's standing scan targets: the target containers named in the "Test
+  targets" sections below date from the Windows host and do not exist here.
 - GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
   only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
   runs where.

@@ -51,6 +51,7 @@ def _run(db_session, org, scan, walks: dict, targets: list[str]):
             db=db_session,
             scan_id=scan.id,
             org_id=org.id,
+            org_slug=org.slug,
             snmp_config={"version": "v2c", "community": "public"},
             target_ips=targets,
         )
@@ -503,6 +504,7 @@ def test_unresponsive_targets_are_never_walked(db_session, test_org, scan):
             db=db_session,
             scan_id=scan.id,
             org_id=test_org.id,
+            org_slug=test_org.slug,
             snmp_config={"version": "v2c", "community": "public"},
             target_ips=["10.180.4.1", "10.180.4.2", "10.180.4.3"],
         )

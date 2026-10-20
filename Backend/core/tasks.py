@@ -2723,15 +2723,20 @@ def run_topology_mapping_task(
             },
         )
 
-        # Run the topology engine
+        # Run the topology engine. Link ids are derived from the organisation's
+        # slug, which the task looks up so the engine needs no platform import
+        # (B6). An organisation that no longer exists falls back to its id, as
+        # the engine did before.
         from core.topology.engine import run_topology_mapping
 
+        organisation = platform_api.organisation(db, org_id)
         result = run_topology_mapping(
             db=db,
             scan_id=scan_id,
             org_id=org_id,
             snmp_config=snmp_config,
             target_ips=target_ips,
+            org_slug=organisation.slug if organisation else org_id,
         )
 
         # Update scan phase record

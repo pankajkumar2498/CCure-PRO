@@ -1144,6 +1144,105 @@ Neither changes application code.
 - **The Nuclei gap on Redis is unchanged**, and was not part of this work. A comparison can still
   fail on it.
 
+### B4 — the benchmark package stops re-exporting its database loader
+
+Commit `f4e05e2`, committed in place.
+
+**The dependency.** Inspected on `908da54`:
+
+- **The re-export.** `core/benchmarks/__init__.py` re-exported `core.benchmarks.loader`, which
+  imports SQLAlchemy and the compliance models.
+- **Why it reached so far.** Importing a submodule runs the package's `__init__` first. So
+  `core.benchmarks.pack`, the pure content parser, loaded the database layer, and so did the SCAP
+  compiler, whose `core.scap.translate` imports it.
+- **Who used it.** No application module imported a loader name from the package; every import
+  in the application already names a submodule (`pack`, `selection`, `loader`). The package-level
+  loader names were used by the two operator scripts (`scripts/benchmarks/load_benchmark.py`,
+  `load_stig.py`) and one test.
+
+**The change.**
+
+- **The package exports the `pack` names only**, as the same objects as before. Its docstring now
+  says why: `loader` and `selection` need the database and are imported by name.
+- **The callers.** The two scripts and `tests/compliance/test_benchmark_end_to_end.py` import
+  `load_pack_into_db` from `core.benchmarks.loader`. Nothing else changed.
+- **Behaviour is unchanged.** No function or table changed. The code that runs at scan time, the
+  credentialed audit's `core.benchmarks.selection` and the SCAP collector, is the same code. It
+  no longer imports the loader as a side effect.
+
+**Interfaces: identical.** `interface_snapshot --compare` on `908da54` and `f4e05e2` reports
+"interfaces identical": routes, route limits, Celery tasks, the beat schedule and the OpenAPI
+digest.
+
+**Coupling** (`capability_map`).
+
+- **Every count is unchanged:** 484 modules, 40 upward and 74 lateral edges, the cycle at 22/13,
+  79/17 foreign-table references and writes, 466/386 cross-capability imports. The import B4
+  removed, `core.benchmarks` → `core.benchmarks.loader`, is inside one capability.
+- **What changed is the load profiles.** `core.benchmarks.pack` and `core.scap.oval` no longer
+  load ten capabilities or SQLAlchemy. Each now loads `check_kernel` and `infra` only. The
+  compiler's 32 modules are 26 of the configuration-audit and SCAP code itself, 5 of
+  `core.checks` (`check_kernel`), and the `core` package (`infra`).
+  `capability_map --check` refused until the baseline recorded that, and `--write-baseline`
+  changed those two entries only.
+
+**Import cost** (`import_cost --compare`, first-party / all modules):
+
+| Module                                                                |    Before |     After | Watched modules that stopped loading                                                           |
+| --------------------------------------------------------------------- | --------: | --------: | ---------------------------------------------------------------------------------------------- |
+| `core.scap`, `core.scap.oval`, `core.scap.xccdf`, `.translate`        |  61 / 383 |   32 / 90 | SQLAlchemy, `config`, `db.base`, `db.models`, `db.models.compliance`, `core.benchmarks.loader` |
+| `core.benchmarks`, `core.benchmarks.pack`                             |  54 / 368 |   25 / 72 | the same                                                                                       |
+| `core.benchmarks.selection`                                           |  60 / 374 |  59 / 373 | `core.benchmarks.loader`; it still needs the database                                          |
+| `core.benchmarks.loader`, the two scripts, `core.config_audit.engine` | unchanged | unchanged | none: the loader and the scripts need the database by design                                   |
+
+The plan's target was "SCAP compiler 61 → ~30 modules, no database"; it is 32, with none.
+
+**Tests.**
+
+| Step            | Command / targets                                                                                                                                                                                                                   | Passed | Failed | Skipped | Notes                                                                                                                                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New             | `tests/compliance/test_benchmark_package_split.py`                                                                                                                                                                                  |      6 |      0 |       0 | The package's imports and API; the compiler converts a SCAP fixture and the parser round-trips it and reads a shipped pack with no database module loaded; no caller, scripts included, takes a loader name from the package |
+| Mutation        | the new file, on a scratch worktree with: M1 the package as it was before B4; M2 `load_stig.py` importing the loader name from the package again; M3 the pack parser gaining a database import; M4 the package dropping `dump_pack` |      — |      — |       — | Caught: M1 by 3 tests, M2 by 2, M3 by 1, M4 by 3                                                                                                                                                                             |
+| Focused         | the new file and every benchmark and SCAP test: `test_benchmark_{end_to_end,pack,loader,compliance}`, `test_scap_{content,parsers}`, `test_scan_policy_selection`, on a clean worktree of `f4e05e2`                                 |    199 |      0 |       0 |                                                                                                                                                                                                                              |
+| Targeted groups | `tests/assets tests/compliance tests/credentialed tests/repo tests/scans tests/security`, the groups the selector named                                                                                                             |  5,594 |      0 |       1 | `alembic.ini`. B3's 5,568, the 20 live-validation tests and these 6                                                                                                                                                          |
+| Architecture    | `check.py`; `capability_map --check`; pre-commit                                                                                                                                                                                    |      — |      — |       — | All pass                                                                                                                                                                                                                     |
+
+**The full suite was not run.** The selector reported a targeted scope, and `CLAUDE.md` runs a
+complete suite only when the selector reports `full` or a step asks for one. The analysis (§11)
+puts the next full run at the end of Phase B.
+
+**Runtime validation: the operator scripts, before and after.**
+
+- **No live scan.** The analysis (§11) requires live scans for B2, B3, C2, C3 and C6, not B4.
+  The harness could not observe B4 either:
+  - its scans are unauthenticated;
+  - the only scan-time importers of the package are the credentialed audit's
+    `core.benchmarks.selection` and the SCAP collector, which the harness never runs, and whose
+    code B4 did not change.
+- **What runs differently is the two scripts.** Each commit's code (`git archive`) ran in the
+  backend image against its own throwaway PostgreSQL on an internal network, bootstrapped as CI
+  does. The steps:
+  - `load_benchmark.py --dir data/benchmarks --dry-run`;
+  - the same, applied;
+  - the same again, to show it is idempotent;
+  - `load_stig.py --load` on a datastream built from the SCAP tests' fixtures.
+- **Result: identical on `908da54` and `f4e05e2`.**
+  - Every step exited 0, with the same output.
+  - Every row of `compliance_frameworks`, `_controls`, `_rules` and `_rule_controls` for the
+    three benchmark frameworks was the same, timestamps excluded: 3 frameworks, 24 controls, 21
+    rules, 21 links.
+  - The converted pack was the same.
+
+**Limitations.**
+
+- **The loader, `selection` and the scripts still load the database.** That is their job. B4
+  separated the pure half of the package from them; it did not change them.
+- **The SCAP compiler still loads two other capabilities.** `check_kernel` is the five
+  `core.checks` modules the configuration-audit spec builds on. `infra` is only the `core`
+  package's own `__init__`, which every `core.*` import runs. The baseline records both.
+- **The runtime check used the scripts' scratch driver**, not committed tooling: the live-scan
+  tooling covers scans, and B4 changed no scan.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                  | From                                                               |

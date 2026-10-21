@@ -3,8 +3,8 @@ ccure_platform/rbac/model.py — RBAC's persistence seat.
 
 The tables are *defined* in ``ccure_platform/models/rbac_tables.py``, where every
 platform model lives and where the ``models-are-leaves`` rule keeps them free of
-application imports; they are registered with the rest of the metadata through
-``db.models``. This module re-exports them for RBAC's own code and adds the few
+application imports; they are registered with the rest of the platform's models
+through ``ccure_platform.models``. This module re-exports them for RBAC's own code and adds the few
 helpers every part of RBAC needs: turning a row into a plain-value view, hashing
 a permission set, and appending a role revision.
 

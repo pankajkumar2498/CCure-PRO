@@ -318,7 +318,7 @@ def _record_hard_bounce(email_to: str, detail: str) -> None:
         from ccure_platform.identity.email_domain_guard import FLAG_HARD_BOUNCE
         from ccure_platform.identity.email_utils import normalize_email
         from db.base import SessionLocal, utcnow
-        from db.models import User
+        from ccure_platform.models import User
 
         db = SessionLocal()
         try:

@@ -19,7 +19,7 @@ from argon2.exceptions import VerifyMismatchError
 from core.ip_resolver import get_client_ip
 from core.user_agent import describe_request
 from db.base import SessionLocal
-from db.models import RefreshTokenSession, User
+from ccure_platform.models import RefreshTokenSession, User
 from fastapi import Request
 from ccure_platform.identity import tokens
 from passlib.context import CryptContext
@@ -170,7 +170,7 @@ def create_refresh_token(
 
         # ─ Organization Status Check ────────────────────────────────────────
         # Prevent token creation for users in deactivated organizations.
-        from db.models import Organization
+        from ccure_platform.models import Organization
 
         organization = (
             db.query(Organization).filter(Organization.id == user.org_id).first()
@@ -309,7 +309,7 @@ def refresh_access_token(
         # ─ Organization Status Check ────────────────────────────────────────
         # Prevent token refresh if organization is deactivated.
         # This ensures session termination for deactivated organizations.
-        from db.models import Organization
+        from ccure_platform.models import Organization
 
         organization = (
             db.query(Organization).filter(Organization.id == user.org_id).first()

@@ -46,7 +46,7 @@ def enrich_email_risk(user_id: str) -> dict:
         return {"success": True, "skipped": "enrichment disabled"}
 
     from ccure_platform.identity.email_risk_signals import collect_signals
-    from db.models import User
+    from ccure_platform.models import User
 
     db = SessionLocal()
     try:
@@ -102,7 +102,7 @@ def retro_scan_email_risk(include_enrichment: bool = False) -> dict:
     """
     from ccure_platform.identity.email_domain_guard import evaluate_email
     from ccure_platform.identity.email_utils import canonicalize_email
-    from db.models import User
+    from ccure_platform.models import User
 
     db = SessionLocal()
     try:
@@ -204,7 +204,7 @@ def purge_stale_unapproved_accounts() -> dict:
     like.
     """
     from config import AppConfig
-    from db.models import User
+    from ccure_platform.models import User
 
     ttl_days = AppConfig.UNAPPROVED_ACCOUNT_TTL_DAYS
     if ttl_days <= 0:

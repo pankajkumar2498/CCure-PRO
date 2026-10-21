@@ -99,6 +99,7 @@ def _run_mapping(db_session, org, scan, walks):
             db=db_session,
             scan_id=scan.id,
             org_id=org.id,
+            org_slug=org.slug,
             snmp_config={"version": "v2c", "community": "public"},
             target_ips=list(walks.keys()),
         )

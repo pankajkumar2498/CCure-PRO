@@ -196,6 +196,7 @@ def build_story_text(payload: Dict[str, Any]) -> Dict[str, str]:
     """
     import reporting.pdf_generator as pdf_generator
     from reporting.pdf_generator import ScanReportGenerator
+    from scans.report_inputs import with_report_inputs
 
     captured: Dict[str, str] = {}
 
@@ -229,7 +230,7 @@ def build_story_text(payload: Dict[str, Any]) -> Dict[str, str]:
     executive = generator.generate_executive_pdf(payload, "phase3")
 
     ScanReportGenerator._doc = make_probe("technical")
-    technical = generator.generate_technical_pdf(payload, "phase3")
+    technical = generator.generate_technical_pdf(with_report_inputs(payload), "phase3")
 
     ScanReportGenerator._doc = original_doc
 

@@ -33,7 +33,7 @@ from ccure_platform.rbac.governance import GovernanceError, lock_continuity
 from ccure_platform.rbac.model import RbacRole, RbacUserRole
 from ccure_platform.rbac.scope import audit_isolated, resolve_active_organisation
 from db.base import get_db
-from db.models import User
+from ccure_platform.models import User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text

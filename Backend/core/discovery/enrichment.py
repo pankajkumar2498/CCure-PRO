@@ -12,11 +12,14 @@ Design rules:
   ✅ Each probe is independently try/catch — one failure doesn't block others
   ✅ All probes are gate-checked (skip if open_ports insufficient, etc.)
   ✅ Scapy is used for SNMP and mDNS — no dependency on net-snmp binaries
+  ✅ Imports no other engine: the SNMP read is passed in (``snmp_query``)
   ❌ Never called from PortEngine or VulnerabilityEngine
   ❌ Never touches the results of Phase 2 or Phase 3
 
 Called from:
   core/discovery/engine.py → _enrich_active() → asyncio.to_thread(enrich_host, ...)
+  orchestrator/host_enrichment.py → after the port scan, the SNMP and OT
+  probes on their own (B8; the port engine used to call them)
 """
 
 import logging
@@ -27,6 +30,7 @@ from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
 from core.discovery.host_identity import forward_confirm, resolve_identity
+from core.engine_ports import SnmpSystemQuery
 
 log = logging.getLogger("ccure.discovery.enrichment")
 
@@ -58,7 +62,11 @@ if SCAPY_AVAILABLE:
 
 
 def enrich_host(
-    ip: str, result: dict, ot_enrichment: bool = True, register_ports: bool = True
+    ip: str,
+    result: dict,
+    ot_enrichment: bool = True,
+    register_ports: bool = True,
+    snmp_query: SnmpSystemQuery | None = None,
 ) -> None:
     """
     Run all enrichment probes for one active host.
@@ -71,6 +79,8 @@ def enrich_host(
         result:         Host result dict from DiscoveryEngine — mutated in place.
         ot_enrichment:  If True, run deep security and OT protocol queries.
         register_ports: If True, allow dynamic port/service registration on the host result.
+        snmp_query:     The SNMP read the deep SNMP probe uses; without one it
+                        makes no SNMP request.
     """
     result["_register_ports"] = register_ports
     try:
@@ -86,7 +96,10 @@ def enrich_host(
 
         for fn in probes:
             try:
-                fn(ip, result)
+                if fn is _snmp_lightweight_probe:
+                    fn(ip, result, snmp_query)
+                else:
+                    fn(ip, result)
             except Exception as exc:
                 log.debug("enrich_host(%s) %s error: %s", ip, fn.__name__, exc)
 
@@ -431,10 +444,17 @@ def _parse_snmp_sys_descr(sys_descr: str) -> dict:
     return out
 
 
-def _snmp_lightweight_probe(ip: str, result: dict) -> None:
+def _snmp_lightweight_probe(
+    ip: str, result: dict, query: SnmpSystemQuery | None = None
+) -> None:
     """
     Query port 161 (SNMP) using community 'public' for system details to identify
     network devices early in discovery or port scanning.
+
+    ``query`` reads the agent; this probe decides whether to ask and what the
+    answer says about the host. The read is the network checks' SNMP client,
+    which the orchestrator passes in (B8): discovery imports no other engine.
+    Without one, nothing is asked.
     """
     if result.get("snmp_info"):
         return  # Skip duplicate probe if already queried
@@ -448,90 +468,13 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
     ):
         return
 
+    if query is None:
+        return
+
     try:
-        from engines.vulnerability.plugins.snmp_probe import (
-            _ENTERPRISE_VENDORS,
-            _OID_BRIDGE_ADDR,
-            _OID_IF_NUMBER,
-            _OID_IP_FORWARD,
-            _OID_SYS_DESCR,
-            _OID_SYS_NAME,
-            _OID_SYS_OBJ_ID,
-            _extract_integer,
-            _extract_mac,
-            _extract_oid_value,
-            _extract_string,
-            _snmp_get_raw,
-        )
-
-        # Query sysObjectID using community 'public'
-        data = _snmp_get_raw(ip, "public", _OID_SYS_OBJ_ID, timeout=1.0)
-        if not data:
+        snmp_info = query(ip)
+        if not snmp_info:
             return
-
-        sys_obj = _extract_oid_value(data)
-        if not sys_obj:
-            return
-
-        snmp_info = {
-            "open": True,
-            "community": "public",
-            "sys_descr": "",
-            "sys_name": "",
-            "sys_location": "",
-            "sys_contact": "",
-            "sys_uptime_s": None,
-            "vendor": "",
-            "vendor_device": "",
-            "enterprise_id": None,
-            "version": "SNMPv1/v2c",
-            "ip_forwarding": None,
-            "if_count": 0,
-            "bridge_mib": False,
-            "interfaces": [],
-            "ip_addresses": [],
-        }
-
-        # Get sysDescr
-        descr_data = _snmp_get_raw(ip, "public", _OID_SYS_DESCR, timeout=1.0)
-        if descr_data:
-            snmp_info["sys_descr"] = _extract_string(descr_data)
-
-        # sysName is the device's own idea of its hostname. It is authoritative
-        # in a way reverse DNS is not — a host with no PTR record still answers
-        # this — so it is queried here rather than left blank.
-        name_data = _snmp_get_raw(ip, "public", _OID_SYS_NAME, timeout=1.0)
-        if name_data:
-            snmp_info["sys_name"] = _extract_string(name_data) or ""
-
-        # Parse sysObjectID to get enterprise ID and vendor/vendor_device
-        parts = sys_obj.split(".")
-        prefix = ".".join(parts[:6])
-        if prefix == "1.3.6.1.4.1" and len(parts) > 6:
-            try:
-                enterprise = int(parts[6])
-                snmp_info["enterprise_id"] = enterprise
-                vendor_info = _ENTERPRISE_VENDORS.get(enterprise)
-                if vendor_info:
-                    snmp_info["vendor"] = vendor_info[0]
-                    snmp_info["vendor_device"] = vendor_info[1]
-            except ValueError:
-                pass
-
-        # Parse device-type OIDs
-        fwd_data = _snmp_get_raw(ip, "public", _OID_IP_FORWARD, timeout=1.0)
-        if fwd_data:
-            snmp_info["ip_forwarding"] = _extract_integer(fwd_data)
-
-        ifn_data = _snmp_get_raw(ip, "public", _OID_IF_NUMBER, timeout=1.0)
-        if ifn_data:
-            snmp_info["if_count"] = _extract_integer(ifn_data) or 0
-
-        # dot1dBaseBridgeAddress is a MacAddress. Searching the datagram for an
-        # OctetString tag found the community string, so every SNMP agent was
-        # reported as a bridge.
-        bridge_data = _snmp_get_raw(ip, "public", _OID_BRIDGE_ADDR, timeout=1.0)
-        snmp_info["bridge_mib"] = bool(bridge_data and _extract_mac(bridge_data))
 
         result["snmp_info"] = snmp_info
 

@@ -47,7 +47,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from sqlalchemy import String, func, or_
 from sqlalchemy.orm import Session, joinedload
 

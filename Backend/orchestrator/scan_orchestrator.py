@@ -37,6 +37,7 @@ from core.models import HostResult, PortResult, ScanIntensity
 from core.oui_lookup import lookup_vendor
 from core.risk import infer_os_from_host
 from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
+from orchestrator.host_enrichment import enrich_after_port_scan, snmp_system_query
 
 # ── Existing engine imports (unchanged) ───────────────────────────────────────
 from engines.port.port_engine import (
@@ -51,6 +52,20 @@ if PDF_AVAILABLE:
     from reporting.pdf_generator import ScanReportGenerator
 
 log = logging.getLogger("ccure.orchestrator")
+
+
+def _engine_ports(scan_id: str | None):
+    """
+    The progress sink and cancellation token for the engines of one scan.
+
+    The engines take these as arguments and know nothing of the scan record or
+    the message broker (B2); the implementations are the scans capability's,
+    in core.scan_control. Imported here rather than at module level so that
+    importing the orchestrator loads no more than it did before.
+    """
+    from core.scan_control import engine_ports
+
+    return engine_ports(scan_id)
 
 
 class ScanOrchestrator:
@@ -294,8 +309,12 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
-            disc_results: list[dict] = await discovery.run(all_ips, scan_id=scan_id)
+            progress, cancel = _engine_ports(scan_id)
+            disc_results: list[dict] = await discovery.run(
+                all_ips, progress=progress, cancel=cancel
+            )
             duration = time.time() - t0
 
             # Trigger classification and OS inference on the discovered hosts
@@ -436,6 +455,9 @@ class ScanOrchestrator:
         t0 = time.time()
         fallback_targets_count = 0
         fallback_active_hosts = 0
+        # One sink and one token for every engine this phase runs: the FAST and
+        # BALANCED passes report into, and are cancelled through, the same scan.
+        progress, cancel = _engine_ports(scan_id)
 
         if intensity == "light":
             # ── LIGHT: FAST only ─────────────────────────────────────────────
@@ -445,8 +467,11 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
-            raw_results: list[dict] = await engine.run(all_ips, scan_id=scan_id)
+            raw_results: list[dict] = await engine.run(
+                all_ips, progress=progress, cancel=cancel
+            )
             discovery_profile_label = "FAST"
 
         elif intensity == "normal":
@@ -457,8 +482,11 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
-            fast_raw: list[dict] = await fast_engine.run(all_ips, scan_id=scan_id)
+            fast_raw: list[dict] = await fast_engine.run(
+                all_ips, progress=progress, cancel=cancel
+            )
 
             # Determine which IPs are still inactive after FAST pass
             fast_by_ip: dict[str, dict] = {r["ip"]: r for r in fast_raw}
@@ -475,9 +503,10 @@ class ScanOrchestrator:
                     has_privileges=self.has_priv,
                     stealth_mode=self.stealth_mode,
                     rate_limit=rate_limit,
+                    snmp_query=snmp_system_query,
                 )
                 balanced_raw: list[dict] = await balanced_engine.run(
-                    unresolved_ips, scan_id=scan_id
+                    unresolved_ips, progress=progress, cancel=cancel
                 )
                 balanced_by_ip: dict[str, dict] = {r["ip"]: r for r in balanced_raw}
                 fallback_active_hosts = sum(
@@ -500,8 +529,9 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
-            raw_results = await engine.run(all_ips, scan_id=scan_id)
+            raw_results = await engine.run(all_ips, progress=progress, cancel=cancel)
             discovery_profile_label = "BALANCED"
 
         duration = time.time() - t0
@@ -745,7 +775,14 @@ class ScanOrchestrator:
             exclude_ot_from_nmap=exclude_ot_from_nmap,
         )
         if active_for_scan:
-            await port_engine.run(active_for_scan, scan_id=scan_id)  # mutates in-place
+            progress, _ = _engine_ports(scan_id)
+            await port_engine.run(
+                active_for_scan, progress=progress
+            )  # mutates in-place
+            # The SNMP and OT enrichment the port engine used to run itself (B8).
+            await enrich_after_port_scan(
+                active_for_scan, exclude_ot_from_nmap=exclude_ot_from_nmap
+            )
             self._apply_os_inference(active_for_scan, ot_enrichment=True)
         if skipped_hosts:
             self._apply_os_inference(skipped_hosts, ot_enrichment=False)
@@ -886,7 +923,8 @@ class ScanOrchestrator:
         # reliable CVE correlation.
         self._nmap_pre_enrich(active_hosts, exclude_ot_from_nmap=exclude_ot_from_nmap)
         vuln_engine = VulnerabilityEngine(rate_limit=self.rate_limit)
-        vuln_engine.run(active_hosts, scan_id=scan_id)
+        progress, _ = _engine_ports(scan_id)
+        vuln_engine.run(active_hosts, progress=progress)
         self._apply_os_inference(active_hosts, ot_enrichment=True)
 
         # ── Enrich asset registry with vulnerability findings ───────────────
@@ -1431,7 +1469,11 @@ class ScanOrchestrator:
         if not self._pdf:
             return {}
         try:
-            return self._pdf.generate(resp, scan_type)
+            # The renderer imports no engine; what it needs from them travels
+            # with the payload (B7).
+            from scans.report_inputs import with_report_inputs
+
+            return self._pdf.generate(with_report_inputs(resp), scan_type)
         except Exception as exc:
             self._log(f"[WARN] PDF generation failed: {exc}")
             return {}

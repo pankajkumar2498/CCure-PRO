@@ -16,9 +16,14 @@ Every helper here therefore opens its own short-lived session, reads, and closes
 That is the whole point: these functions must never share a session with a
 long-running caller, or they inherit its stale snapshot again.
 
-The engine polls ``is_cancelled()`` between probe batches. Cancellation is
-cooperative by necessity — the host scanner worker runs a ``--pool=threads``
-Celery pool, where ``revoke(terminate=True)`` cannot kill a running thread.
+The engine polls between probe batches. Cancellation is cooperative by
+necessity — the host scanner worker runs a ``--pool=threads`` Celery pool, where
+``revoke(terminate=True)`` cannot kill a running thread.
+
+Engines do not import this module (B2). They are handed a ``CancelToken`` and a
+``ProgressSink`` (``core.engine_ports``), and ``engine_ports(scan_id)`` below
+builds both for a scan from the functions in this module, so the status read,
+the progress counters and the Redis channel stay with the orchestration layer.
 """
 
 from __future__ import annotations
@@ -141,6 +146,77 @@ def record_progress(scan_id: str, discovered: int, active: int | None = None) ->
         db.rollback()
     finally:
         db.close()
+
+
+class ScanCancelToken:
+    """
+    The ``CancelToken`` for one scan: is its row marked cancelled?
+
+    ``is_cancelled`` never raises — a monitoring failure must never abort a good
+    scan — and ``raise_if_cancelled`` raises :class:`ScanCancelled`, which every
+    scan task catches. Each call reads the status through a fresh session, for
+    the reason at the top of this module.
+    """
+
+    def __init__(self, scan_id: str):
+        self.scan_id = scan_id
+        self._check = make_cancel_check(scan_id)
+
+    def is_cancelled(self) -> bool:
+        return self._check()
+
+    def raise_if_cancelled(self) -> None:
+        raise_if_cancelled(self.scan_id)
+
+    def __repr__(self) -> str:
+        return f"scan {self.scan_id}"
+
+
+class ScanProgress:
+    """
+    The ``ProgressSink`` for one scan: frames on Redis channel
+    ``scan_progress:<scan_id>`` for the live view, and the counters in
+    ``scans.options["progress"]`` that ``GET /scan/progress/{scan_id}`` reads.
+
+    The Redis functions are looked up when called, as the engines used to look
+    them up, so a test that replaces ``core.redis_client.publish_progress``
+    still sees every frame.
+    """
+
+    def __init__(self, scan_id: str):
+        self.scan_id = scan_id
+
+    def start(self, total: int) -> None:
+        start_progress(self.scan_id, total)
+
+    async def publish(self, phase: int, progress: dict) -> None:
+        from core.redis_client import publish_progress
+
+        await publish_progress(self.scan_id, phase, progress)
+
+    def publish_sync(self, phase: int, progress: dict) -> None:
+        from core.redis_client import publish_progress_sync
+
+        publish_progress_sync(self.scan_id, phase, progress)
+
+    def record(self, done: int, active: int | None = None) -> None:
+        record_progress(self.scan_id, done, active)
+
+    def __repr__(self) -> str:
+        return f"progress of scan {self.scan_id}"
+
+
+def engine_ports(scan_id: str | None):
+    """
+    The progress sink and cancellation token to hand an engine for *scan_id*.
+
+    ``(None, None)`` when there is no scan record (an ad-hoc scan): the engine
+    then reports nothing and cannot be cancelled, exactly as it behaved when it
+    was given no scan id.
+    """
+    if not scan_id:
+        return None, None
+    return ScanProgress(scan_id), ScanCancelToken(scan_id)
 
 
 # ── Last-resort finalisation ─────────────────────────────────────────────────
@@ -317,108 +393,6 @@ def record_findings_sync_failure(scan_id: str, reason: str) -> bool:
         db.close()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Web-application scans live in their own table (`web_scans`) with a different
-# lifecycle from network `scans`, so they need their own terminal-status
-# settler. Same contract as force_terminal_status above: plain SQL, no ORM
-# mapper, never raises, and only ever moves a scan *out of* a non-terminal
-# state — the first recorded outcome is the true one.
-# ─────────────────────────────────────────────────────────────────────────────
-
-WEB_TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"complete", "completed", "failed", "cancelled"}
-)
-
-
-def force_terminal_web_scan_status(
-    web_scan_id: str,
-    status: str = "failed",
-    reason: str | None = None,
-) -> bool:
-    """
-    Stamp a terminal status on a web scan without touching the ORM mappers.
-
-    Returns True when a row was updated. Never raises. A scan already in a
-    terminal state is left alone, so a watchdog can never overwrite the reason a
-    task took the trouble to write.
-
-    Any phase sub-status still claiming to be ``running`` is settled to the same
-    terminal state, because a phase that still reads running belongs to a task
-    that is gone — the same reasoning force_terminal_status applies to
-    ``scan_phases``.
-    """
-    if not web_scan_id:
-        return False
-
-    from sqlalchemy import text
-
-    terminal_sql = ", ".join(f"'{s}'" for s in sorted(WEB_TERMINAL_STATUSES))
-
-    now = _utcnow()
-    db = SessionLocal()
-    try:
-        row = db.execute(
-            text("SELECT status, started_at FROM web_scans WHERE id = :id"),
-            {"id": web_scan_id},
-        ).first()
-        if row is None:
-            log.debug("force_terminal_web_scan_status: no web scan %s", web_scan_id)
-            return False
-        if (row[0] or "") in WEB_TERMINAL_STATUSES:
-            return False
-
-        started_at = row[1]
-        duration = None
-        if started_at is not None:
-            if started_at.tzinfo is None:
-                started_at = started_at.replace(tzinfo=timezone.utc)
-            duration = (now - started_at).total_seconds()
-
-        result = db.execute(
-            text(
-                f"""
-                UPDATE web_scans
-                   SET status = :status,
-                       failure_reason = COALESCE(failure_reason, :reason),
-                       completed_at = COALESCE(completed_at, :now),
-                       updated_at = :now,
-                       duration_seconds = COALESCE(duration_seconds, :duration),
-                       recon_status  = CASE WHEN recon_status  = 'running'
-                                            THEN :status ELSE recon_status  END,
-                       crawl_status  = CASE WHEN crawl_status  = 'running'
-                                            THEN :status ELSE crawl_status  END,
-                       detect_status = CASE WHEN detect_status = 'running'
-                                            THEN :status ELSE detect_status END,
-                       audit_status  = CASE WHEN audit_status  = 'running'
-                                            THEN :status ELSE audit_status END
-                 WHERE id = :id
-                   AND status NOT IN ({terminal_sql})
-                """
-            ),
-            {
-                "status": status,
-                "reason": reason,
-                "now": now,
-                "duration": duration,
-                "id": web_scan_id,
-            },
-        )
-        db.commit()
-        updated = (result.rowcount or 0) > 0
-        if updated:
-            log.warning(
-                "Web scan %s force-settled as '%s': %s",
-                web_scan_id,
-                status,
-                reason or "-",
-            )
-        return updated
-    except Exception:
-        log.exception("Could not force-settle web scan %s", web_scan_id)
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        return False
-    finally:
-        db.close()
+# Web-application scans' terminal-status settler, force_terminal_web_scan_status,
+# and WEB_TERMINAL_STATUSES moved to core/web/scan_status.py in B2: web_scans
+# belongs to the web capability, which no longer imports this module.

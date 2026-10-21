@@ -1,7 +1,7 @@
 """One registration policy for public signup and platform administration."""
 
 from config import AppConfig
-from db.models import RegistrationPolicy
+from ccure_platform.models import RegistrationPolicy
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 

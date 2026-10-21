@@ -56,6 +56,12 @@ BASELINE: dict[str, tuple[int, str]] = {
         1,
         "persisted column: organizations.scan_scope_cidrs",
     ),
+    "models/notifications.py": (
+        1,
+        "persisted column: notifications.related_scan_id, the column "
+        "notifications/service.py and router.py name (item 3); the model moved "
+        "here from db/models in B8, bringing the occurrence with it",
+    ),
     "organisation_settings/scan_scope.py": (9, "organisation scan scope"),
     "organisation_settings/remediation_sla.py": (6, "organisation remediation SLA"),
     "api.py": (

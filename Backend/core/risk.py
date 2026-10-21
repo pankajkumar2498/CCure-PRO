@@ -14,7 +14,7 @@ from core.constants import (
     TCP_OPTIONS_FINGERPRINT,
     TCP_WINDOW_OS,
 )
-from core.vuln_intel import compute_priority, merge_alias_fields
+from core.vuln_scoring import compute_priority, merge_alias_fields
 
 # =============================================================================
 # OS Fingerprinting

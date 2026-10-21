@@ -39,6 +39,9 @@ ALLOWED: dict[str, set[str]] = {
     "auth.email_utils": {"main.py"},
     "db.models.users": {"main.py", "db/migrate_production_schema.py"},
     "db.models.rbac": {"main.py"},
+    # the composition root creates the email-screening tables at start-up;
+    # the module moved into ccure_platform.models in B8
+    "db.models.email_security": {"main.py"},
     # the two WebSocket ticket logins decode a token (identity_boundary
     # KNOWN_IDENTITY_IMPORTS, Phase 10) and the root decodes the same way
     "auth.jwt_handler": {"main.py", "routers/scan_history.py", "routers/web_scans.py"},

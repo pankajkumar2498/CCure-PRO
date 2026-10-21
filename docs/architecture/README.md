@@ -54,6 +54,11 @@ edits Audit's code.
   module READMEs (`Backend/ccure_policy/README.md`, `Backend/ccure_rank/README.md`).
 - Layering and import cycles: `Backend/scripts/architecture/layer_rules.py`
   (`python -m scripts.architecture.import_graph --violations`).
+- Coupling between Audit's capabilities: `Backend/scripts/architecture/capability_map.py`, a
+  ratchet in the `architecture-guards` pre-commit hook. A refactoring step is measured before and
+  after with `interface_snapshot.py` (routes, limits, Celery tasks, beat, OpenAPI) and
+  `import_cost.py` (what importing a module loads), beside it
+  ([refactoring log](MODULAR_REFACTORING_LOG.md) §6).
 - Identity boundary and token signing: `tests/repo/test_identity_boundary.py`,
   `tests/repo/test_token_guardrails.py`.
 - Frontend: one application, one folder per product (`Frontend/modules.config.js`,
@@ -86,6 +91,7 @@ product team under the same review ([ownership note](PLATFORM_SHARED_NAVIGATION.
 
 | Subject                    | Document                                                                                                                                                                                                                                                                                                                                                                                          |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module independence        | [`MODULE_INDEPENDENCE_ANALYSIS`](MODULE_INDEPENDENCE_ANALYSIS.md) — measured coupling between Audit's capabilities, data ownership, and the proposed decoupling plan (16 Oct 2026, awaiting review)                                                                                                                                                                                               |
 | System, API, database      | [`SYSTEM_ARCHITECTURE`](../SYSTEM_ARCHITECTURE.md), [`BACKEND_API_REFERENCE`](../BACKEND_API_REFERENCE.md), [`DATABASE_SCHEMA`](../DATABASE_SCHEMA.md) (the last two are checked against the code by a test)                                                                                                                                                                                      |
 | Scan engines               | [`SCAN_ENGINE_DEEP_DIVE`](../SCAN_ENGINE_DEEP_DIVE.md), [`gap_closure/GAP_TRACKER`](../gap_closure/GAP_TRACKER.md)                                                                                                                                                                                                                                                                                |
 | Gateway and edge           | [`phase10/`](phase10/): [characterisation](phase10/PHASE10_1_CHARACTERISATION.md), [design](phase10/PHASE10_2_DESIGN.md), [TLS](phase10/PHASE10_4_TLS.md), [cutover](phase10/PHASE10_5_CUTOVER.md), [hardening](phase10/PHASE10_6_HARDENING.md), [gateway-only](phase10/PHASE10_7_GATEWAY_ONLY.md); recorded route tables `phase10/route_table.json` and `route_auth_matrix.json` are test inputs |
@@ -100,5 +106,15 @@ product team under the same review ([ownership note](PLATFORM_SHARED_NAVIGATION.
 
 The platform master plan (`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`, revision 4, 28 Sep 2026)
 and the measured starting point (`MODULE_INDEPENDENCE_BASELINE.md`, 25 Sep 2026) are cited by
-several phase records but were never committed. They are not needed to build against the
-contracts above; ask the project owner if you need them.
+several phase records but were never committed, on the project owner's instruction at the time.
+They are not needed to build against the contracts above; ask the project owner if you need them.
+
+For the state of module independence, the authoritative documents are in this repository:
+
+- [`MODULE_INDEPENDENCE_ANALYSIS.md`](MODULE_INDEPENDENCE_ANALYSIS.md) is the current-state
+  report, re-measured on 16 Oct 2026. It replaces the 25 Sep baseline as the reference point.
+- [`MODULAR_REFACTORING_LOG.md`](MODULAR_REFACTORING_LOG.md) is the step-by-step record of
+  the work that follows from it.
+
+Whether the two September documents are committed as history under
+[`../archive/architecture/`](../archive/architecture/) is decision D-9 in that report.

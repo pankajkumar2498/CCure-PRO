@@ -2335,7 +2335,7 @@ class WebScanOrchestrator:
             parsed = urlparse(target_url)
             if parsed.scheme == "https":
                 try:
-                    from core.web.sslyze.wrapper import SSLyzeWrapper
+                    from engines.tls.wrapper import SSLyzeWrapper
 
                     sslyze = SSLyzeWrapper()
                     if coverage.check(sslyze, "sslyze"):

@@ -16,7 +16,8 @@ What lives here
   contract.py        CheckOutcome / CheckSeverity / Evidence / CheckResult / CheckSpec
   registry.py        Registration with signature validation at registration time
   legacy_plugins.py  The contract the existing vulnerability plugins already
-                     speak, expressed so it can be verified rather than assumed
+                     speak, expressed so it can be verified rather than assumed.
+                     The engine that owns the plugins registers them here
   definitions.py     Namespaced identifiers for findings that are not CVEs
 
 What deliberately does not live here

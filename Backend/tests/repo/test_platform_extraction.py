@@ -181,13 +181,15 @@ def test_a_second_hook_cannot_take_a_registered_name():
 
 def test_audits_hook_detaches_exactly_what_the_route_used_to():
     from ccure_audit.offboarding import detach_user_from_audit_data
-    from db.models import AssetNote, AssetTag, AssetVulnerability, Scan
+    from db.models import AssetNote, AssetTag, AssetVulnerability, Scan, WebScan
 
     db = MagicMock()
     detach_user_from_audit_data(db, "u-9")
     queried = [c.args[0] for c in db.query.call_args_list]
-    assert queried == [AssetNote, AssetTag, Scan, AssetVulnerability]
-    assert db.query.return_value.filter.return_value.update.call_count == 4
+    # WebScan since B8: the ORM cleared its creator through a back-reference
+    # on User until then (tests/repo/test_platform_model_registry.py).
+    assert queried == [AssetNote, AssetTag, Scan, AssetVulnerability, WebScan]
+    assert db.query.return_value.filter.return_value.update.call_count == 5
     db.commit.assert_not_called()
 
 

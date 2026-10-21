@@ -54,7 +54,6 @@ from core.topology.identity import (
     normalize_mac,
 )
 from db.base import gen_asset_id, gen_network_link_id, utcnow
-from ccure_platform import api as platform_api
 from db.models import Asset, Scan
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -843,6 +842,8 @@ def run_topology_mapping(
     org_id: str,
     snmp_config: dict,
     target_ips: list[str] | None = None,
+    *,
+    org_slug: str,
 ) -> dict:
     """
     Execute the full topology mapping pipeline.
@@ -850,10 +851,14 @@ def run_topology_mapping(
     Args:
         db: SQLAlchemy session.
         scan_id: The scan that triggered this mapping.
-        org_id: Organization ID (for scoping and link IDs).
+        org_id: Organization ID (for scoping).
         snmp_config: SNMP credentials dict from scan.options["snmp"].
         target_ips: Optional list of IPs to walk. If None, walks all
                     active hosts discovered in the scan.
+        org_slug: The organisation's slug, from which every link id is
+                  derived. The task resolves it; the engine imports no
+                  platform code (B6). Required, so a caller cannot leave it
+                  out and silently re-key every link.
 
     Returns:
         dict with keys: success, links_created, links_updated, total_links,
@@ -862,9 +867,6 @@ def run_topology_mapping(
     from core.topology.client import SNMPCredentials
 
     creds = SNMPCredentials.from_dict(snmp_config)
-
-    org = platform_api.organisation(db, org_id)
-    org_slug = org.slug if org else org_id
 
     if not target_ips:
         scan = db.query(Scan).filter(Scan.id == scan_id).first()

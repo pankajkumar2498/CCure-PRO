@@ -48,7 +48,7 @@ from ccure_platform.identity.registration_limits import (
     pending_queue_full,
 )
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
-from db.models import Organization, RefreshTokenSession, User
+from ccure_platform.models import Organization, RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 from core.rate_limiter import limiter
@@ -339,7 +339,7 @@ def _issue_verification_token(db: Session, user: User, request: Request | None =
 
     from config import AppConfig
     from ccure_platform.identity.mail_dispatch import dispatch_email
-    from db.models import EmailVerificationToken
+    from ccure_platform.models import EmailVerificationToken
 
     now = datetime.now(timezone.utc)
 
@@ -766,7 +766,7 @@ def verify_email(
     from config import AppConfig
     from ccure_platform.audit_log.writer import log_audit_event
     from db.base import utcnow
-    from db.models import EmailVerificationToken
+    from ccure_platform.models import EmailVerificationToken
 
     invalid = HTTPException(
         status_code=400,
@@ -1284,7 +1284,7 @@ def forgot_password(
     from ccure_platform.audit_log.writer import log_audit_event
     from ccure_platform.identity.mail_dispatch import dispatch_email
     from core.throttle import hit
-    from db.models import PasswordResetToken
+    from ccure_platform.models import PasswordResetToken
 
     identifier = req.email_or_username.strip()
 
@@ -1419,7 +1419,7 @@ def reset_password_endpoint(
     from config import AppConfig
     from ccure_platform.audit_log.writer import log_audit_event
     from core.throttle import client_identity, hit
-    from db.models import PasswordResetToken, RefreshTokenSession
+    from ccure_platform.models import PasswordResetToken, RefreshTokenSession
 
     caller = client_identity(request)
 

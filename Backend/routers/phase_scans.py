@@ -28,10 +28,10 @@ from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from core.credential_scope import validate_credential_options
+from core.rate_limiter import limiter
 from scan_helpers import (
     VALID_PIPELINE_MODES,
     is_phase_in_pipeline,
-    limiter,
     log,
     resolve_pipeline_mode,
     validate_custom_ports,

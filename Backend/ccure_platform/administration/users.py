@@ -41,7 +41,7 @@ from ccure_platform.rbac.audit import EventDraft
 from ccure_platform.rbac.audit import emit as emit_rbac
 from ccure_platform.rbac.governance import GovernanceError
 from ccure_platform.rbac.scope import audit_isolated
-from db.models import (
+from ccure_platform.models import (
     AuditLog,
     Organization,
     RefreshTokenSession,
@@ -744,7 +744,7 @@ def _allowlist_email_domain(db: Session, *, user: User, actor: User, reason=None
     administrator would see a 500 on an action that was otherwise valid.
     """
     from ccure_platform.identity.email_domain_guard import extract_domain
-    from db.models.email_security import VERDICT_ALLOW, EmailDomainRule
+    from ccure_platform.models.email_security import VERDICT_ALLOW, EmailDomainRule
 
     domain = extract_domain(user.email or "")
     if not domain:

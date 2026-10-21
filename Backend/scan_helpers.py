@@ -17,7 +17,9 @@ log = logging.getLogger("ccure.api")
 
 
 # The limiter moved to core/rate_limiter.py (Phase 3). Re-exported here so
-# every `from scan_helpers import limiter` gets the same instance.
+# every `from scan_helpers import limiter` gets the same instance. Application
+# modules import it from core.rate_limiter (B1, 16 Oct 2026), which does not
+# load the network orchestrator; tests and scripts still use this alias.
 from core.rate_limiter import (  # noqa: F401  (re-export)
     _HeaderSafeLimiter,
     _rate_limit_key,

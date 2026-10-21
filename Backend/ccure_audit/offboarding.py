@@ -3,9 +3,13 @@ ccure_audit/offboarding.py — Audit's answer to a user purge.
 
 When the platform permanently deletes an account it asks each module to detach
 its own references first (``ccure_platform/offboarding.py``). These are Audit's:
-the scans a user started, their asset notes and tags, and the findings whose
-risk they accepted. The records stay — a scan outlives the person who ran it —
-and only the pointer to the removed account is cleared.
+the scans and web scans a user started, their asset notes and tags, and the
+findings whose risk they accepted. The records stay — a scan outlives the person
+who ran it — and only the pointer to the removed account is cleared.
+
+The web scans are the web capability's table, so their creator is cleared by
+``core/web/offboarding.py``. Until B8 the ORM did it through a back-reference
+on the platform's ``User`` (that module says why it is needed).
 
 Moved out of ``admin_users.purge_user``, where the platform's route was
 updating Audit's tables directly. The statements are the same ones, run on the
@@ -17,6 +21,7 @@ Registered at import; ``main.py`` imports this module.
 from __future__ import annotations
 
 from ccure_platform.api import register_user_purge_hook
+from core.web.offboarding import detach_user_from_web_scans
 from db.models import AssetNote, AssetTag, AssetVulnerability, Scan
 from sqlalchemy.orm import Session
 
@@ -34,6 +39,7 @@ def detach_user_from_audit_data(db: Session, user_id: str) -> None:
     db.query(AssetVulnerability).filter(
         AssetVulnerability.accepted_by == user_id
     ).update({AssetVulnerability.accepted_by: None}, synchronize_session=False)
+    detach_user_from_web_scans(db, user_id)
 
 
 register_user_purge_hook("audit", detach_user_from_audit_data)

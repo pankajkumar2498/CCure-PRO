@@ -55,7 +55,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from pydantic import BaseModel, Field, field_validator
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.routers.web_scans")

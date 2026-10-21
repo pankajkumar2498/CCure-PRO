@@ -285,16 +285,36 @@ Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
 prints the graph; `--violations` lists every rule-breaking edge.
 
+**Local enforcement** (16 Oct 2026):
+- `python3 Backend/scripts/architecture/check.py` runs the ratchets that need
+  only source with the standard library: layering, cycles, identity boundary,
+  organisation settings and the secret-handling guards. The
+  `architecture-guards` pre-commit hook runs it on every backend commit.
+- `scripts/ci/local_guard_tests.sh` runs the database-backed guard tests in
+  throwaway containers.
+- `scripts/validation/` runs live scans with a commit's code against disposable
+  targets on an internal Docker network, before and after a scan-path change,
+  and compares what they stored (`docs/ci/LIVE_SCAN_VALIDATION.md`). These are
+  the VM's standing scan targets: the target containers named in the "Test
+  targets" sections below date from the Windows host and do not exist here.
+- GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
+  only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
+  runs where.
+
 Two things Phase 3 deliberately left, which are **not** violations:
 
 - **Compatibility import paths.** `scans.cvss` and `scans.finding_normalizer`
   are `sys.modules` aliases of `core.checks.cvss` / `core.checks.finding_normalizer`
   (the same module objects, so patches and `isinstance` still work), and
   `scan_helpers.limiter` is `core.rate_limiter.limiter`. New code imports the
-  new paths; the old ones are migrated and deprecated later, not now.
-- **The discovery engine still loads SQLAlchemy**, via `core.risk` →
-  `core.vuln_intel`. It breaks no rule; it stops the engine running without the
-  database layer, and is refactored only when a phase needs that.
+  new paths. Application code's limiter imports were migrated in B1
+  (16 Oct 2026, `docs/architecture/MODULAR_REFACTORING_LOG.md` §6); the alias
+  stays for tests and scripts. The two `scans.*` aliases move later (C3).
+- **The discovery engine no longer loads SQLAlchemy** (B3, 20 Oct 2026). It came
+  in through `core.risk` → `core.vuln_intel`, for two pure functions; they now
+  live in `core/vuln_scoring.py`, which `core.vuln_intel` re-exports. The port
+  and network-check engines still load the CVE database through `core.utils`
+  (`docs/architecture/MODULAR_REFACTORING_LOG.md` §6).
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.

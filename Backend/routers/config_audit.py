@@ -54,7 +54,7 @@ from core.config_audit import (
 from core.config_audit.builtin import builtin_checks, builtin_checks_by_id
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 
 log = logging.getLogger("ccure.config_audit.api")
 

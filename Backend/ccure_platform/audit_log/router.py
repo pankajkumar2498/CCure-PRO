@@ -38,7 +38,7 @@ from ccure_platform.audit_log.retention import (
 from ccure_platform.audit_log.taxonomy import SEVERITY_LEVELS
 from core.upload_guard import content_disposition
 from db.base import SessionLocal, get_db
-from db.models import AuditLog, User
+from ccure_platform.models import AuditLog, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from ccure_platform.audit_log.export import (
     INTEGRITY_FAILURE,

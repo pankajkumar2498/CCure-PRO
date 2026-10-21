@@ -53,7 +53,8 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from core.benchmarks import dump_pack, load_pack_into_db  # noqa: E402
+from core.benchmarks import dump_pack  # noqa: E402
+from core.benchmarks.loader import load_pack_into_db  # noqa: E402
 from core.benchmarks.pack import PackError  # noqa: E402
 from core.scap import load_content, parse_cci_list, to_pack  # noqa: E402
 from core.scap.xccdf import XccdfError  # noqa: E402

@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from db.models import User
+from ccure_platform.models import User
 from sqlalchemy.orm import Session
 
 

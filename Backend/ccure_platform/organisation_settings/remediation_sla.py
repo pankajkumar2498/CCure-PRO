@@ -22,7 +22,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from db.models import Organization
+from ccure_platform.models import Organization
 from sqlalchemy.orm import Session
 
 #: Where the setting is stored inside ``organizations.settings``. Moved from

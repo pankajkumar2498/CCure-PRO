@@ -13,6 +13,14 @@ from __future__ import annotations
 from core.candidate_enumeration import describe, searches_run, truncated_searches
 from reporting.exports import scan_context_rows
 from reporting.pdf_generator import _truncated_searches_row
+from scans.report_inputs import report_inputs
+
+
+def _row(meta, summary):
+    """The PDF's row, with the notes the report inputs carry."""
+    notes = report_inputs(meta, summary)["truncated_search_notes"]
+    return _truncated_searches_row(meta, summary, notes)
+
 
 KERNEL = {
     "scope": "host",
@@ -62,18 +70,14 @@ def test_a_truncation_reads_as_what_was_not_evaluated():
 
 
 def test_the_pdf_names_each_truncated_search():
-    label, value = _truncated_searches_row(
-        {}, {"candidate_searches_truncated": truncated_searches(HOSTS)}
-    )
+    label, value = _row({}, {"candidate_searches_truncated": truncated_searches(HOSTS)})
     assert label == "Candidate searches truncated"
     assert value.startswith("1 — 10.180.6.45 operating system")
 
 
 def test_the_pdf_says_none_only_when_the_scan_recorded_it():
-    assert _truncated_searches_row({}, {"candidate_searches_truncated": []})[
-        1
-    ].startswith("None")
-    assert _truncated_searches_row({}, {"candidates_evaluated": 3653}) is None
+    assert _row({}, {"candidate_searches_truncated": []})[1].startswith("None")
+    assert _row({}, {"candidates_evaluated": 3653}) is None
 
 
 def test_the_export_summary_has_the_row_only_when_recorded():

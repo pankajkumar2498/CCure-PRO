@@ -36,6 +36,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
+from core.engine_ports import ProgressSink
 from core.constants import (
     PORT_DB,
     SCAN_PORTS_OT,
@@ -198,14 +199,16 @@ class PortEngine:
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
-    async def run(self, hosts: list[dict], scan_id: str | None = None) -> list[dict]:
+    async def run(
+        self, hosts: list[dict], progress: ProgressSink | None = None
+    ) -> list[dict]:
         """
         Scan all active hosts for open ports and services.
 
         Args:
-            hosts: List of host dicts from Phase 1 (DiscoveryEngine).
-                   Only hosts with is_active=True are scanned.
-            scan_id: Optional UUID to publish real-time progress.
+            hosts:    List of host dicts from Phase 1 (DiscoveryEngine).
+                      Only hosts with is_active=True are scanned.
+            progress: Where to report progress; None reports nothing.
 
         Returns:
             Same list, each active host enriched with:
@@ -217,30 +220,30 @@ class PortEngine:
         generation was removed from here because a port scan cannot verify what
         it matches: it produced candidates keyed on service names ("http",
         "ssh") that the vulnerability phase then generated a second time.
+
+        Nor does it enrich hosts with other engines' probes. The lightweight
+        SNMP query and the OT identity probes that used to follow the scan are
+        discovery's, and device classification is the asset registry's; the
+        orchestrator runs them after this engine
+        (``orchestrator/host_enrichment.py``, B8).
         """
         active = [h for h in hosts if h.get("is_active")]
         if not active:
             return hosts
 
         if NMAP_AVAILABLE:
-            await self._scan_with_nmap(active, scan_id=scan_id)
+            await self._scan_with_nmap(active, progress=progress)
         else:
             log.warning(
                 "nmap not available — falling back to async TCP connect. "
                 "Install nmap for faster, more accurate port scanning."
             )
-            await self._scan_fallback(active, scan_id=scan_id)
-
-        # After port scanning, perform a lightweight SNMP check on active hosts
-        await self._lightweight_snmp_check(active)
-
-        # Run dynamic OT identity probes on open SCADA ports
-        await self._ot_enrichment_check(active)
+            await self._scan_fallback(active)
 
         return hosts
 
     async def _scan_with_nmap(
-        self, hosts: list[dict], scan_id: str | None = None
+        self, hosts: list[dict], progress: ProgressSink | None = None
     ) -> None:
         """
         Use NmapScanner for port scanning.
@@ -276,8 +279,6 @@ class PortEngine:
         )
         t0 = time.time()
 
-        from core.redis_client import publish_progress
-
         if self.custom_ports or self.intensity != ScanIntensity.DEEP:
             # ──────────────────────────────────────────────────────────
             # LIGHT / NORMAL / Custom Ports: single batch call — port states + service info
@@ -287,9 +288,9 @@ class PortEngine:
             include_svc = (self.intensity == ScanIntensity.NORMAL) or bool(
                 self.custom_ports
             )
-            if scan_id:
-                await publish_progress(
-                    scan_id, 2, {"total_hosts": len(ips), "status": "running"}
+            if progress is not None:
+                await progress.publish(
+                    2, {"total_hosts": len(ips), "status": "running"}
                 )
 
             nmap_results: dict[str, NmapScanResult] = await loop.run_in_executor(
@@ -318,9 +319,8 @@ class PortEngine:
                     host, nmap_results[ip], service_detection=include_svc
                 )
 
-            if scan_id:
-                await publish_progress(
-                    scan_id,
+            if progress is not None:
+                await progress.publish(
                     2,
                     {
                         "scanned_hosts": len(ips),
@@ -332,9 +332,8 @@ class PortEngine:
             # ──────────────────────────────────────────────────────────
             # DEEP: two-pass — full port sweep then targeted service detect
             # ──────────────────────────────────────────────────────────
-            if scan_id:
-                await publish_progress(
-                    scan_id,
+            if progress is not None:
+                await progress.publish(
                     2,
                     {
                         "phase_detail": "port_sweep",
@@ -357,14 +356,14 @@ class PortEngine:
                 "Nmap DEEP port scan done in %.1fs (pass 1/2)",
                 time.time() - t0,
             )
-            await self._enrich_services(hosts, nmap_results, loop, scan_id=scan_id)
+            await self._enrich_services(hosts, nmap_results, loop, progress=progress)
 
     async def _enrich_services(
         self,
         hosts: list[dict],
         initial_results: dict[str, NmapScanResult],
         loop: asyncio.AbstractEventLoop,
-        scan_id: str | None = None,
+        progress: ProgressSink | None = None,
     ) -> None:
         """
         Run targeted service/version detection per host on its open ports.
@@ -377,12 +376,10 @@ class PortEngine:
         """
         t0 = time.time()
         n_workers = max(1, min(len(hosts), 8))  # was 4
-        from core.redis_client import publish_progress
 
-        if scan_id:
+        if progress is not None:
             asyncio.create_task(
-                publish_progress(
-                    scan_id,
+                progress.publish(
                     2,
                     {
                         "phase_detail": "service_detection",
@@ -409,10 +406,9 @@ class PortEngine:
             svc_result = self._nmap.detect_services(ip, ports=open_port_nums)
             self._apply_nmap_ports(host, svc_result, service_detection=True)
             completed += 1
-            if scan_id:
+            if progress is not None:
                 asyncio.run_coroutine_threadsafe(
-                    publish_progress(
-                        scan_id,
+                    progress.publish(
                         2,
                         {
                             "phase_detail": "service_detection",
@@ -433,10 +429,9 @@ class PortEngine:
                 if isinstance(res, Exception):
                     log.debug("Service enrichment error: %s", res)
 
-        if scan_id:
+        if progress is not None:
             asyncio.create_task(
-                publish_progress(
-                    scan_id,
+                progress.publish(
                     2,
                     {
                         "phase_detail": "service_detection",
@@ -530,119 +525,9 @@ class PortEngine:
             if best_os.cpe:
                 host.setdefault("os_cpe", best_os.cpe)
 
-    async def _lightweight_snmp_check(self, hosts: list[dict]) -> None:
-        """
-        Check if port 161 (SNMP) is open on active hosts, and perform a lightweight
-        community query to get classification parameters.
-        """
-        from core.discovery.enrichment import _snmp_lightweight_probe
-
-        def _check_host(host: dict):
-            ip = host.get("ip_address") or host.get("ip")
-            if not ip:
-                return
-
-            # Check if port 161 is open in open_ports
-            is_161_open = False
-            for p in host.get("open_ports", []):
-                if p.get("port") == 161:
-                    is_161_open = True
-                    break
-
-            # Also check if it's in port_states
-            if not is_161_open:
-                port_states = host.get("port_states", {})
-                if port_states.get(161) == "open" or port_states.get("161") == "open":
-                    is_161_open = True
-
-            if not is_161_open:
-                # If Nmap didn't scan UDP, we might not know if 161 is open.
-                # Only check if it's not explicitly closed to avoid useless timeouts.
-                port_states = host.get("port_states", {})
-                if (
-                    port_states.get(161) == "closed"
-                    or port_states.get("161") == "closed"
-                ):
-                    return
-
-            # Run the lightweight probe
-            _snmp_lightweight_probe(ip, host)
-
-        loop = asyncio.get_running_loop()
-        await asyncio.gather(
-            *[loop.run_in_executor(None, _check_host, h) for h in hosts]
-        )
-
-    async def _ot_enrichment_check(self, hosts: list[dict]) -> None:
-        """
-        Check if any OT ports are open on active hosts and perform deep OT identity probing.
-        """
-        from core.device_classifier import classify_device
-        from core.discovery.enrichment import _ot_protocol_probes
-
-        def _check_host(host: dict):
-            ip = host.get("ip_address") or host.get("ip")
-            if not ip:
-                return
-
-            # SCADA/OT default ports mapped in ot_probes:
-            # modbus (502), s7/mms (102), ethernetip (44818), bacnet (47808), dnp3 (20000),
-            # opcua (4840), iec104 (2404), ge_srtp (18245), fins (9600), melsec (5007), codesys (2455)
-            ot_ports = {
-                502,
-                102,
-                44818,
-                47808,
-                20000,
-                4840,
-                2404,
-                18245,
-                9600,
-                5007,
-                2455,
-            }
-
-            open_ports = {
-                p.get("port") for p in host.get("open_ports", []) if p.get("port")
-            }
-
-            # Skip if ot_info is already present
-            if host.get("ot_info"):
-                return
-
-            # If we exclude OT from Nmap, we want to probe all candidate OT ports.
-            # Otherwise, we only probe if at least one OT port is open.
-            if not self.exclude_ot_from_nmap and not (open_ports & ot_ports):
-                return
-
-            # Initialize registrations needed by _ot_protocol_probes
-            port_states = host.setdefault("port_states", {})
-            for p in open_ports:
-                if p in ot_ports:
-                    port_states[p] = "open"
-
-            host.setdefault("confirmations", [])
-
-            # Execute OT Probes
-            try:
-                _ot_protocol_probes(ip, host)
-
-                # If OT info was successfully gathered, run classifier to set exact scada_ics details
-                if host.get("ot_info"):
-                    classify_device(host)
-            except Exception as exc:
-                log.debug("PortEngine OT enrichment check failed for %s: %s", ip, exc)
-
-        loop = asyncio.get_running_loop()
-        await asyncio.gather(
-            *[loop.run_in_executor(None, _check_host, h) for h in hosts]
-        )
-
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 
-    async def _scan_fallback(
-        self, hosts: list[dict], scan_id: str | None = None
-    ) -> None:
+    async def _scan_fallback(self, hosts: list[dict]) -> None:
         """
         Original async TCP connect + Scapy UDP implementation.
         Used when nmap is not installed.

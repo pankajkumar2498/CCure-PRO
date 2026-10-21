@@ -55,6 +55,7 @@ def _run(db_session, org, scan, walks, targets):
             db=db_session,
             scan_id=scan.id,
             org_id=org.id,
+            org_slug=org.slug,
             snmp_config={"version": "v2c", "community": "public"},
             target_ips=targets,
         )

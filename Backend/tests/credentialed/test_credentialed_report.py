@@ -3,6 +3,7 @@ import shutil
 import tempfile
 
 from reporting.pdf_generator import ScanReportGenerator
+from scans.report_inputs import with_report_inputs
 
 
 def test_credentialed_report_generation_linux():
@@ -146,7 +147,7 @@ def test_credentialed_report_generation_linux():
 
         # Initialize the ScanReportGenerator pointing to our temporary directory
         gen = ScanReportGenerator(output_dir=temp_dir)
-        paths = gen.generate(result, scan_type="credentialed_scan")
+        paths = gen.generate(with_report_inputs(result), scan_type="credentialed_scan")
 
         # Validate that the reports were generated and paths don't contain errors
         assert "executive_pdf" in paths
@@ -284,7 +285,7 @@ def test_credentialed_report_generation_windows():
 
         # Initialize the ScanReportGenerator
         gen = ScanReportGenerator(output_dir=temp_dir)
-        paths = gen.generate(result, scan_type="credentialed_scan")
+        paths = gen.generate(with_report_inputs(result), scan_type="credentialed_scan")
 
         # Validate that the reports were generated and paths don't contain errors
         assert "executive_pdf" in paths

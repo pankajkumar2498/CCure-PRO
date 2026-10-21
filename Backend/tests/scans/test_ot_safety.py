@@ -5,7 +5,7 @@ import logging
 import socket
 import struct
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Configure logging to capture audit logs during tests
 logging.basicConfig(level=logging.INFO)
@@ -172,11 +172,13 @@ class TestOTSafetyAndStability(unittest.TestCase):
     # 4. Passive-First Bypass Tests
     # ─────────────────────────────────────────────────────────────────────────
 
+    @patch(
+        "orchestrator.scan_orchestrator.enrich_after_port_scan",
+        new_callable=AsyncMock,
+    )
     @patch("orchestrator.scan_orchestrator.PortEngine")
-    def test_passive_first_bypass(self, mock_port_engine_class):
+    def test_passive_first_bypass(self, mock_port_engine_class, mock_enrichment):
         """Verify that passive-first bypasses active port scanning for pre-resolved hosts."""
-        from unittest.mock import AsyncMock
-
         from orchestrator.scan_orchestrator import ScanOrchestrator
 
         mock_port_engine = MagicMock()
@@ -222,6 +224,11 @@ class TestOTSafetyAndStability(unittest.TestCase):
         called_hosts = mock_port_engine.run.call_args[0][0]
         self.assertEqual(len(called_hosts), 1)
         self.assertEqual(called_hosts[0]["ip_address"], "192.168.1.11")
+        # The SNMP and OT enrichment the port engine used to run (the
+        # orchestrator's since B8) runs on the same hosts and no others.
+        mock_enrichment.assert_awaited_once_with(
+            called_hosts, exclude_ot_from_nmap=False
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # 5. Nmap OT Port Exclusion Tests

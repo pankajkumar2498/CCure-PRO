@@ -843,7 +843,7 @@ app.add_middleware(
 
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
 
 app.state.limiter = limiter

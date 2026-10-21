@@ -41,6 +41,10 @@ from core.checks.legacy_plugins import (
     validate_all_plugins,
 )
 
+# The selector registers the network checks' plugins with the kernel when it is
+# imported (B5). Without it the kernel has nothing to verify, and says so.
+import engines.vulnerability.plugin_selector  # noqa: F401,E402
+
 DISPATCHABLE = all_dispatchable_plugin_names()
 
 

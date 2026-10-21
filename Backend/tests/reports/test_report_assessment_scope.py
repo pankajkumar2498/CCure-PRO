@@ -22,6 +22,7 @@ import pytest
 import reporting.pdf_generator as pdf_generator
 from reporting.csv_generator import generate_host_inventory_csv
 from reporting.pdf_generator import ScanReportGenerator
+from scans.report_inputs import with_report_inputs
 
 HIGH = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
 NONE = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"
@@ -83,7 +84,7 @@ def test_an_asset_discovery_report_counts_ports_but_not_vulnerabilities(
 
 def test_the_technical_report_marks_unmeasured_columns(tmp_path, rendered):
     ScanReportGenerator(output_dir=str(tmp_path)).generate_technical_pdf(
-        _discovery_payload(False), "host_discovery"
+        with_report_inputs(_discovery_payload(False)), "host_discovery"
     )
     text = "\n".join(rendered)
     assert "this host was not assessed for vulnerabilities" in text

@@ -88,7 +88,7 @@ def retain_user_administrator(db, actor, user_id):
 
 
 def retain_organisation_administrators(db, actor, org_id):
-    from db.models import User
+    from ccure_platform.models import User
 
     governance.lock_continuity(db)
     users = tuple(u for (u,) in db.query(User.id).filter(User.org_id == org_id))

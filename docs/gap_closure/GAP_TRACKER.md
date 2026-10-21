@@ -366,6 +366,10 @@ executable cases rather than assertion:
   schedule form would have meant an analyst needed a compliance permission to
   pick a credential for a scan. `GET /scan-schedules/credentials` serves the
   same rows gated on `scan_schedules:read`, returning identifying fields only.
+  _Superseded 16 Oct 2026:_ `scan_schedules:read` let a viewer list every
+  credential's username, so this route and `/compliance/credentials` now both
+  require `audit.credential.read`, through `core/credential_vault.py` (S2 and
+  S2b in `docs/architecture/MODULAR_REFACTORING_LOG.md`).
 
 ### 4.5 Known limitations
 

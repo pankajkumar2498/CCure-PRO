@@ -259,10 +259,15 @@ flowchart TD
 **Batch sizing** (`_batch_size`): ≤20 → all; ≤100 → 50; ≤254 → 128; ≤510 → 256;
 ≤1024 → 512; otherwise 1024.
 
-**Cancellation** is polled between batches via `make_cancel_check(scan_id)` from
-`core/scan_control.py`. It cannot be checked in the hot path without cost, and the
-host worker's threads pool makes `revoke(terminate=True)` ineffective, so
-between-batch polling is what bounds a cancelled scan.
+**Cancellation** is polled between batches through the `CancelToken` the
+orchestrator hands the engine (`core/engine_ports.py`, since B2). For a scan it is
+`core.scan_control.ScanCancelToken`, which reads the scan's status with
+`make_cancel_check` and raises `ScanCancelled`; the engine imports neither. It
+cannot be checked in the hot path without cost, and the host worker's threads pool
+makes `revoke(terminate=True)` ineffective, so between-batch polling is what bounds
+a cancelled scan. Progress goes the same way, through a `ProgressSink`
+(`core.scan_control.ScanProgress`: the Redis frames and the `scans.options`
+counters).
 
 **Live progress** — an `asyncio` task publishes to Redis every 150 ms whenever the
 active-host count grows, sending an `hosts` array of `{ip_address, hostname,
@@ -1381,7 +1386,11 @@ event)`. Channels: `scan_progress:{scan_id}` and `notifications:user:{user_id}`.
 ### Cancellation
 
 `core/scan_control.py` — `ScanCancelled`, `read_status`, `is_cancelled`,
-`raise_if_cancelled`, `make_cancel_check`, `start_progress`, `record_progress`.
+`raise_if_cancelled`, `make_cancel_check`, `start_progress`, `record_progress`, and
+since B2 `ScanCancelToken`, `ScanProgress` and `engine_ports(scan_id)`, which build
+the cancellation token and progress sink the orchestrator hands each engine. The
+engines import none of this (`core/engine_ports.py` declares what they take). The
+web scanner's terminal-status settler moved to `core/web/scan_status.py`.
 **Every helper opens its own short-lived session.** Reading through the task's own
 session returned the identity-map copy and never saw the API's `cancelled` commit,
 so the Stop button reported success while the scan ran to completion.

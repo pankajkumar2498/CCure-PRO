@@ -354,7 +354,9 @@ identity-map copy and never saw the API's `cancelled` commit. Every helper there
 its own short-lived session. `POST /scans/{id}/stop` additionally calls
 `celery_app.control.revoke(task_id, terminate=True)`, but the host worker uses a
 threads pool where `terminate` cannot kill a running thread — so the engine's
-between-batch `is_cancelled()` poll is the mechanism that actually stops work.
+between-batch `is_cancelled()` poll is the mechanism that actually stops work. The
+engine polls a `CancelToken` the orchestrator passes in (`core/engine_ports.py`,
+B2), so it does not import `core/scan_control.py` itself.
 
 ---
 

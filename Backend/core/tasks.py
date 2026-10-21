@@ -2723,15 +2723,20 @@ def run_topology_mapping_task(
             },
         )
 
-        # Run the topology engine
+        # Run the topology engine. Link ids are derived from the organisation's
+        # slug, which the task looks up so the engine needs no platform import
+        # (B6). An organisation that no longer exists falls back to its id, as
+        # the engine did before.
         from core.topology.engine import run_topology_mapping
 
+        organisation = platform_api.organisation(db, org_id)
         result = run_topology_mapping(
             db=db,
             scan_id=scan_id,
             org_id=org_id,
             snmp_config=snmp_config,
             target_ips=target_ips,
+            org_slug=organisation.slug if organisation else org_id,
         )
 
         # Update scan phase record
@@ -5516,7 +5521,7 @@ def reap_stalled_web_scans() -> dict:
     from datetime import timedelta, timezone
 
     from config import WebScanConfig
-    from core.scan_control import force_terminal_web_scan_status
+    from core.web.scan_status import force_terminal_web_scan_status
 
     # Just above each phase task's hard `time_limit` (recon/audit 2400s,
     # crawl 4200s, detect 8400s), plus grace so the tick and the phase-start

@@ -870,7 +870,8 @@ class TestSslyzeWrapperResultParsing:
     """
     Guards the ROBOT verdict parse.
 
-    ``core/web/sslyze/wrapper.py`` tested ``"VULNERABLE" in robot_enum.name``.
+    The sslyze wrapper (``engines/tls/wrapper.py`` since B9) tested
+    ``"VULNERABLE" in robot_enum.name``.
     sslyze's enum contains ``NOT_VULNERABLE_NO_ORACLE`` and
     ``NOT_VULNERABLE_RSA_NOT_SUPPORTED``, and "VULNERABLE" is a substring of
     "NOT_VULNERABLE" — so every server sslyze positively *cleared* was reported
@@ -905,7 +906,7 @@ class TestSslyzeWrapperResultParsing:
     def test_the_wrapper_uses_the_prefix_test(self):
         from pathlib import Path
 
-        import core.web.sslyze.wrapper as wrapper
+        import engines.tls.wrapper as wrapper
 
         source = Path(wrapper.__file__).read_text(encoding="utf-8")
         assert 'robot_enum.name.startswith("VULNERABLE_")' in source

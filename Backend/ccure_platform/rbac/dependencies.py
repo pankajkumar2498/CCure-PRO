@@ -26,7 +26,7 @@ from ccure_platform.identity.dependencies import get_current_user
 from ccure_platform.rbac import contract as c
 from ccure_platform.rbac import engine, resolver
 from db.base import get_db
-from db.models import User
+from ccure_platform.models import User
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 

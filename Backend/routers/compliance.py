@@ -26,8 +26,13 @@ from pydantic import BaseModel, Field, SecretStr, model_validator
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from ccure_platform.api import CurrentUser, has_permission, require_authorized
-from core import compliance_frameworks, nist_csf
+from ccure_platform.api import (
+    CurrentUser,
+    has_permission,
+    require_authorized,
+    resolve_active_organisation,
+)
+from core import compliance_frameworks, credential_vault, nist_csf
 from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
 from core.upload_guard import (
@@ -43,7 +48,6 @@ from core.upload_guard import (
 )
 from db.base import (
     SessionLocal,
-    gen_compliance_credential_id,
     gen_compliance_remediation_request_id,
     get_db,
 )
@@ -67,7 +71,7 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 
 log = logging.getLogger("ccure.compliance")
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
@@ -2266,98 +2270,97 @@ def delete_scan_schedule(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# These three routes predate /credentials and three screens still call them, so
+# their request and response shapes, status codes and messages are kept. Their
+# rules are not their own any more: they are adapters over core.credential_vault,
+# the service /credentials uses. They used to authorise on audit.compliance.read
+# and .manage_integrations — under which a viewer could list every credential's
+# username, and a custom role could delete one without audit.credential.delete —
+# and applied no type rules, rate limit or canonical audit action.
 @router.post(
     "/credentials",
     status_code=status.HTTP_201_CREATED,
     response_model=CredentialResponse,
 )
+@limiter.limit("20/minute")
 def create_credential(
+    request: Request,
+    response: Response,
     payload: CredentialCreate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(
-        require_authorized("audit.compliance.manage_integrations")
-    ),
+    user: CurrentUser = Depends(require_authorized("audit.credential.manage")),
 ):
     """Register new SSH or Password credentials for target assets."""
-    # Ensure name uniqueness per tenant
-    existing = (
-        db.query(ComplianceCredential)
-        .filter_by(name=payload.name, tenant_id=user.org_id)
-        .first()
-    )
-    if existing:
+    try:
+        return credential_vault.create(
+            db,
+            actor=user,
+            org_id=resolve_active_organisation(user),
+            name=payload.name,
+            username=payload.username,
+            auth_method=payload.auth_method,
+            password=(
+                payload.password.get_secret_value()
+                if payload.password is not None
+                else None
+            ),
+            private_key=(
+                payload.key_content.get_secret_value()
+                if payload.key_content is not None
+                else None
+            ),
+            port=payload.port,
+            request=request,
+        )
+    except credential_vault.DuplicateCredentialName:
         raise HTTPException(
             status_code=400, detail="A credential with this name already exists"
-        )
-
-    # Basic validations based on auth_method
-    encrypted_password = None
-    encrypted_key_content = None
-
-    if payload.auth_method == "password":
-        if not payload.password:
-            raise HTTPException(
-                status_code=400,
-                detail="Password is required for password authentication",
-            )
-        encrypted_password = encrypt_credential(payload.password.get_secret_value())
-    elif payload.auth_method == "key":
-        if not payload.key_content:
-            raise HTTPException(
-                status_code=400,
-                detail="Private key content is required for key authentication",
-            )
-        encrypted_key_content = encrypt_credential(
-            payload.key_content.get_secret_value()
-        )
-
-    cred_id = gen_compliance_credential_id(user.org_id)
-    new_cred = ComplianceCredential(
-        id=cred_id,
-        tenant_id=user.org_id,
-        name=payload.name,
-        username=payload.username,
-        encrypted_password=encrypted_password,
-        encrypted_key_content=encrypted_key_content,
-        port=payload.port,
-        auth_method=payload.auth_method,
-    )
-    db.add(new_cred)
-    log_audit_event(
-        db, user, "create_credential", "credential", cred_id, status="success"
-    )
-    db.commit()
-    db.refresh(new_cred)
-    return new_cred
+        ) from None
+    except credential_vault.MissingSecret as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password is required for password authentication"
+                if exc.field == "password"
+                else "Private key content is required for key authentication"
+            ),
+        ) from None
+    except credential_vault.CredentialRuleViolation as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.get("/credentials", response_model=list[CredentialResponse])
+@limiter.limit("60/minute")
 def list_credentials(
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
 ):
     """List registered target credentials (excluding passwords/private keys)."""
-    creds = db.query(ComplianceCredential).filter_by(tenant_id=user.org_id).all()
-    return creds
+    return credential_vault.list_for_org(db, resolve_active_organisation(user))
 
 
 @router.delete("/credentials/{id}", status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")
 def delete_credential(
+    request: Request,
+    response: Response,
     id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(
-        require_authorized("audit.compliance.manage_integrations")
-    ),
+    user: CurrentUser = Depends(require_authorized("audit.credential.delete")),
 ):
     """Delete a registered credential."""
-    cred = (
-        db.query(ComplianceCredential).filter_by(id=id, tenant_id=user.org_id).first()
-    )
-    if not cred:
-        raise HTTPException(status_code=404, detail="Credential not found")
-    db.delete(cred)
-    log_audit_event(db, user, "delete_credential", "credential", id, status="success")
-    db.commit()
+    try:
+        credential_vault.delete(
+            db,
+            actor=user,
+            org_id=resolve_active_organisation(user),
+            credential_id=id,
+            request=request,
+        )
+    except credential_vault.CredentialNotFound:
+        raise HTTPException(status_code=404, detail="Credential not found") from None
     return {"message": "Credential deleted successfully"}
 
 

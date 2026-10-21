@@ -536,10 +536,14 @@ class TestScanConfiguration:
     @staticmethod
     def _rows(meta=None, summary=None):
         from reporting.pdf_generator import _scan_configuration
+        from scans.report_inputs import report_inputs
 
         findings = build_scan_report(_payload([_cve()]))
+        meta, summary = meta or {}, summary or {}
         return dict(
-            _scan_configuration(meta or {}, summary or {}, findings, "vulnerability")
+            _scan_configuration(
+                meta, summary, findings, "vulnerability", report_inputs(meta, summary)
+            )
         )
 
     def test_recorded_parameters_are_reported(self):

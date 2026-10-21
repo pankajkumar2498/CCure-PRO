@@ -19,7 +19,7 @@ from ccure_platform.identity.tokens import (
     verify,
 )
 from db.base import get_db
-from db.models import User
+from ccure_platform.models import User
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session, joinedload

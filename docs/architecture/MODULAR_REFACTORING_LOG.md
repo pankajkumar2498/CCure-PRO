@@ -1689,22 +1689,311 @@ at the end of Phase B.
 - **The golden covers the two touched helpers and whole reports for 11 payloads.** It is not every
   report the product can produce; the targeted groups cover the rest of the renderer's behaviour.
 
+### B8 — the orchestrator composes the engines; the platform registers its models alone
+
+Three commits, one per part of the plan's step, committed in place: `6cd4ca3` (B8a), `eb52943`
+(B8b), `a6a23b6` (B8c). A fourth, `fe5baaf`, records a test baseline the full suite called for
+(below).
+
+**The scope** (analysis §10, B8): "(a) Port engine and discovery enrichment import sibling engines;
+(b) Audit models attach seven back-references onto platform classes; the platform loads all models
+→ compose enrichment in orchestration; replace `backref=` with one-sided relationships if nothing
+reads them; split the model registry so the platform registers alone." Target: "Platform loads
+without Audit's models".
+
+- **Not in the step:** the analysis's §7.3 platform row also says "move `report_helpers` into a shared rendering
+  module". The step does not name it, so it stays the §7 item B7 recorded.
+
+#### B8a — the orchestrator composes the engines' enrichment
+
+**The dependency.** Inspected on `bfcf36f`.
+
+- **The port engine** ended every `run()` with `_lightweight_snmp_check` and
+  `_ot_enrichment_check`. They imported discovery enrichment's `_snmp_lightweight_probe` and
+  `_ot_protocol_probes` (a lateral edge) and the asset registry's `classify_device` (an upward
+  edge).
+- **Discovery enrichment's SNMP probe** imported twelve names from the network checks'
+  `snmp_probe`: the SNMP client, its BER decoders, the OIDs and the enterprise-vendor table (a
+  lateral edge).
+- **Who calls them.** The orchestrator is the only production caller of either engine.
+
+**The change.** A new module, `orchestrator/host_enrichment.py`, mapped to the scans capability:
+
+- **`enrich_after_port_scan(hosts, *, exclude_ot_from_nmap)`** is the port engine's two steps,
+  moved unchanged. The orchestrator awaits it on the hosts it gave the port engine:
+  - straight after `port_engine.run` and before OS inference;
+  - with the engine's own `exclude_ot_from_nmap`.
+- **`snmp_system_query(ip)`** is the SNMP read the probe used to make itself, moved unchanged:
+  sysObjectID first, then sysDescr, sysName, forwarding, the interface count and the bridge MIB.
+  - **The probe keeps the interpretation** (identity, OS evidence, port registration) and takes the
+    read as an argument.
+  - **The discovery engine** takes it as `snmp_query` (`core.engine_ports.SnmpSystemQuery`) and
+    passes it to `enrich_host`.
+  - **The orchestrator gives it to all five discovery engines it builds.** An engine given none
+    makes no SNMP request.
+- **The imports stay inside the functions**, as they were in the engines, so importing the
+  orchestrator loads one module more (the new one) and nothing else.
+
+**Golden: identical.** `b8a_golden.py`, a scratch script, drives the trees' own code with the
+network replaced:
+
+- **What is faked:**
+  - SNMP agents behind `snmp_probe._snmp_get_raw`: Linux, Windows, a switch, one that fails
+    mid-read, a non-OID answer, none;
+  - the OT probes and the other discovery probes;
+  - nmap's results;
+  - discovery's probing (the engine's own `_enrich_active` still runs).
+- **What it captures, over eleven hosts:**
+  - the orchestrator's port phase, with OT exclusion on and off, light and normal;
+  - its AGGRESSIVE and FAST discovery;
+  - discovery's enrichment called directly;
+  - for each: the phase result, every raw host record after OS inference, and each host's
+    sequence of SNMP requests and OT probe calls.
+- **The branches it reaches:** 161 closed and open, credentialed OS precedence, OT inclusion and
+  exclusion, an already identified host, a failing probe, an inactive host.
+
+| Capture                                                                    | Result                                               |
+| -------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `bfcf36f`, twice                                                           | identical once the scan timestamp is dropped         |
+| B8a working tree; clean worktree of `a6a23b6`                              | **byte-identical** to `bfcf36f`                      |
+| Mutation M1 (no enrichment after the port scan); M6 (OT exclusion ignored) | differ by 2,402 and 106 lines: the capture sees both |
+
+**Four existing tests changed their stubs, not their assertions.**
+
+- **Why they had to.** They mocked `PortEngine` inside the orchestrator, or patched its two
+  methods, and so skipped the enrichment without saying so.
+- **What they do now.** They stub `enrich_after_port_scan` where it lives. Left alone, two of them
+  would now send SNMP and OT probes to real addresses, one of them `10.180.12.104` on this LAN.
+- **One gains a check.** The passive-first test also asserts that the enrichment runs on the
+  scanned hosts only.
+
+**At run time.** Running the port engine on a host with nothing to probe (nmap replaced, UDP 161
+closed, no OT port, so no packet leaves) loaded 15 first-party modules on `bfcf36f`: the whole
+discovery package, the classifier and `core.risk`. It loads none on `6cd4ca3` or `a6a23b6`.
+
+#### B8b — Audit's models attach nothing to platform classes
+
+**The back-references.**
+
+- `Organization.web_scans`, `.web_findings`, `.web_parameters`, `.web_forms`,
+  `.web_api_operations` (`db/models/web_scans.py`).
+- `Organization.network_links` (`db/models/topology.py`).
+- `User.web_scans` (`db/models/web_scans.py`).
+
+They are one-sided now. The forward attributes (`organization`, `created_by_user`) stay, as do the
+Audit-to-Audit back-references (`WebScan.web_parameters`, `Scan.network_links`,
+`Asset.links_as_source`, …).
+
+**Who read them: no code, and one flush.** No module, router or frontend reads the seven
+attributes, and nothing introspects relationships. But deleting a user made the ORM load
+`User.web_scans` and set `web_scans.created_by` to NULL.
+
+- **On the live schema nothing else does that.** The migrations created `web_scans` and
+  `web_findings` without the foreign keys their models declare (to `organizations` and `users`).
+  Measured in the live catalogue, read only: `web_scans` has no foreign key at all.
+- **So no test could tell.** The test schema is built from the models, which do declare
+  `ON DELETE SET NULL`.
+
+**The change.**
+
+- **The statement moved to the table's owner.** `core/web/offboarding.detach_user_from_web_scans`
+  belongs to the web capability. Audit's purge hook calls it beside the same statement for
+  `scans.created_by`.
+- **Its effect is the flush's:** `created_by` cleared, `updated_at` stamped (the compiled `UPDATE`
+  carries the column's `onupdate`).
+- **First version, and why it changed.** It put the statement in `ccure_audit/offboarding.py`
+  itself. The capability ratchet refused it: a new foreign-table reference and write
+  (`audit_boundary` → `web_scans`) past `CEILINGS`.
+- **The stale-account purges run no hooks.** They reach only accounts that are unverified or
+  unapproved, which can never sign in, so never started a web scan. Approval is never revoked
+  (`approved_at` is set to `None` only at registration).
+
+**Shown by the test, both ways.** The purge test drops the creator's foreign key inside its own
+rolled-back transaction, so it purges against the schema production has.
+
+| Tree                                   | Mapper tests (2) | Purge test                                    |
+| -------------------------------------- | ---------------- | --------------------------------------------- |
+| `6cd4ca3` (B8a) plus the new test file | fail             | passes: the back-reference clears the creator |
+| B8b without the hook's statement       | pass             | **fails**: the creator is left dangling       |
+| `eb52943`                              | pass             | passes                                        |
+
+**Mapper shape:** `Organization`'s relationships 7 → 1 (`users`), `User`'s 4 → 3 (`organization`,
+`refresh_tokens`, `audit_logs`). The table set and the tables' dependency order are unchanged.
+
+#### B8c — the platform registers its models alone
+
+**The dependency.** The platform imported its models from `db.models` (38 import sites in 27
+files), and `db/models/__init__.py` imports every model file. So importing `ccure_platform.api`
+loaded all ten of Audit's model files.
+
+**The change.**
+
+- **`ccure_platform.models` is the platform's registry.** Its `__init__` imports and exports the
+  platform's models: identity, tenancy, native RBAC, the platform audit ledger, the registration
+  policy, email screening and notifications.
+- **Two model files moved into it** with `git mv`: `notifications.py` and `email_security.py`, the
+  platform-owned files still under `db/models/`.
+  - **The Phase 8.2 pattern:** each adopts its legacy name, keeps an alias stub at the old path and
+    is recorded in `MOVED_MODULES`.
+  - **So nothing observable changes:** class `__module__`, every legacy import and every patch
+    target behave as before. `test_platform_identity_move` covers the two new entries, in every
+    import order.
+- **`db/models/__init__.py` takes the platform's models from that registry in one import**, then
+  adds Audit's.
+  - **Unchanged:** its `__all__` (same names, same objects), its table set, and the tables'
+    dependency order (`sorted_tables`, which `create_all` uses).
+  - **Changed:** only the order in which tables are first registered, since the platform's now
+    come first. Nothing reads that order.
+- **Every platform import names `ccure_platform.models` now.** The layer rule
+  `platform-does-not-use-legacy-paths` forbids `db.models` outright; it used to name only
+  `db.models.users` and `.rbac`.
+- **The guards that named the old arrangement:**
+  - `identity_boundary` lists the two new alias stubs as platform-side;
+  - `test_legacy_alias_importers` lists `main.py`'s existing import of `db.models.email_security`;
+  - the guardrail cases move "the platform imports `db.models`" from allowed to forbidden.
+
+**The target, measured.**
+
+- **No platform module loads `db.models` or an Audit model file.** In one interpreter, all 79
+  modules of the platform package import without loading either.
+- **The platform's registry configures alone.** In a fresh interpreter it configures every mapper,
+  and it registers exactly the platform's tables.
+- **The capability baseline locks it in.** `ccure_platform.api`'s load profile went from ten
+  capabilities (nine of them Audit's) to shared infrastructure only.
+
+#### Measurements, B8 as a whole
+
+**Interfaces: identical** after each part (`interface_snapshot --compare` against `bfcf36f`). The
+RBAC authorization inventory is current.
+
+**Coupling** (`capability_map`):
+
+| Measure                                    | Before (`bfcf36f`) | After B8a (`6cd4ca3`) | After B8 (`a6a23b6`) |
+| ------------------------------------------ | -----------------: | --------------------: | -------------------: |
+| Upward edges                               |                 38 |                **37** |                   37 |
+| Lateral edges                              |                 72 |                **70** |                   70 |
+| Largest cycle, all imports                 |      16 (and 4, 2) |     **15** (and 4, 2) |        15 (and 4, 2) |
+| Largest cycle, top-level                   |                 12 |                    12 |                   12 |
+| Foreign-table references / writes          |            79 / 17 |               79 / 17 |              79 / 17 |
+| Cross-capability imports, top-level / lazy |          466 / 384 |             467 / 384 |            468 / 384 |
+| `ccure_platform.api` load profile          |    10 capabilities |       10 capabilities |       **infra only** |
+
+- **The three edges are gone:**
+  - upward: `engines.port.port_engine` → `core.device_classifier`;
+  - lateral: `engines.port.port_engine` → `core.discovery.enrichment`;
+  - lateral: `core.discovery.enrichment` → `engines.vulnerability.plugins.snmp_probe`.
+- **The port inventory left the capability cycle.** `CEILINGS` now holds the largest cycle at 15,
+  upward edges at 37 and lateral edges at 70.
+- **Discovery stays in the cycle,** through its techniques' lookup in `core.oui_lookup` (an assets
+  module), the §7 item from B3.
+- **The cross-capability imports, edge by edge** (`capability_edges`, `bfcf36f` against `a6a23b6`):
+  - **two new top-level ones, both pointing down:** discovery enrichment → `core.engine_ports`
+    (the interface) and Audit's purge hook → `core.web.offboarding`;
+  - **the three lazy ones moved, not added:** the engines' lazy imports of the enrichment, the
+    classifier and the SNMP client became `orchestrator.host_enrichment`'s;
+  - **renamed:** the moved model files' imports of `db.base`, under their real names.
+
+**Import cost** (first-party / all modules):
+
+| Module                                 | Before (`bfcf36f`) | After (`a6a23b6`) | What changed                                                      |
+| -------------------------------------- | -----------------: | ----------------: | ----------------------------------------------------------------- |
+| `ccure_platform.api`                   |           59 / 629 |      **49 / 619** | `db.models` and all ten Audit model files no longer load          |
+| `ccure_platform.identity.router`       |           49 / 712 |          39 / 702 | the same                                                          |
+| `ccure_platform.administration.users`  |           66 / 625 |          56 / 615 | the same                                                          |
+| `ccure_platform.audit_log.writer`      |           35 / 492 |          25 / 482 | the same                                                          |
+| `ccure_platform.notifications.service` |           34 / 436 |          24 / 426 | the same                                                          |
+| `ccure_platform.models`                |              2 / 6 |          18 / 331 | it is the registry now: the platform's model files and SQLAlchemy |
+| `ccure_platform.rbac.engine`           |             4 / 29 |            4 / 29 | none                                                              |
+| `engines.port.port_engine`             |           24 / 568 |          24 / 568 | none at import: its imports were lazy. Running it: 15 → 0 (above) |
+| `orchestrator.scan_orchestrator`       |           58 / 958 |          59 / 959 | adds `orchestrator.host_enrichment`                               |
+| `db.models`                            |           28 / 341 |          30 / 343 | the two moved files' real names beside their legacy ones          |
+| `main`                                 |         279 / 1942 |        283 / 1946 | the two new modules and those two names                           |
+
+**Tests.**
+
+| Step                 | Command / targets                                                                                                                                                                                                                                                                                                                                                                                         |    Passed | Failed | Skipped | Notes                                                                                                                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------: | -----: | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| B8a, affected        | the nine scan files that touch the two engines or the classifier (`test_ot_safety`, `test_port_registration_flow`, `test_engine_ports`, `test_engine_progress_and_cancellation`, `test_host_identity_precedence`, `test_snmp_ber_decoding`, `test_pipeline_contracts`, `test_vuln_scoring_split`, `test_device_classifier`)                                                                               |       145 |      0 |       0 | After the four stub changes                                                                                                                                                          |
+| B8a, new             | `tests/scans/test_engine_composition.py`                                                                                                                                                                                                                                                                                                                                                                  |        14 |      0 |       0 | The edges and the run; every production `DiscoveryEngine` given the read; the order in the orchestrator; the moved behaviour (161 gate, OT gate both ways, failures, inactive hosts) |
+| B8a, mutation        | the new file and `test_ot_safety`, on scratch worktrees with: M1 no enrichment after the port scan; M2 the enrichment before it; M3 one discovery engine without the read; M4 the port engine importing enrichment again; M5 enrichment importing the SNMP client again; M6 the OT exclusion ignored; M7 inactive hosts enriched; M8 a closed 161 queried; M9 discovery falling back to a read of its own |         — |      — |       — | Caught: M1 by 3 tests, M2 by 2, M3 by 1, M4 by 2, M5 by 1, M6 by 1, M7 by 2, M8 by 1, M9 by 1. The golden also caught M1 and M6                                                      |
+| B8a, targeted groups | `tests/assets tests/compliance tests/credentialed tests/repo tests/reports tests/scans tests/security tests/topology tests/web`, the groups the selector named, on a clean worktree of `6cd4ca3`                                                                                                                                                                                                          |     6,443 |      0 |       2 | Environment-dependent skips; the run did not name them                                                                                                                               |
+| B8b, focused         | `tests/repo/test_platform_model_registry.py`, `test_platform_extraction.py`, `tests/web`, `tests/topology`, the RBAC purge, admin tenant-isolation and audit-actor tests                                                                                                                                                                                                                                  |       664 |      0 |       1 | Before the statement moved to `core/web/offboarding.py`; after it, the purge and architecture tests: 171 passed                                                                      |
+| B8b, both ways       | the new file on `6cd4ca3`, and on B8b without the hook's statement                                                                                                                                                                                                                                                                                                                                        |         — |      — |       — | The table above                                                                                                                                                                      |
+| B8c, focused         | the registry, identity-move, legacy-alias, identity-boundary, architecture, capability, platform-extraction and module-registry tests; the email-domain and notification tests                                                                                                                                                                                                                            |       396 |  **1** |       0 | `test_the_rules_allow_ordinary_downward_dependencies` pinned "the platform imports `db.models`" as allowed. It moved to the forbidden cases; then 74 passed                          |
+| B8c, mutation        | C1 a platform module importing `db.models` again; C2 the platform registry dropping a model; C2b the same, with Audit's registry importing it directly; C3 Audit's registry dropping a re-export                                                                                                                                                                                                          |         — |      — |       — | Caught: C1 by the registry test, the layer rule (`check.py` exits 1) and the guardrail test; C2 and C2b by the schema bootstrap, which fails; C3 by the export test                  |
+| Full suite           | `tests`, on a clean worktree of `a6a23b6`                                                                                                                                                                                                                                                                                                                                                                 |     8,019 |  **1** |     211 | `test_no_new_audit_vocabulary_enters_the_platform` (below). The skips are the audit-chain and retention DBA bootstraps and the environment ones                                      |
+| After the fix        | `tests/repo`, with `fe5baaf`'s content                                                                                                                                                                                                                                                                                                                                                                    |       776 |      0 |       1 |                                                                                                                                                                                      |
+| Full suite           | `tests`, on a clean worktree of `fe5baaf` (15 min 22 s)                                                                                                                                                                                                                                                                                                                                                   | **8,020** |  **0** |     211 | The plan's "full suite" for B8; the result for the branch as it stands                                                                                                               |
+| Architecture         | `check.py`; `capability_map --check`; `build_migration_inventory --check`; pre-commit                                                                                                                                                                                                                                                                                                                     |         — |      — |       — | All pass                                                                                                                                                                             |
+
+**The one failure the full suite found.**
+
+- **What failed.** The platform-vocabulary ratchet: `models/notifications.py` became a new file inside
+  `ccure_platform` carrying an Audit word.
+- **What the word is.** One occurrence, the `related_scan_id` column. It is the column
+  `notifications/service.py` and `router.py` already name, item 3 of
+  `PLATFORM_AUDIT_VOCABULARY.md` (persisted column and API contract, left for compatibility). The
+  move brought it along; nothing new entered the platform.
+- **The fix,** `fe5baaf`: the baseline records the file at 1 with that reason, and the document
+  names the file.
+
+**Live validation.**
+
+- **Not required.** §11 does not require it for B8.
+- **Run anyway.** B8a moves code on the port phase's path, and CLAUDE.md asks for a live pair on
+  any scan-path change.
+
+| Run      | Commit    | Interface (`pinned` / `scapy_default`) | Full audit                                                             | Stopped sweep |
+| -------- | --------- | -------------------------------------- | ---------------------------------------------------------------------- | ------------- |
+| `before` | `bfcf36f` | `eth0` / `eth0`, `172.30.250.5`        | complete: 3 phases, 4 assets, 4 services, 7 findings, 13 frames, 321 s | `cancelled`   |
+| `after`  | `fe5baaf` | `eth1` / `eth0`, `172.30.250.5`        | the same, 312 s                                                        | `cancelled`   |
+
+- **Identical apart from time**, with nothing needing tolerance: the scan rows, phases, assets
+  (with the fixed MACs), services, findings, task results and every frame match.
+- **The interface fix earned its keep.** In the `after` run Docker attached the targets' network as
+  `eth1`, and Scapy's default was `eth0`, the wrong one. The harness pinned `eth1` (`44cb889`);
+  before that fix this run would have found nothing.
+- **What the pair can and cannot show.** The moved code is on the full audit's path: the
+  AGGRESSIVE discovery's SNMP probe, then the enrichment after the port scan. No validation
+  target runs an SNMP agent or an OT service, so the pair shows the phases unchanged when nothing
+  answers. The answering branches are the golden's.
+
+**Found on the way, recorded in §7, not fixed:**
+
+- **`web_scans` and `web_findings` lack the foreign keys their models declare.** On this
+  installation both tables are empty, so a migration adding them would meet no orphans. Two
+  consequences until then:
+  - deleting an organisation would not cascade into them;
+  - a purge leaves `web_findings.accepted_by` naming the removed account. No hook clears it, and
+    before B8 nothing did either.
+
+**Limitations.**
+
+- **Importing one platform model file now loads them all.** `ccure_platform.models` went from 2 to
+  18 first-party modules, because its `__init__` is the registry. They are the platform's own
+  files, and they need one another to configure (`Organization.users`).
+- **The renderers' 4-capability cycle remains,** through the platform's audit-log export, as B7
+  recorded.
+- **The golden replaces the network.** What the real SNMP and OT exchanges look like is shown live
+  only as far as the validation targets reach (above).
+
 ## 7. Decisions awaiting the project owner
 
-| #   | Decision                                                                                                                                                                                                                                                                  | From                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                   | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                          | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                   | analysis §13                                                       |
-| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                      | S2                                                                 |
-| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                       | S1                                                                 |
-| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                   | S2                                                                 |
-| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                    | S2b, §4                                                            |
-| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                         | S2b, §4                                                            |
-| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                             | B2, §6                                                             |
-| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import | B3, §6                                                             |
-| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                      | B3, §6                                                             |
-| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                             | B3, §6                                                             |
-| new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                   | B6, §6                                                             |
-| new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle                                                                                  | B7, §6                                                             |
-| new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                     | B7, §6                                                             |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                          | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                 | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                          | analysis §13                                                       |
+| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                             | S2                                                                 |
+| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                              | S1                                                                 |
+| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                          | S2                                                                 |
+| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                                                                                                                                           | S2b, §4                                                            |
+| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                                                                                                                                                | S2b, §4                                                            |
+| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                                                                                                                                                    | B2, §6                                                             |
+| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import                                                                                                                        | B3, §6                                                             |
+| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                             | B3, §6                                                             |
+| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                                                                                                                                                    | B3, §6                                                             |
+| new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                                                                                                                                          | B6, §6                                                             |
+| new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                    | B7, §6                                                             |
+| new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                            | B7, §6                                                             |
+| new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models | B8, §6                                                             |

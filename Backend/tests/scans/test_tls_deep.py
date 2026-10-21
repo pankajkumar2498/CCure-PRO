@@ -378,7 +378,7 @@ def test_a_scan_command_that_did_not_complete_yields_no_reading():
     command in any state but COMPLETED must produce ``{}``, because the
     alternative is a finding derived from a result sslyze never obtained.
     """
-    from core.web.sslyze.wrapper import SSLyzeWrapper
+    from engines.tls.wrapper import SSLyzeWrapper
 
     class Attempt:
         def __init__(self, status_name, result=None):
@@ -407,7 +407,7 @@ def test_public_key_classification_uses_types_not_class_names():
     """
     from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 
-    from core.web.sslyze.wrapper import _describe_public_key
+    from engines.tls.wrapper import _describe_public_key
 
     class Leaf:
         def __init__(self, key):
@@ -429,7 +429,7 @@ def test_public_key_classification_uses_types_not_class_names():
 
 
 def test_a_leaf_whose_key_cannot_be_read_is_withheld_not_guessed():
-    from core.web.sslyze.wrapper import _describe_public_key
+    from engines.tls.wrapper import _describe_public_key
 
     class Broken:
         def public_key(self):

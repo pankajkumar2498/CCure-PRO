@@ -595,10 +595,6 @@
    "core.cve_database"
   ],
   [
-   "engines.vulnerability.plugins.tls_scanner",
-   "core.web.sslyze.wrapper"
-  ],
-  [
    "reporting.exports",
    "ccure_audit.services.assessment_read"
   ],

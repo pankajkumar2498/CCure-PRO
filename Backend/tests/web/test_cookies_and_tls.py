@@ -174,7 +174,7 @@ def test_tls_finding_normalization():
 def _sslyze_ok():
     try:
         import cryptography  # noqa: F401
-        from core.web.sslyze.wrapper import SSLyzeWrapper
+        from engines.tls.wrapper import SSLyzeWrapper
 
         return SSLyzeWrapper().is_available()
     except Exception:
@@ -232,7 +232,7 @@ def _expired_https_server():
 
 @tls_required
 def test_sslyze_flags_expired_certificate_live():
-    from core.web.sslyze.wrapper import SSLyzeWrapper
+    from engines.tls.wrapper import SSLyzeWrapper
     from core.web.standards_mapping import resolve_cwe
 
     srv, port = _expired_https_server()

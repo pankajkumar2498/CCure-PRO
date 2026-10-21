@@ -94,6 +94,9 @@ CAPABILITIES: dict[str, tuple[int, str]] = {
     "scan_kernel": (2, "Audit's scan-domain constants, helpers and scope admission"),
     "check_kernel": (2, "The common check and finding contract"),
     "vuln_intel": (2, "Access to the vulnerability-intelligence database; NVD sync"),
+    # B9: the network checks and web DAST both assess TLS through it, so it
+    # sits below both; an engine library, imported by engines, importing none.
+    "tls": (2, "The TLS engine (sslyze wrapper) the network checks and web DAST share"),
     "discovery": (3, "Phase 1: live hosts"),
     "port_inventory": (3, "Phase 2: ports, services, operating system"),
     "network_checks": (3, "Phase 3: unauthenticated network checks"),
@@ -198,6 +201,7 @@ PREFIXES: dict[str, str] = {
     "engines.port": "port_inventory",
     "engines.vulnerability": "network_checks",
     "core.candidate_enumeration": "network_checks",
+    "engines.tls": "tls",
     "engines.credentialed": "credentialed_audit",
     "core.credential_scope": "credentialed_audit",
     "routers.credentialed": "credentialed_audit",
@@ -778,8 +782,9 @@ CEILINGS = {
     "upward_edges": 37,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
-    # the network checks' SNMP client.
-    "lateral_edges": 70,
+    # the network checks' SNMP client; B9 the TLS plugin's import of the web
+    # module's sslyze wrapper (now the shared engines.tls).
+    "lateral_edges": 69,
     # 80 when introduced; B2 moved the web_scans settler out of scans.
     "foreign_table_references": 79,
     "foreign_table_writes": 17,

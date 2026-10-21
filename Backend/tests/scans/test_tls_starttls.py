@@ -66,7 +66,7 @@ def test_every_service_name_resolves_against_sslyzes_own_enum():
     lookup returning None is why it is declared unimplemented rather than
     silently producing connection errors.
     """
-    from core.web.sslyze.wrapper import SSLyzeWrapper
+    from engines.tls.wrapper import SSLyzeWrapper
 
     for name in STARTTLS_SERVICES:
         assert SSLyzeWrapper._opportunistic_protocol(name) is not None, name

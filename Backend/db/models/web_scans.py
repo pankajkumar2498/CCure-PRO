@@ -169,10 +169,11 @@ class WebScan(Base):
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    organization = relationship("Organization", backref="web_scans")
-    created_by_user = relationship(
-        "User", backref="web_scans", foreign_keys=[created_by]
-    )
+    # One-sided (B8): Audit's models attach no attribute to the platform's
+    # Organization and User. A user purge clears created_by through Audit's
+    # purge hook (ccure_audit/offboarding.py), not through a back-reference.
+    organization = relationship("Organization")
+    created_by_user = relationship("User", foreign_keys=[created_by])
     web_assets = relationship(
         "WebAsset",
         back_populates="web_scan",
@@ -409,7 +410,7 @@ class WebFinding(Base):
     # ── Relationships ─────────────────────────────────────────────────────────
     web_scan = relationship("WebScan", back_populates="web_findings")
     web_asset = relationship("WebAsset", back_populates="web_findings")
-    organization = relationship("Organization", backref="web_findings")
+    organization = relationship("Organization")  # one-sided (B8)
 
     def __repr__(self):
         return (
@@ -506,7 +507,7 @@ class WebParameter(Base):
     # ── Relationships ─────────────────────────────────────────────────────────
     web_scan = relationship("WebScan", backref="web_parameters")
     web_asset = relationship("WebAsset", back_populates="web_parameters")
-    organization = relationship("Organization", backref="web_parameters")
+    organization = relationship("Organization")  # one-sided (B8)
 
     def __repr__(self):
         return (
@@ -570,7 +571,7 @@ class WebForm(Base):
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     web_scan = relationship("WebScan", backref="web_forms")
-    organization = relationship("Organization", backref="web_forms")
+    organization = relationship("Organization")  # one-sided (B8)
 
     def __repr__(self):
         return f"<WebForm {self.id!r} {self.method} {self.action_url[:50]}>"
@@ -634,7 +635,7 @@ class WebApiOperation(Base):
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     web_scan = relationship("WebScan", backref="web_api_operations")
-    organization = relationship("Organization", backref="web_api_operations")
+    organization = relationship("Organization")  # one-sided (B8)
 
     def __repr__(self):
         return f"<WebApiOperation {self.id!r} {self.kind}:{self.identity[:40]}>"

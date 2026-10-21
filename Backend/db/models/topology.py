@@ -95,7 +95,9 @@ class NetworkLink(Base):
 
     # Relationships
     scan = relationship("Scan", backref="network_links")
-    organization = relationship("Organization", backref="network_links")
+    # One-sided (B8): Audit's models attach no attribute to the platform's
+    # Organization.
+    organization = relationship("Organization")
     source_asset = relationship(
         "Asset", foreign_keys=[source_asset_id], backref="links_as_source"
     )

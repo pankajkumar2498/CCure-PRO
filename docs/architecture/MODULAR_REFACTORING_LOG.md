@@ -1977,6 +1977,139 @@ RBAC authorization inventory is current.
 - **The golden replaces the network.** What the real SNMP and OT exchanges look like is shown live
   only as far as the validation targets reach (above).
 
+### B9 — the TLS engine moves below the network checks and web DAST
+
+Commit `bc4f7da`, committed in place.
+
+**The scope** (analysis §10, B9): "Network-check TLS plugin reaches into `core.web.sslyze` → move
+the sslyze wrapper to a shared engine module both use". Files: `tls_scanner.py`,
+`core/web/sslyze/`. Target: "Network scan runs without the web module".
+
+**The dependency.** Inspected on `f8e9f67`.
+
+- **The plugin's import.** `engines/vulnerability/plugins/tls_scanner.py` imported
+  `SSLyzeWrapper` from `core.web.sslyze.wrapper`, lazily, for its deep assessment. That is a
+  lateral edge, network checks → web DAST.
+- **The wrapper's own imports:** the standard library, `sslyze` and `cryptography`, and no
+  application code. The coupling was only where the file lived.
+- **What it cost, measured.** In an interpreter where `core.web` cannot be imported, the plugin's
+  import failed. `_deep_audit` swallows that as "sslyze not installed", so every endpoint was
+  assessed by the handshake probe alone: against an expired, self-signed listener, `deep_assessed`
+  false and two findings instead of four.
+- **The other importer** is the web orchestrator's audit phase. Nothing else on the network path
+  imports `core.web`: `core/tasks.py`'s one import is the web scans' status settler.
+
+**The change.**
+
+- **The move.** `git mv core/web/sslyze/wrapper.py engines/tls/wrapper.py`, unchanged but for
+  its header. `engines/tls/` is the TLS engine both scan paths use.
+- **Its own capability, at layer 2** (`tls`, in `capability_map`), below both users, so neither
+  import of it is lateral. That is the analysis's §8.3 rule 1, dependencies point down. As a
+  layer-3 engine its users' imports would still have been lateral.
+- **The callers.** `tls_scanner` and `orchestrator/web_orchestrator.py` import
+  `engines.tls.wrapper`, still inside the functions that use it.
+- **The old path stays,** as a `sys.modules` alias of the same module (`core/web/sslyze/wrapper.py`).
+  It is the pattern `scans.cvss` uses, and §8.3 rule 8's: old imports, `patch` targets and
+  `isinstance` checks hold.
+- **The logger keeps its name,** `ccure.web.sslyze`: log filters match on it.
+- **The tests that imported the old path** (`test_network_check_promotion`, `test_tls_deep`,
+  `test_tls_starttls`, `test_cookies_and_tls`) import the new one.
+
+**Golden: identical.** `b9_golden.py`, a scratch script, runs a threaded HTTPS listener on
+127.0.0.1. It serves a fixed certificate: self-signed, expired in 2021, generated once so both
+trees see the same bytes. Captured, through real sslyze:
+
+- the network plugin end to end (`tls_scanner.run`, the port identified as https): the handshake
+  probe, the deep audit, the findings;
+- the plugin's deep audit on its own;
+- the wrapper run the way the web orchestrator runs it, imported from the path that tree's web
+  orchestrator imports.
+
+| Capture                                      | Result                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `f8e9f67`, twice                             | identical: the capture is deterministic                                               |
+| B9 working tree; clean worktree of `bc4f7da` | **byte-identical** to `f8e9f67`                                                       |
+| What running the plugin loaded               | before: `core.web`, `core.web.sslyze`, the wrapper. After: `engines.tls`, the wrapper |
+
+The capture saw TLS 1.2 and 1.3 enumerated, and four findings from the network plugin: expired,
+self-signed, no trusted root, no OCSP staple.
+
+**Interfaces: identical** (`interface_snapshot --compare`, `f8e9f67` against B9).
+
+**Coupling** (`capability_map`):
+
+| Measure                                    | Before (`f8e9f67`) | After (`bc4f7da`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Lateral edges                              |                 70 |            **69** |
+| Upward edges                               |                 37 |                37 |
+| Largest cycle, all imports / top-level     |     15 (4, 2) / 12 |    15 (4, 2) / 12 |
+| Foreign-table references / writes          |            79 / 17 |           79 / 17 |
+| Cross-capability imports, top-level / lazy |          468 / 384 |         470 / 385 |
+
+- **The edge that went:** `engines.vulnerability.plugins.tls_scanner` → `core.web.sslyze.wrapper`
+  (lateral, lazy). `CEILINGS` holds lateral edges at 69.
+- **The four that came, all pointing down to layer 2:** the two callers' (lazy) imports of
+  `engines.tls.wrapper`, and the alias stub's two (top-level), of `engines.tls` and its wrapper.
+- **The cycle does not shrink.** Each of the two stays in it through one upward edge of its own,
+  not through this one:
+  - the network checks: `engines.vulnerability.vulnerability_engine` → `core.device_classifier`
+    (an assets module);
+  - web DAST: `reporting.web_pdf_generator` → `scan_helpers` (the scans capability).
+
+**Import cost** (first-party / all modules): unchanged at import, because both callers import the
+engine inside the function that uses it.
+
+| Module                                       |   Before |    After | Note                                      |
+| -------------------------------------------- | -------: | -------: | ----------------------------------------- |
+| `engines.vulnerability.plugins.tls_scanner`  |  14 / 61 |  14 / 61 | the engine loads when the deep audit runs |
+| `engines.vulnerability.vulnerability_engine` | 26 / 511 | 26 / 511 |                                           |
+| `orchestrator.scan_orchestrator`             | 59 / 959 | 59 / 959 |                                           |
+| `orchestrator.web_orchestrator`              |   3 / 57 |   3 / 57 |                                           |
+| `engines.tls.wrapper`                        |        — |   3 / 28 | no sslyze until it runs                   |
+| `core.web.sslyze.wrapper` (the alias)        |   4 / 29 |   7 / 32 | it loads the engine package               |
+
+**Tests.**
+
+| Step            | Command / targets                                                                                                                                                                                                                                                                       | Passed | Failed | Skipped | Notes                                                                                                                                                                                                                                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New             | `tests/scans/test_tls_engine_shared.py`                                                                                                                                                                                                                                                 |      5 |      0 |       0 | No network-check import of the web module (lazy included); the engine imports no application code and sits below both users; production code uses its own path; the old path is the same module, logger unchanged; with `core.web` unimportable, the plugin's deep assessment runs against a local listener |
+| Focused         | the new file, the four that changed their import, the capability and architecture tests                                                                                                                                                                                                 |    287 |      0 |       0 | Nothing skipped: sslyze is in the image, so both live-listener tests ran (this one and `test_cookies_and_tls`'s expired certificate)                                                                                                                                                                        |
+| Mutation        | the new file and the capability ratchet, on scratch worktrees with: N1 the plugin importing the old path again; N2 the engine importing web code; N3 the web orchestrator using the alias; N4 the old path a re-export instead of the same module; N5 the engine classified as web DAST |      — |      — |       — | Caught: N1 by 4 tests and `check.py`; N2 by 3 and `check.py`; N3 by 1; N4 by 1; N5 by 3 and `check.py`                                                                                                                                                                                                      |
+| Targeted groups | `tests/credentialed tests/repo tests/reports tests/scans tests/security tests/topology tests/web`, the groups the selector named, on a clean worktree of `bc4f7da`                                                                                                                      |  5,910 |      0 |       2 | `alembic.ini` already activated; the live OSV npm feed                                                                                                                                                                                                                                                      |
+| Architecture    | `check.py`; `capability_map --check`; pre-commit                                                                                                                                                                                                                                        |      — |      — |       — | All pass                                                                                                                                                                                                                                                                                                    |
+
+**The full suite was not run.** The selector reported a targeted scope, and the plan does not ask
+for one at B9. §11 puts the next full run at the end of Phase B, which is B10; B8's ran on
+`fe5baaf` (8,020 passed, 0 failed).
+
+**Live validation.**
+
+- **Not required.** §11 does not require it for B9.
+- **Run anyway.** B9 changes what the network checks' TLS plugin imports, and CLAUDE.md asks for a
+  live pair on any scan-path change.
+
+| Run      | Commit    | Interface (`pinned` / `scapy_default`) | Full audit                                                             | Stopped sweep |
+| -------- | --------- | -------------------------------------- | ---------------------------------------------------------------------- | ------------- |
+| `before` | `f8e9f67` | `eth0` / `eth0`, `172.30.250.5`        | complete: 3 phases, 4 assets, 4 services, 7 findings, 13 frames, 305 s | `cancelled`   |
+| `after`  | `bc4f7da` | `eth0` / `eth0`, `172.30.250.5`        | the same, 312 s                                                        | `cancelled`   |
+
+- **Identical apart from time**, with nothing needing tolerance.
+- **What it cannot show: the engine at work.** No validation target offers TLS.
+  - **PostgreSQL** is the only service the plugin reaches (STARTTLS on 5432), and its `ssl` is off.
+  - **What the plugin does then.** A failed negotiation is skipped by design ("not a finding about
+    the host") and leaves nothing in what the harness stores.
+  - **So the pair shows only** that the audit is unchanged where nothing offers TLS.
+  - **The engine's work is the golden's,** against a real listener.
+
+**Limitations.**
+
+- **`engines.tls` is a new capability.** The analysis's Appendix A and §8.2 list none for it. It is
+  recorded here, and the layer is the one the rules leave: below both users.
+- **The alias stub keeps `core.web` → `engines.tls` edges** until the old path is retired. They point
+  down and cost nothing on the network path.
+- **The golden's listener speaks TLS 1.2 and 1.3 only,** which is Python's default. The weak-protocol
+  and weak-cipher branches are pinned by `test_tls_deep`'s truth tables, not by a live listener.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
@@ -1997,3 +2130,4 @@ RBAC authorization inventory is current.
 | new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                    | B7, §6                                                             |
 | new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                            | B7, §6                                                             |
 | new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models | B8, §6                                                             |
+| new | Take the network checks and web DAST out of the capability cycle. After B9 each is held by one upward edge: `engines.vulnerability.vulnerability_engine` imports `core.device_classifier` (assets; the analysis's target grouping puts the classifier in the scan kernel), and `reporting.web_pdf_generator` imports `scan_helpers` (scans)                                                      | B9, §6                                                             |

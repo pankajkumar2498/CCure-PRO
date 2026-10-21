@@ -220,6 +220,12 @@ class PortEngine:
         generation was removed from here because a port scan cannot verify what
         it matches: it produced candidates keyed on service names ("http",
         "ssh") that the vulnerability phase then generated a second time.
+
+        Nor does it enrich hosts with other engines' probes. The lightweight
+        SNMP query and the OT identity probes that used to follow the scan are
+        discovery's, and device classification is the asset registry's; the
+        orchestrator runs them after this engine
+        (``orchestrator/host_enrichment.py``, B8).
         """
         active = [h for h in hosts if h.get("is_active")]
         if not active:
@@ -233,12 +239,6 @@ class PortEngine:
                 "Install nmap for faster, more accurate port scanning."
             )
             await self._scan_fallback(active)
-
-        # After port scanning, perform a lightweight SNMP check on active hosts
-        await self._lightweight_snmp_check(active)
-
-        # Run dynamic OT identity probes on open SCADA ports
-        await self._ot_enrichment_check(active)
 
         return hosts
 
@@ -524,114 +524,6 @@ class PortEngine:
                 host["os_evidence"] = "nmap_fingerprint"
             if best_os.cpe:
                 host.setdefault("os_cpe", best_os.cpe)
-
-    async def _lightweight_snmp_check(self, hosts: list[dict]) -> None:
-        """
-        Check if port 161 (SNMP) is open on active hosts, and perform a lightweight
-        community query to get classification parameters.
-        """
-        from core.discovery.enrichment import _snmp_lightweight_probe
-
-        def _check_host(host: dict):
-            ip = host.get("ip_address") or host.get("ip")
-            if not ip:
-                return
-
-            # Check if port 161 is open in open_ports
-            is_161_open = False
-            for p in host.get("open_ports", []):
-                if p.get("port") == 161:
-                    is_161_open = True
-                    break
-
-            # Also check if it's in port_states
-            if not is_161_open:
-                port_states = host.get("port_states", {})
-                if port_states.get(161) == "open" or port_states.get("161") == "open":
-                    is_161_open = True
-
-            if not is_161_open:
-                # If Nmap didn't scan UDP, we might not know if 161 is open.
-                # Only check if it's not explicitly closed to avoid useless timeouts.
-                port_states = host.get("port_states", {})
-                if (
-                    port_states.get(161) == "closed"
-                    or port_states.get("161") == "closed"
-                ):
-                    return
-
-            # Run the lightweight probe
-            _snmp_lightweight_probe(ip, host)
-
-        loop = asyncio.get_running_loop()
-        await asyncio.gather(
-            *[loop.run_in_executor(None, _check_host, h) for h in hosts]
-        )
-
-    async def _ot_enrichment_check(self, hosts: list[dict]) -> None:
-        """
-        Check if any OT ports are open on active hosts and perform deep OT identity probing.
-        """
-        from core.device_classifier import classify_device
-        from core.discovery.enrichment import _ot_protocol_probes
-
-        def _check_host(host: dict):
-            ip = host.get("ip_address") or host.get("ip")
-            if not ip:
-                return
-
-            # SCADA/OT default ports mapped in ot_probes:
-            # modbus (502), s7/mms (102), ethernetip (44818), bacnet (47808), dnp3 (20000),
-            # opcua (4840), iec104 (2404), ge_srtp (18245), fins (9600), melsec (5007), codesys (2455)
-            ot_ports = {
-                502,
-                102,
-                44818,
-                47808,
-                20000,
-                4840,
-                2404,
-                18245,
-                9600,
-                5007,
-                2455,
-            }
-
-            open_ports = {
-                p.get("port") for p in host.get("open_ports", []) if p.get("port")
-            }
-
-            # Skip if ot_info is already present
-            if host.get("ot_info"):
-                return
-
-            # If we exclude OT from Nmap, we want to probe all candidate OT ports.
-            # Otherwise, we only probe if at least one OT port is open.
-            if not self.exclude_ot_from_nmap and not (open_ports & ot_ports):
-                return
-
-            # Initialize registrations needed by _ot_protocol_probes
-            port_states = host.setdefault("port_states", {})
-            for p in open_ports:
-                if p in ot_ports:
-                    port_states[p] = "open"
-
-            host.setdefault("confirmations", [])
-
-            # Execute OT Probes
-            try:
-                _ot_protocol_probes(ip, host)
-
-                # If OT info was successfully gathered, run classifier to set exact scada_ics details
-                if host.get("ot_info"):
-                    classify_device(host)
-            except Exception as exc:
-                log.debug("PortEngine OT enrichment check failed for %s: %s", ip, exc)
-
-        loop = asyncio.get_running_loop()
-        await asyncio.gather(
-            *[loop.run_in_executor(None, _check_host, h) for h in hosts]
-        )
 
     # ── Fallback path (TCP connect) ───────────────────────────────────────────
 

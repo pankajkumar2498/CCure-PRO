@@ -218,15 +218,13 @@ def no_nmap(monkeypatch):
     def scan_hosts(self, ips, **kwargs):
         return {}
 
-    async def nothing(self, hosts):
+    async def nothing(hosts, **kwargs):
         return None
 
     monkeypatch.setattr(port_engine_module, "NMAP_AVAILABLE", True)
     monkeypatch.setattr(port_engine_module.NmapScanner, "scan_hosts", scan_hosts)
-    monkeypatch.setattr(
-        port_engine_module.PortEngine, "_lightweight_snmp_check", nothing
-    )
-    monkeypatch.setattr(port_engine_module.PortEngine, "_ot_enrichment_check", nothing)
+    # The SNMP and OT enrichment after the port scan (the orchestrator's since B8).
+    monkeypatch.setattr(orchestrator_module, "enrich_after_port_scan", nothing)
     monkeypatch.setattr(
         orchestrator_module.ScanOrchestrator,
         "_apply_os_inference",

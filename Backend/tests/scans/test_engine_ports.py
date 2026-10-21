@@ -125,8 +125,6 @@ loaded["discovery+checks"] = {m: m in sys.modules for m in watched}
 import engines.port.port_engine as pe
 pe.NMAP_AVAILABLE = True
 pe.NmapScanner.scan_hosts = lambda self, ips, **kw: {}
-pe.PortEngine._lightweight_snmp_check = nothing
-pe.PortEngine._ot_enrichment_check = nothing
 asyncio.run(pe.PortEngine().run(hosts, progress=Sink()))
 loaded["all three"] = {m: m in sys.modules for m in watched}
 print(json.dumps(loaded))
@@ -216,13 +214,8 @@ def test_discovery_without_a_sink_or_token_still_runs(quiet_discovery):
 def test_the_port_engine_reports_through_the_sink_it_is_given(monkeypatch):
     import engines.port.port_engine as pe
 
-    async def nothing(self, *args, **kwargs):
-        return None
-
     monkeypatch.setattr(pe, "NMAP_AVAILABLE", True)
     monkeypatch.setattr(pe.NmapScanner, "scan_hosts", lambda self, ips, **kw: {})
-    monkeypatch.setattr(pe.PortEngine, "_lightweight_snmp_check", nothing)
-    monkeypatch.setattr(pe.PortEngine, "_ot_enrichment_check", nothing)
 
     sink = RecordingSink()
     hosts = [{"ip": "198.51.100.1", "ip_address": "198.51.100.1", "is_active": True}]

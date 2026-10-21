@@ -10,7 +10,6 @@
    "discovery",
    "findings",
    "network_checks",
-   "port_inventory",
    "remediation",
    "scan_policy",
    "scans",
@@ -492,10 +491,6 @@
    "core.constants"
   ],
   [
-   "core.discovery.enrichment",
-   "engines.vulnerability.plugins.snmp_probe"
-  ],
-  [
    "core.findings.comparison",
    "core.scan_policy"
   ],
@@ -598,10 +593,6 @@
   [
    "core.utils",
    "core.cve_database"
-  ],
-  [
-   "engines.port.port_engine",
-   "core.discovery.enrichment"
   ],
   [
    "engines.vulnerability.plugins.tls_scanner",
@@ -1052,10 +1043,6 @@
   [
    "core.topology.engine",
    "db.models.scans:Scan"
-  ],
-  [
-   "engines.port.port_engine",
-   "core.device_classifier"
   ],
   [
    "engines.vulnerability.vulnerability_engine",

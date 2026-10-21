@@ -37,6 +37,7 @@ from core.models import HostResult, PortResult, ScanIntensity
 from core.oui_lookup import lookup_vendor
 from core.risk import infer_os_from_host
 from core.utils import InputValidator, PrivilegeManager, get_local_ips, get_local_mac
+from orchestrator.host_enrichment import enrich_after_port_scan, snmp_system_query
 
 # ── Existing engine imports (unchanged) ───────────────────────────────────────
 from engines.port.port_engine import (
@@ -308,6 +309,7 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
             progress, cancel = _engine_ports(scan_id)
             disc_results: list[dict] = await discovery.run(
@@ -465,6 +467,7 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
             raw_results: list[dict] = await engine.run(
                 all_ips, progress=progress, cancel=cancel
@@ -479,6 +482,7 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
             fast_raw: list[dict] = await fast_engine.run(
                 all_ips, progress=progress, cancel=cancel
@@ -499,6 +503,7 @@ class ScanOrchestrator:
                     has_privileges=self.has_priv,
                     stealth_mode=self.stealth_mode,
                     rate_limit=rate_limit,
+                    snmp_query=snmp_system_query,
                 )
                 balanced_raw: list[dict] = await balanced_engine.run(
                     unresolved_ips, progress=progress, cancel=cancel
@@ -524,6 +529,7 @@ class ScanOrchestrator:
                 stealth_mode=self.stealth_mode,
                 rate_limit=rate_limit,
                 concurrency_override=max_concurrency,
+                snmp_query=snmp_system_query,
             )
             raw_results = await engine.run(all_ips, progress=progress, cancel=cancel)
             discovery_profile_label = "BALANCED"
@@ -773,6 +779,10 @@ class ScanOrchestrator:
             await port_engine.run(
                 active_for_scan, progress=progress
             )  # mutates in-place
+            # The SNMP and OT enrichment the port engine used to run itself (B8).
+            await enrich_after_port_scan(
+                active_for_scan, exclude_ot_from_nmap=exclude_ot_from_nmap
+            )
             self._apply_os_inference(active_for_scan, ot_enrichment=True)
         if skipped_hosts:
             self._apply_os_inference(skipped_hosts, ot_enrichment=False)

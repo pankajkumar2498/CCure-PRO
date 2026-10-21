@@ -45,7 +45,12 @@ import logging
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
-from core.engine_ports import NEVER_CANCELLED, CancelToken, ProgressSink
+from core.engine_ports import (
+    NEVER_CANCELLED,
+    CancelToken,
+    ProgressSink,
+    SnmpSystemQuery,
+)
 from core.discovery.host_identity import resolve_identity
 from core.discovery.profiles import BALANCED, DiscoveryProfile, Technique
 from core.discovery.techniques import (
@@ -190,6 +195,11 @@ class DiscoveryEngine:
       tcp_conn.py  — asyncio TCP connect (no root)
       udp_probe.py — Scapy UDP probes (DNS/SNMP/NTP/DHCP/IKE)
       nbns.py      — NetBIOS Name Service (UDP 137, LAN)
+
+    ``snmp_query`` is the SNMP read the enrichment's SNMP probe uses (only a
+    profile with ``ot_enrichment`` runs it). The SNMP client is the network
+    checks', so the orchestrator supplies it (B8); an engine given none makes
+    no SNMP request.
     """
 
     def __init__(
@@ -199,12 +209,14 @@ class DiscoveryEngine:
         stealth_mode: bool = False,
         rate_limit: float | None = None,
         concurrency_override: int | None = None,
+        snmp_query: SnmpSystemQuery | None = None,
     ):
         self.profile = profile
         self.has_priv = has_privileges
         self.stealth_mode = stealth_mode
         self.rate_limit = rate_limit
         self.concurrency_override = concurrency_override
+        self.snmp_query = snmp_query
         self._local_nets = []  # populated in run()
 
         can_raw = has_privileges and SCAPY_AVAILABLE
@@ -635,6 +647,7 @@ class DiscoveryEngine:
                     results[ip],
                     ot_enrichment=ot_enrich,
                     register_ports=register_ports,
+                    snmp_query=self.snmp_query,
                 )
                 for ip in ips
             ]

@@ -1,6 +1,7 @@
 """
 What a scan engine needs from whoever runs it: somewhere to report progress,
-and a way to learn that it should stop.
+a way to learn that it should stop, and (for discovery) the SNMP read another
+engine owns.
 
 The discovery, port and network-check engines used to do both themselves. They
 imported ``core.redis_client`` to publish progress frames, and the discovery
@@ -14,7 +15,11 @@ They now receive both as arguments. The orchestrator builds them for a scan
 that is given neither reports nothing and is never cancelled, which is what it
 did before when it was given no scan id.
 
-Both interfaces are structural (``typing.Protocol``): an implementation needs
+Discovery's SNMP probe used to import the network checks' SNMP client. It now
+receives the read as a :class:`SnmpSystemQuery`, which the orchestrator builds
+from that client (B8, ``orchestrator/host_enrichment.py``).
+
+The interfaces are structural (``typing.Protocol``): an implementation needs
 the methods, not this module. This module imports nothing from the application.
 """
 
@@ -71,3 +76,17 @@ class _NeverCancelled:
 
 
 NEVER_CANCELLED: CancelToken = _NeverCancelled()
+
+
+class SnmpSystemQuery(Protocol):
+    """How discovery reads what a device's SNMP agent says about itself.
+
+    Called with an address, it returns the ``snmp_info`` record discovery
+    stores (the enterprise and vendor from sysObjectID, sysDescr, sysName,
+    forwarding, the interface count and the bridge MIB), or None when no agent
+    answered. It may raise; the probe calling it treats that as no answer.
+    Discovery interprets the record; producing it is the SNMP client's job. A
+    discovery engine given no query makes no SNMP request.
+    """
+
+    def __call__(self, ip: str) -> dict | None: ...

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from core.discovery.enrichment import _register_open_port, enrich_host
@@ -62,6 +62,7 @@ def test_enrich_host_sets_and_pops_internal_flag(mock_ptr, mock_mdns, mock_netbi
 
 
 @pytest.mark.asyncio
+@patch("orchestrator.scan_orchestrator.enrich_after_port_scan", new=AsyncMock())
 @patch("orchestrator.scan_orchestrator.PortEngine")
 async def test_orchestrator_merges_phase1_ports_into_phase2(mock_port_engine_cls):
     # Mock PortEngine to run without modifying open_ports (simulating a scan that misses port 502)

@@ -268,6 +268,9 @@ PREFIXES: dict[str, str] = {
     "scans.scan_access": "scans",
     "scan_helpers": "scans",
     "orchestrator.scan_orchestrator": "scans",
+    # B8: the enrichment the port and discovery engines used to compose by
+    # importing each other, composed by the pipeline.
+    "orchestrator.host_enrichment": "scans",
     # Ambiguous: named for discovery, but it is the facade main.py and
     # scan_helpers hold to drive the whole phase pipeline.
     "orchestrator.host_discovery_api": "scans",
@@ -764,15 +767,19 @@ def measure(root: Path = BACKEND_ROOT) -> dict:
 CEILINGS = {
     # 22 and 13 when introduced; B7 (the renderers take their engine inputs
     # from the payload) split the 22 into 16, 4 and 2, and took the renderers
-    # out of the top-level cycle.
-    "largest_cycle": 16,
+    # out of the top-level cycle; B8 (the orchestrator composes the engines'
+    # enrichment) took the port inventory out of the 16.
+    "largest_cycle": 15,
     "largest_cycle_top_level": 12,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
-    # network checks register their plugins with the check kernel) removed 2.
-    "upward_edges": 38,
-    # 74 when introduced; B7 removed the PDF renderer's two engine imports.
-    "lateral_edges": 72,
+    # network checks register their plugins with the check kernel) removed 2;
+    # B8 removed the port engine's import of the device classifier.
+    "upward_edges": 37,
+    # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
+    # the port engine's import of discovery enrichment and that module's of
+    # the network checks' SNMP client.
+    "lateral_edges": 70,
     # 80 when introduced; B2 moved the web_scans settler out of scans.
     "foreign_table_references": 79,
     "foreign_table_writes": 17,

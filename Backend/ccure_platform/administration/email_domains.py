@@ -42,8 +42,8 @@ from ccure_platform.identity.email_domain_guard import (
 from ccure_platform.rbac.dependencies import require_authorized
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import get_db, utcnow
-from db.models import User
-from db.models.email_security import (
+from ccure_platform.models import User
+from ccure_platform.models.email_security import (
     VERDICT_ALLOW,
     VERDICT_DENY,
     DisposableDomain,

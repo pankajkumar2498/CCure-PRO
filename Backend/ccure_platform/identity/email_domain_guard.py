@@ -335,7 +335,7 @@ class _RuleCache:
             return self._allow, self._deny, self._disposable, self._healthy
 
     def _reload(self, db) -> None:
-        from db.models.email_security import (
+        from ccure_platform.models.email_security import (
             VERDICT_ALLOW,
             VERDICT_DENY,
             DisposableDomain,

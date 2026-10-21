@@ -40,7 +40,7 @@ def organisation_state(db, org_id: str | None) -> str:
     """``active`` | ``inactive`` | ``missing``. An empty id is missing."""
     if not org_id:
         return ORG_MISSING
-    from db.models import Organization
+    from ccure_platform.models import Organization
 
     row = (
         db.query(Organization.is_active).filter(Organization.id == str(org_id)).first()

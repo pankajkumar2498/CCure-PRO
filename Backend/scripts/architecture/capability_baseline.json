@@ -734,16 +734,7 @@
   },
   "ccure_platform.api": {
    "capabilities": [
-    "assets",
-    "compliance",
-    "findings",
-    "infra",
-    "reporting",
-    "scan_policy",
-    "scans",
-    "scheduling",
-    "topology",
-    "web_dast"
+    "infra"
    ],
    "third_party": [
     "fastapi",

@@ -34,7 +34,7 @@ from ccure_platform.identity.email_utils import (
 from ccure_platform.identity.jwt_handler import hash_password, verify_password
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import get_db, utcnow
-from db.models import RefreshTokenSession, User
+from ccure_platform.models import RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from ccure_platform.preferences import (
     UnknownProductPreferences,

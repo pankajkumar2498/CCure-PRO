@@ -90,7 +90,7 @@ from ccure_platform.rbac.scope import (
 )
 from ccure_platform.rbac.dependencies import has_permission, require_authorized
 from db.base import get_db
-from db.models import Organization, User
+from ccure_platform.models import Organization, User
 from fastapi import Depends, HTTPException
 from fastapi import status as _http_status
 from sqlalchemy.orm import Session

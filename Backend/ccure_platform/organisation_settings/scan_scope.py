@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass
 from typing import Iterable
 
-from db.models import Organization
+from ccure_platform.models import Organization
 from sqlalchemy.orm import Session
 
 # The logger core.scan_scope used when it read the column itself, so the

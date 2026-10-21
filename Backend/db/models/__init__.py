@@ -2,7 +2,35 @@
 db/models/__init__.py
 ─────────────────────
 Exports all production-grade ORM models in dependency order.
+
+The platform's models are registered first, by the platform's own registry
+(``ccure_platform.models``, B8), which loads no module's models; this registry
+adds Audit's. Platform code imports from that registry, never this one.
 """
+
+# The platform's models (identity, tenancy, RBAC, the platform audit ledger,
+# registration policy, email screening, notifications), re-exported so module
+# code's ``from db.models import User`` is unchanged.
+from ccure_platform.models import (
+    AuditLog,
+    DisposableDomain,
+    EmailDomainRule,
+    EmailVerificationToken,
+    Notification,
+    Organization,
+    PasswordResetToken,
+    PlatformAuditEvent,
+    RbacDefaultRole,
+    RbacPermission,
+    RbacRole,
+    RbacRolePermission,
+    RbacRoleRevision,
+    RbacUserRole,
+    RefreshTokenSession,
+    RegistrationPolicy,
+    User,
+    ensure_email_security_schema,
+)
 
 from .amt import AMTInventoryRecord
 from .assets import (
@@ -36,11 +64,6 @@ from .compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from .email_security import (
-    DisposableDomain,
-    EmailDomainRule,
-    ensure_email_security_schema,
-)
 from .findings import (
     AssetVulnerability,
     HttpSecurityDetail,
@@ -48,33 +71,11 @@ from .findings import (
     TLSDetail,
     VulnerabilityDefinition,
 )
-from .notifications import Notification
-from .rbac import Organization
-
-# The new RBAC capability's tables (native authorization): defined in the platform's
-# models and registered here so every process that builds metadata sees them.
-from ccure_platform.models.platform_audit import PlatformAuditEvent  # noqa: E402
-from ccure_platform.models.registration_policy import RegistrationPolicy  # noqa: E402
-from ccure_platform.models.rbac_tables import (  # noqa: E402
-    RbacDefaultRole,
-    RbacPermission,
-    RbacRole,
-    RbacRolePermission,
-    RbacRoleRevision,
-    RbacUserRole,
-)
 from .scans import Scan, ScanPhase
 from .scan_reports import ScanReport
 from .scan_policies import ScanPolicy
 from .scan_schedules import ScanSchedule, ScanScheduleRun
 from .topology import NetworkLink, ensure_topology_schema
-from .users import (
-    AuditLog,
-    EmailVerificationToken,
-    PasswordResetToken,
-    RefreshTokenSession,
-    User,
-)
 from .web_scans import WebAsset, WebFinding, WebScan
 
 __all__ = [

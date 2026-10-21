@@ -54,7 +54,7 @@ from typing import Optional, Protocol
 
 from ccure_platform.audit_log.taxonomy import redact_changes, severity_for
 from core.ip_resolver import get_client_ip
-from db.models import AuditLog, PlatformAuditEvent
+from ccure_platform.models import AuditLog, PlatformAuditEvent
 from fastapi import Request
 from sqlalchemy.orm import Session
 

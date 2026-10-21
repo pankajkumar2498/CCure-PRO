@@ -27,7 +27,7 @@ from enum import Enum
 from ccure_platform.accounts import users_holding_permission
 from core.redis_client import publish_notification_sync
 from db.base import gen_notification_id
-from db.models import Notification
+from ccure_platform.models import Notification
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session

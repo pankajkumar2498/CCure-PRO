@@ -21,7 +21,7 @@ from ccure_platform.rbac.dependencies import require_authorized
 from ccure_platform.rbac.scope import acts_across_organisations
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
-from db.models import Organization, RefreshTokenSession, User
+from ccure_platform.models import Organization, RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session

@@ -122,7 +122,7 @@ def service_token(
         tenant = identity.tenants[0]
     if tenant not in identity.tenants:
         _refuse(403, "The service is not granted this tenant.", "tenant", identity.id)
-    from db.models import Organization
+    from ccure_platform.models import Organization
 
     organisation = db.query(Organization).filter(Organization.id == tenant).first()
     if organisation is None or not organisation.is_active:

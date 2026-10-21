@@ -7,7 +7,7 @@ from ccure_platform.identity import reauth
 from ccure_platform.identity.registration_policy import policy_view, read_policy
 from ccure_platform.rbac.dependencies import require_authorized
 from db.base import get_db, utcnow
-from db.models import RegistrationPolicy, User
+from ccure_platform.models import RegistrationPolicy, User
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy.orm import Session

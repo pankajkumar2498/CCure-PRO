@@ -109,7 +109,7 @@ def pending_queue_full(db) -> bool:
         return False
 
     try:
-        from db.models import User
+        from ccure_platform.models import User
 
         pending = (
             db.query(User)

@@ -44,7 +44,7 @@ def purge_stale_unverified_accounts() -> dict:
     import datetime
 
     from config import AppConfig
-    from db.models import User
+    from ccure_platform.models import User
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         days=AppConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
@@ -105,7 +105,7 @@ def purge_expired_refresh_sessions() -> dict:
     import datetime
 
     from config import AppConfig
-    from db.models import RefreshTokenSession
+    from ccure_platform.models import RefreshTokenSession
 
     days = AppConfig.REFRESH_SESSION_RETENTION_DAYS
     if days <= 0:

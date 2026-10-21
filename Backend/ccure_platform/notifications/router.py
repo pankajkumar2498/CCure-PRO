@@ -43,7 +43,7 @@ from ccure_platform.notifications.service import (
 )
 from core.redis_client import redis_client
 from db.base import SessionLocal, get_db, utcnow
-from db.models import Notification, User
+from ccure_platform.models import Notification, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session

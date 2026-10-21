@@ -76,6 +76,10 @@ MOVED_MODULES: dict[str, str] = {
     "routers.admin_orgs": "ccure_platform.administration.organizations",
     "routers.admin_email_domains": "ccure_platform.administration.email_domains",
     "routers.user_profile": "ccure_platform.identity.profile",
+    # B8 (module independence): the platform's last two model files, so the
+    # platform registers its models without loading Audit's
+    "db.models.notifications": "ccure_platform.models.notifications",
+    "db.models.email_security": "ccure_platform.models.email_security",
 }
 
 

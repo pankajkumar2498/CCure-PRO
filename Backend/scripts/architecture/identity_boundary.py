@@ -177,6 +177,9 @@ PLATFORM_SIDE_PREFIXES = (
     "ccure_platform",
     "db.models.users",
     "db.models.rbac",
+    # Alias stubs: the platform's last two model files moved in B8.
+    "db.models.notifications",
+    "db.models.email_security",
     "main",
     "routers.admin_orgs",
     "routers.admin_users",

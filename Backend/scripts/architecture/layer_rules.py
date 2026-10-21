@@ -316,13 +316,15 @@ RULES: tuple[Rule, ...] = (
     Rule(
         name="platform-does-not-use-legacy-paths",
         importer=("ccure_platform",),
-        forbidden=("auth", "db.models.users", "db.models.rbac"),
+        forbidden=("auth", "db.models"),
         reason=(
-            "auth.* and db.models.users/rbac are compatibility aliases of modules "
-            "that moved into ccure_platform in Phase 8.2, kept for module code "
-            "until step 8.5. The platform imports its own modules by their real "
-            "names (models through the db.models registry), so the aliases can "
-            "be deleted without touching it."
+            "auth.* and db.models.users/rbac/notifications/email_security are "
+            "compatibility aliases of modules that moved into ccure_platform "
+            "(Phase 8.2, B8), kept for module code. The platform imports its own "
+            "modules by their real names, so the aliases can be deleted without "
+            "touching it, and its models through its own registry, "
+            "ccure_platform.models (B8): db.models is Audit's registry too, and "
+            "importing it loads every Audit model."
         ),
     ),
     Rule(

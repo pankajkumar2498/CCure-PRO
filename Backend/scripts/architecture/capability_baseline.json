@@ -475,10 +475,6 @@
    "db.models.findings:Service"
   ],
   [
-   "core.config_audit.collectors.database",
-   "engines.credentialed.database_executor"
-  ],
-  [
    "core.credential_vault",
    "db.models.compliance"
   ],
@@ -549,10 +545,6 @@
   [
    "core.scan_policy.validation",
    "db.models.compliance:ComplianceTenantFramework"
-  ],
-  [
-   "core.scap.evaluate",
-   "engines.credentialed.vuln_matcher"
   ],
   [
    "core.scheduling.dispatcher",

@@ -173,6 +173,14 @@ class CollectionContext:
     host. A check that can be answered from it should be, rather than opening a
     second session to re-read what is already in hand; the engine passes both
     and each collector decides.
+
+    ``version_compare`` orders two package or software versions, the way the
+    package matcher does (epochs, ``~``, distribution release tags). The SCAP
+    evaluator's version comparisons use it. It is passed in by whoever builds
+    the context (``core/tasks.py``, from the credentialed engine's matcher)
+    rather than imported, so the configuration audit depends on no engine
+    (B10). Without one, a version comparison cannot be made and reads as
+    unknown, never as a verdict.
     """
 
     target: str
@@ -192,6 +200,9 @@ class CollectionContext:
     #: Set where the check's parameters must be resolved against a sub-target
     #: (a database instance, a virtual host) rather than the host itself.
     scope: Mapping[str, Any] = field(default_factory=dict)
+    #: ``compare(left, right)`` → negative, zero or positive, or None when the
+    #: two cannot be ordered. See the class docstring.
+    version_compare: Optional[Callable[[str, str], Optional[int]]] = None
     #: Memo of command output within one run, so several checks reading the
     #: same expensive listing (installed packages, `auditpol /get /category:*`)
     #: pay for it once. Keyed by the collector on whatever it considers the

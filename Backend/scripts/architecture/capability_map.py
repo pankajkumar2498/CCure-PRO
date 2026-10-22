@@ -270,6 +270,9 @@ PREFIXES: dict[str, str] = {
     "scans.progress": "scans",
     "scans.report_inputs": "scans",
     "scans.scan_access": "scans",
+    # G1 (C1): creates the scan record a request starts, for the credentialed
+    # route, which used to assemble it from four of this capability's internals.
+    "scans.scan_creation": "scans",
     "scan_helpers": "scans",
     "orchestrator.scan_orchestrator": "scans",
     # B8: the enrichment the port and discovery engines used to compose by
@@ -772,23 +775,30 @@ CEILINGS = {
     # 22 and 13 when introduced; B7 (the renderers take their engine inputs
     # from the payload) split the 22 into 16, 4 and 2, and took the renderers
     # out of the top-level cycle; B8 (the orchestrator composes the engines'
-    # enrichment) took the port inventory out of the 16.
-    "largest_cycle": 15,
-    "largest_cycle_top_level": 12,
+    # enrichment) took the port inventory out of the 16. G1's C1 (the routers
+    # dispatch by name) took the task hub out of both.
+    "largest_cycle": 14,
+    "largest_cycle_top_level": 11,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
     # network checks register their plugins with the check kernel) removed 2;
-    # B8 removed the port engine's import of the device classifier.
-    "upward_edges": 37,
+    # B8 removed the port engine's import of the device classifier. G1's C1
+    # removed six of the credentialed router's (the hub, the orchestrator,
+    # scan_helpers, the persistence helpers, the policy binding) and the
+    # assets and credentials routers' imports of the hub, and added one: the
+    # credentialed router asks scans.scan_creation for its scan record.
+    "upward_edges": 31,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web
     # module's sslyze wrapper (now the shared engines.tls); B10 the database
     # collector's and the SCAP evaluator's imports of the credentialed engines
-    # (the executor and the version comparator are injected).
-    "lateral_edges": 67,
-    # 80 when introduced; B2 moved the web_scans settler out of scans.
-    "foreign_table_references": 79,
+    # (the executor and the version comparator are injected). G1's C1 the
+    # phase-scan and traditional-scan routers' imports of the hub.
+    "lateral_edges": 65,
+    # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
+    # the hub's read of compliance_credentials (the vault decrypts its own rows).
+    "foreign_table_references": 78,
     "foreign_table_writes": 17,
 }
 

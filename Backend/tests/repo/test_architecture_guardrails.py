@@ -199,6 +199,9 @@ def test_every_rule_says_why():
             "models-are-leaves",
         ),
         ("db.models.scans", "ccure_platform.identity", "models-are-leaves"),
+        # G1 (C1): a route dispatches by name; importing the hub loads the pipeline.
+        ("routers.phase_scans", "core.tasks", "task-hub-is-a-leaf"),
+        ("main", "core.tasks", "task-hub-is-a-leaf"),
     ],
 )
 def test_the_rules_catch_what_they_describe(src, dst, rule):
@@ -212,7 +215,7 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("routers.web_scans", "routers.scan_history"),  # routers may use routers
         ("main", "routers.web_scans"),  # the composition root mounts them
         ("core.tasks", "scans.db_helpers"),  # the task hub may depend downwards
-        ("routers.phase_scans", "core.tasks"),  # the HTTP layer dispatches tasks
+        ("routers.phase_scans", "core.task_names"),  # routes dispatch by task name
         ("db.models.users", "db.base"),  # models may use the session layer
         ("ccure_audit.integration.m", "ccure_contracts.common.v1"),  # its job
         ("ccure_audit.integration.m", "ccure_audit.services.views"),  # its job
@@ -254,6 +257,11 @@ def test_task_names_resolve_to_the_hub_tasks(monkeypatch):
 
     expected = {
         "RUN_HOST_DISCOVERY": hub.run_host_discovery_task,
+        # G1 (C1): the routers dispatch these by name.
+        "RUN_ASSET_DISCOVERY": hub.run_asset_discovery_task,
+        "RUN_VULNERABILITY_AUDIT": hub.run_vulnerability_audit_task,
+        "RUN_TRADITIONAL_SCAN": hub.run_traditional_scan_task,
+        "RECONCILE_AMT_INVENTORY": hub.reconcile_amt_inventory_task,
         "RUN_CREDENTIALED_SCAN": hub.run_credentialed_scan_task,
         "SYNC_HOST_DISCOVERY": hub.sync_host_discovery_task,
         "SYNC_ASSET_DISCOVERY": hub.sync_asset_discovery_task,

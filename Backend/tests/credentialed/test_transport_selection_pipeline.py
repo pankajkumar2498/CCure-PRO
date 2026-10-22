@@ -504,7 +504,8 @@ def stored_credential(db_session, test_org):
 @pytest.fixture()
 def queued_scan(monkeypatch):
     """Stand the pre-flight socket down and capture what the task was given."""
-    import routers.credentialed as credentialed_router
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from engines.credentialed.ssh_scanner import SSHScanner
 
     monkeypatch.setattr(SSHScanner, "test_connectivity", lambda *a, **k: True)
@@ -517,9 +518,8 @@ def queued_scan(monkeypatch):
         captured.update(kwargs)
         return _Task()
 
-    monkeypatch.setattr(
-        credentialed_router.run_credentialed_scan_task, "delay", _fake_delay
-    )
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_CREDENTIALED_SCAN), "delay", _fake_delay)
     return captured
 
 

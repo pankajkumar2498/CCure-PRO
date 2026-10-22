@@ -184,9 +184,11 @@ def test_a_stored_hash_never_leaves_the_resolver_as_a_password():
     """
     import inspect
 
-    from core import tasks
+    from core import credential_vault
 
-    source = inspect.getsource(tasks._resolve_stored_credential)
+    # The vault builds the material (G1); the task-side resolver only reads
+    # the scan's organisation and delegates to it.
+    source = inspect.getsource(credential_vault.connection_material)
     assert 'material["nt_hash"] = decrypt_credential' in source
     assert "AUTH_METHOD_NTLM_HASH" in source
 

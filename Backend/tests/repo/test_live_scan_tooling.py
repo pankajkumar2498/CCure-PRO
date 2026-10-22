@@ -330,20 +330,31 @@ def test_importing_the_harness_runs_nothing():
     assert callable(harness.main)
 
 
-def test_the_harness_dispatches_with_the_routes_own_arguments():
-    """routers/phase_scans.py's run_host_discovery_task.delay(...) keywords."""
+def _route_dispatches(router: str, task_name_constant: str) -> list:
+    """
+    Every ``registered_task(CONSTANT).delay(...)`` call in a router: since G1
+    the routes dispatch by registered name (core/task_names.py).
+    """
     import ast
 
-    harness = _load("live_scan_harness")
-    tree = ast.parse((BACKEND_ROOT / "routers" / "phase_scans.py").read_text())
-    calls = [
+    tree = ast.parse((BACKEND_ROOT / "routers" / f"{router}.py").read_text())
+    return [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "delay"
-        and getattr(node.func.value, "id", None) == "run_host_discovery_task"
+        and isinstance(node.func.value, ast.Call)
+        and getattr(node.func.value.func, "id", None) == "registered_task"
+        and [getattr(a, "id", None) for a in node.func.value.args]
+        == [task_name_constant]
     ]
+
+
+def test_the_harness_dispatches_with_the_routes_own_arguments():
+    """routers/phase_scans.py's host-discovery ``.delay(...)`` keywords."""
+    harness = _load("live_scan_harness")
+    calls = _route_dispatches("phase_scans", "RUN_HOST_DISCOVERY")
     assert len(calls) == 1
     assert tuple(k.arg for k in calls[0].keywords) == harness.DISPATCH_KWARGS
 
@@ -918,19 +929,9 @@ def test_the_harness_reads_its_credentials_from_stdin_and_refuses_without():
 
 
 def test_the_harness_dispatches_credentialed_scans_with_the_routes_own_arguments():
-    """routers/credentialed.py's run_credentialed_scan_task.delay(...) keywords."""
-    import ast
-
+    """routers/credentialed.py's credentialed-scan ``.delay(...)`` keywords."""
     harness = _load("live_scan_harness")
-    tree = ast.parse((BACKEND_ROOT / "routers" / "credentialed.py").read_text())
-    calls = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "delay"
-        and getattr(node.func.value, "id", None) == "run_credentialed_scan_task"
-    ]
+    calls = _route_dispatches("credentialed", "RUN_CREDENTIALED_SCAN")
     assert len(calls) == 1
     assert (
         tuple(k.arg for k in calls[0].keywords) == harness.CREDENTIALED_DISPATCH_KWARGS

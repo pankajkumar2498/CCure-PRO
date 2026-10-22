@@ -275,7 +275,7 @@ def store_credentials(org_id: str, user_id: str, creds: dict) -> dict:
         db.close()
 
 
-#: The keyword arguments the route passes to run_host_discovery_task.delay, in
+#: The keyword arguments the route passes to the host-discovery task's .delay, in
 #: the route's own names. The test compares them with routers/phase_scans.py.
 DISPATCH_KWARGS = (
     "user_id",
@@ -311,9 +311,10 @@ def dispatch(
     route validates it, marks the policy as having a credential when it names
     one, and merges it onto the scan's options last.
     """
+    from core.celery_app import registered_task
     from core.credential_scope import validate_credential_options
     from core.scan_scope import org_scan_scope
-    from core.tasks import run_host_discovery_task
+    from core.task_names import RUN_HOST_DISCOVERY
     from db.base import SessionLocal
     from scan_helpers import validate_scan_targets
     from scans.db_helpers import create_scan
@@ -378,7 +379,7 @@ def dispatch(
     )
     if tuple(kwargs) != DISPATCH_KWARGS:
         raise RuntimeError("dispatch kwargs drifted from DISPATCH_KWARGS")
-    return scan_id, kwargs, run_host_discovery_task
+    return scan_id, kwargs, registered_task(RUN_HOST_DISCOVERY)
 
 
 #: The keyword arguments routers/credentialed.py passes to
@@ -406,15 +407,32 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
     scope check, the reachability preflight, the scan row, the policy gate.
     Returns (scan_id, kwargs, task). No secret is in the kwargs: the worker
     resolves the credential by id.
+
+    Since G1 (C1) the route takes the expansion, the target ceiling and the
+    scan row with its policy from ``scans.scan_creation``; on a commit before
+    it, from the orchestrator, the task hub and the persistence helpers. The
+    harness does what the commit's own route does, so a before and an after
+    run each exercise their own code.
     """
+    from core.celery_app import registered_task
     from core.scan_scope import enforce_org_scan_scope, org_scan_scope
-    from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from db.base import SessionLocal
     from db.models import ComplianceCredential
     from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
-    from orchestrator.scan_orchestrator import ScanOrchestrator
-    from scans.db_helpers import create_scan
-    from scans.policy_binding import resolve_scan_policy
+
+    try:
+        from scans import scan_creation
+    except ImportError:  # a commit before G1
+        scan_creation = None
+    if scan_creation is not None:
+        expand_targets = scan_creation.expand_targets
+        max_targets = scan_creation.MAX_CREDENTIALED_TARGETS
+    else:
+        from core.tasks import MAX_CREDENTIALED_TARGETS as max_targets
+        from orchestrator.scan_orchestrator import ScanOrchestrator
+
+        expand_targets = ScanOrchestrator._expand_targets
 
     db = SessionLocal()
     try:
@@ -429,9 +447,9 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
         target_port = cred.port
         target_transport = cred.transport or TRANSPORT_SSH
         use_tls = (cred.options or {}).get("use_tls")
-        hosts = ScanOrchestrator._expand_targets([target])
+        hosts = expand_targets([target])
         enforce_org_scan_scope(hosts, org_scan_scope(db, org_id))
-        if not hosts or len(hosts) > MAX_CREDENTIALED_TARGETS:
+        if not hosts or len(hosts) > max_targets:
             raise RuntimeError(f"credentialed target {target!r} expands to {hosts}")
         if len(hosts) == 1:
             preflight = resolve_endpoint(
@@ -444,27 +462,41 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
             )
             if not preflight.resolved:
                 raise RuntimeError(f"preflight refused {hosts[0]}: {preflight.reason}")
-        scan = create_scan(
-            db=db,
-            user_id=user_id,
-            target=", ".join(hosts),
-            targets=hosts,
-            scan_type="credentialed",
-            pipeline_mode="credentialed",
-            org_id=org_id,
-        )
-        effective, _ = resolve_scan_policy(
-            db,
-            scan=scan,
-            policy_id=None,
-            org_id=org_id,
-            scan_kind="credentialed",
-            has_credential=True,
-            request_options={"sections": None},
-        )
-        db.commit()
-        scan_id = str(scan.id)
-        sections = list(effective.sections) or None
+        if scan_creation is not None:
+            created = scan_creation.create_credentialed_scan(
+                db,
+                user_id=user_id,
+                hosts=hosts,
+                org_id=org_id,
+                policy_id=None,
+                sections=None,
+            )
+            scan_id, sections = created.scan_id, created.sections
+        else:
+            from scans.db_helpers import create_scan
+            from scans.policy_binding import resolve_scan_policy
+
+            scan = create_scan(
+                db=db,
+                user_id=user_id,
+                target=", ".join(hosts),
+                targets=hosts,
+                scan_type="credentialed",
+                pipeline_mode="credentialed",
+                org_id=org_id,
+            )
+            effective, _ = resolve_scan_policy(
+                db,
+                scan=scan,
+                policy_id=None,
+                org_id=org_id,
+                scan_kind="credentialed",
+                has_credential=True,
+                request_options={"sections": None},
+            )
+            db.commit()
+            scan_id = str(scan.id)
+            sections = list(effective.sections) or None
     finally:
         db.close()
     kwargs = dict(
@@ -484,7 +516,7 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
     )
     if tuple(kwargs) != CREDENTIALED_DISPATCH_KWARGS:
         raise RuntimeError("dispatch kwargs drifted from CREDENTIALED_DISPATCH_KWARGS")
-    return scan_id, kwargs, run_credentialed_scan_task
+    return scan_id, kwargs, registered_task(RUN_CREDENTIALED_SCAN)
 
 
 def run_concurrently(jobs: dict) -> dict:

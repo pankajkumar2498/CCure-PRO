@@ -1724,8 +1724,9 @@ def import_amt_inventory(
 
     # 6. Dispatch reconciliation only after the commit — the worker reads these
     # rows, and handing it an uncommitted import is a race it cannot win.
-    from core.tasks import reconcile_amt_inventory_task
+    from core.celery_app import registered_task
+    from core.task_names import RECONCILE_AMT_INVENTORY
 
-    task = reconcile_amt_inventory_task.delay(org_id=org)
+    task = registered_task(RECONCILE_AMT_INVENTORY).delay(org_id=org)
 
     return {"success": True, "records_imported": inserted_count, "task_id": task.id}

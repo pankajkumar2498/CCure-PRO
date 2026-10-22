@@ -200,13 +200,20 @@ RULES: tuple[Rule, ...] = (
             "ccure_platform",
             "db",
             "orchestrator",
+            # G1 (C1): the HTTP edge and the composition root dispatch by name
+            # too; main loads the task modules through Celery's loader.
+            "routers",
+            "main",
+            "ccure_audit",
         ),
         exempt_importers=("core.tasks",),
         forbidden=("core.tasks",),
         reason=(
             "core/tasks.py is the Celery task hub and depends on 22 components. "
             "Anything it depends on importing it back creates the cycle the "
-            "baseline measured. Dispatch through a task *name* or a port."
+            "baseline measured, and a router importing it loads the whole scan "
+            "pipeline to dispatch one task. Dispatch through a task *name* "
+            "(core/task_names.py) or a port."
         ),
     ),
     Rule(

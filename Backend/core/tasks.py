@@ -1467,7 +1467,7 @@ def run_host_discovery_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.run_asset_discovery",
+    name=task_names.RUN_ASSET_DISCOVERY,
     queue="scanner",
     bind=True,
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN,
@@ -2376,7 +2376,7 @@ def _apply_credentialed_enrichment(
 
 
 @celery_app.task(
-    name="ccure.tasks.run_vulnerability_audit",
+    name=task_names.RUN_VULNERABILITY_AUDIT,
     queue="scanner",
     bind=True,
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_VULN_AUDIT,
@@ -2803,7 +2803,7 @@ def run_topology_mapping_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.run_traditional_scan",
+    name=task_names.RUN_TRADITIONAL_SCAN,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN,
     time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN
@@ -2843,10 +2843,8 @@ def run_traditional_scan_task(
         db.close()
 
 
-#: A credentialed audit authenticates to one host at a time. Expanding a CIDR
-#: is cheap; logging into every address in it is not, so an operator who pastes
-#: a /16 by mistake gets an error rather than a scan that runs for days.
-MAX_CREDENTIALED_TARGETS = 256
+# MAX_CREDENTIALED_TARGETS, the credentialed target ceiling, is the
+# scan-creation service's since G1 (C1): scans/scan_creation.py.
 
 
 def _run_configuration_audit(
@@ -3277,75 +3275,17 @@ def _resolve_stored_credential(
 
     Returns the connection material; the caller is responsible for discarding
     it. Cross-referencing the Scan row's org_id is what keeps one tenant from
-    naming another tenant's credential id.
+    naming another tenant's credential id. The lookup and decryption are the
+    credential vault's (``core.credential_vault.resolve``); the scan's
+    organisation is read here, because the vault sits below the scans
+    capability and does not read its table.
     """
-    from core.security_crypto import decrypt_credential
-    from db.models import ComplianceCredential
+    from core.credential_vault import resolve
     from db.models.scans import Scan
 
     scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
     scan_org_id = scan_row.org_id if scan_row else None
-
-    query = db.query(ComplianceCredential).filter(
-        ComplianceCredential.id == credential_id
-    )
-    if scan_org_id:
-        query = query.filter(ComplianceCredential.tenant_id == scan_org_id)
-
-    cred = query.first()
-    if not cred:
-        raise ValueError(
-            f"Stored credential with ID {credential_id} not found or access denied."
-        )
-
-    from db.models.compliance import (
-        AUTH_METHOD_NTLM_HASH,
-        AUTH_REQUIRES_KEY,
-        AUTH_REQUIRES_PASSWORD,
-    )
-
-    material = {
-        # The username in the form this credential's auth method expects.
-        # NTLM wants DOMAIN\user, Kerberos wants user@REALM, SSH wants the bare
-        # name — `principal()` owns that mapping so the two callers of this
-        # function cannot disagree about it.
-        "username": cred.principal(),
-        "port": cred.port,
-        "auth_method": cred.auth_method,
-        "credential_type": cred.credential_type,
-        "transport": cred.transport,
-        "domain": cred.domain,
-        "options": dict(cred.options or {}),
-        "password": None,
-        "key_content": None,
-        #: Unlocks an encrypted private key. Separate from ``password``: the two
-        #: unlock different things and a key credential may carry only this one.
-        "key_passphrase": None,
-        #: Pass-the-Hash material. Kept out of ``password`` deliberately — every
-        #: transport that receives a password would present this as one, and
-        #: only the SMB executor knows how to send a hash.
-        "nt_hash": None,
-    }
-    # Driven by the shared AUTH_REQUIRES_* sets rather than an if/elif on two
-    # literal method names. The literal form is what made ``ntlm`` and
-    # ``kerberos`` resolve to a credential with no material at all: both
-    # present a password, neither matched ``== "password"``, so the connection
-    # was attempted with None and failed as "authentication rejected" — a
-    # misleading message for a credential that was never actually sent.
-    if cred.auth_method == AUTH_METHOD_NTLM_HASH and cred.encrypted_password:
-        # The hash is stored in the password column and must not leave this
-        # function as one: handing it to a transport that expects a password
-        # would present the hash as plaintext against the account.
-        material["nt_hash"] = decrypt_credential(cred.encrypted_password)
-    elif cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
-        material["password"] = decrypt_credential(cred.encrypted_password)
-    elif cred.auth_method in AUTH_REQUIRES_KEY and cred.encrypted_key_content:
-        material["key_content"] = decrypt_credential(cred.encrypted_key_content)
-        if cred.encrypted_key_passphrase:
-            material["key_passphrase"] = decrypt_credential(
-                cred.encrypted_key_passphrase
-            )
-    return material
+    return resolve(db, credential_id, org_id=scan_org_id)
 
 
 def audit_credentialed_host(
@@ -5193,7 +5133,7 @@ def expire_risk_acceptances() -> dict:
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.reconcile_amt_inventory_task", queue="scanner")
+@celery_app.task(name=task_names.RECONCILE_AMT_INVENTORY, queue="scanner")
 def reconcile_amt_inventory_task(org_id: str) -> dict:
     """Async background task to run AMT reconciliation for an organization."""
     db = SessionLocal()

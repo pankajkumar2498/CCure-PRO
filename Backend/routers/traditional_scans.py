@@ -46,7 +46,10 @@ class SubnetsRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-from core.tasks import run_traditional_scan_task
+# Dispatched by registered name (G1): importing a task module from a router
+# loaded the whole scan pipeline into every process that serves HTTP.
+from core.celery_app import registered_task
+from core.task_names import RUN_TRADITIONAL_SCAN
 
 
 @router.post("/scan/host")
@@ -57,7 +60,7 @@ async def scan_host(
     req: SingleHostRequest,
     current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
-    task = run_traditional_scan_task.delay(
+    task = registered_task(RUN_TRADITIONAL_SCAN).delay(
         user_id=str(current_user.id),
         targets=[req.target],
         phases="1+2+3+4",
@@ -83,7 +86,7 @@ async def scan_range(
     req: RangeRequest,
     current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
-    task = run_traditional_scan_task.delay(
+    task = registered_task(RUN_TRADITIONAL_SCAN).delay(
         user_id=str(current_user.id),
         targets=[req.target],
         phases="1",
@@ -109,7 +112,7 @@ async def scan_subnet(
     req: SubnetRequest,
     current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
-    task = run_traditional_scan_task.delay(
+    task = registered_task(RUN_TRADITIONAL_SCAN).delay(
         user_id=str(current_user.id),
         targets=[req.target],
         phases="1",
@@ -137,7 +140,7 @@ async def scan_subnets(
 ):
     # Note: run_phases doesn't natively handle subnet_prefix expansion in the same way,
     # but for compatibility we trigger it as Phase 1.
-    task = run_traditional_scan_task.delay(
+    task = registered_task(RUN_TRADITIONAL_SCAN).delay(
         user_id=str(current_user.id),
         targets=[req.target],
         phases="1",

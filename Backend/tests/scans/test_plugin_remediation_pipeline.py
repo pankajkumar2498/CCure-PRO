@@ -200,10 +200,12 @@ def test_d13_invalid_scope_is_rejected_by_api_before_dispatch(
     pipeline, client, monkeypatch
 ):
     _, headers, _ = pipeline
-    from routers import phase_scans
+    from core.celery_app import registered_task
+    from core.task_names import RUN_HOST_DISCOVERY
 
     task = MagicMock()
-    monkeypatch.setattr(phase_scans.run_host_discovery_task, "delay", task)
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_HOST_DISCOVERY), "delay", task)
     response = client.post(
         "/scan/host-discovery",
         headers=headers,

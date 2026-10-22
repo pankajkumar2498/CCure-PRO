@@ -649,7 +649,8 @@ def test_scan_records_the_pipeline_it_actually_ran(
     Recording it as a vulnerability_audit claimed three phases that never
     executed.
     """
-    import routers.credentialed as credentialed_router
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from engines.credentialed.ssh_scanner import SSHScanner
 
     # The router's pre-flight check resolves the endpoint rather than probing
@@ -666,9 +667,8 @@ def test_scan_records_the_pipeline_it_actually_ran(
         captured.update(kwargs)
         return _Task()
 
-    monkeypatch.setattr(
-        credentialed_router.run_credentialed_scan_task, "delay", _fake_delay
-    )
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_CREDENTIALED_SCAN), "delay", _fake_delay)
 
     response = client.post(
         "/scan/credentialed",
@@ -685,7 +685,8 @@ def test_scan_records_the_pipeline_it_actually_ran(
 def test_multiple_targets_are_expanded_into_one_scan(
     client: TestClient, auth_headers: dict, db_session: Session, monkeypatch
 ):
-    import routers.credentialed as credentialed_router
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from engines.credentialed.ssh_scanner import SSHScanner
 
     # The router's pre-flight check resolves the endpoint rather than probing
@@ -702,9 +703,8 @@ def test_multiple_targets_are_expanded_into_one_scan(
         captured.update(kwargs)
         return _Task()
 
-    monkeypatch.setattr(
-        credentialed_router.run_credentialed_scan_task, "delay", _fake_delay
-    )
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_CREDENTIALED_SCAN), "delay", _fake_delay)
 
     response = client.post(
         "/scan/credentialed",

@@ -14,7 +14,6 @@
    "scan_policy",
    "scans",
    "scheduling",
-   "task_hub",
    "topology",
    "web_dast"
   ],
@@ -41,7 +40,6 @@
    "scan_policy",
    "scans",
    "scheduling",
-   "task_hub",
    "topology"
   ],
   [
@@ -329,10 +327,6 @@
   [
    "task_hub",
    "assets"
-  ],
-  [
-   "task_hub",
-   "compliance_credentials"
   ],
   [
    "task_hub",
@@ -639,10 +633,6 @@
    "db.models.assets:Asset"
   ],
   [
-   "routers.phase_scans",
-   "core.tasks"
-  ],
-  [
    "routers.remediation",
    "db.models.assets:Asset"
   ],
@@ -661,10 +651,6 @@
   [
    "routers.scan_schedules",
    "core.scan_policy"
-  ],
-  [
-   "routers.traditional_scans",
-   "core.tasks"
   ],
   [
    "scans.asset_syncer",
@@ -1033,15 +1019,7 @@
   ],
   [
    "routers.assets",
-   "core.tasks"
-  ],
-  [
-   "routers.assets",
    "db.models.scans:Scan"
-  ],
-  [
-   "routers.credentialed",
-   "core.tasks"
   ],
   [
    "routers.credentialed",
@@ -1049,23 +1027,7 @@
   ],
   [
    "routers.credentialed",
-   "orchestrator.scan_orchestrator"
-  ],
-  [
-   "routers.credentialed",
-   "scan_helpers"
-  ],
-  [
-   "routers.credentialed",
-   "scans.db_helpers"
-  ],
-  [
-   "routers.credentialed",
-   "scans.policy_binding"
-  ],
-  [
-   "routers.credentials",
-   "core.tasks"
+   "scans.scan_creation"
   ],
   [
    "routers.scan_policies",

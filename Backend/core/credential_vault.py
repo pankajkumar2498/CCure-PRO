@@ -32,9 +32,10 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from ccure_platform import api as platform_api
-from core.security_crypto import encrypt_credential
+from core.security_crypto import decrypt_credential, encrypt_credential
 from db.base import gen_compliance_credential_id
 from db.models.compliance import (
+    AUTH_METHOD_NTLM_HASH,
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,
     CREDENTIAL_TYPE_DATABASE,
@@ -216,6 +217,83 @@ def list_for_org(
     if credential_type:
         query = query.filter(ComplianceCredential.credential_type == credential_type)
     return query.order_by(ComplianceCredential.name.asc()).all()
+
+
+def resolve(
+    db: Session, credential_id: str, *, org_id: Optional[str]
+) -> Dict[str, Any]:
+    """
+    Decrypt a stored credential for use, scoped to *org_id*.
+
+    Returns the connection material; the caller is responsible for discarding
+    it. *org_id* is the organisation the credential is used for — a scan's own
+    tenant — and filtering on it is what keeps one tenant from naming another
+    tenant's credential id. ``None`` applies no tenant filter, which is right
+    only for a caller that has already found the row within its organisation.
+    """
+    query = db.query(ComplianceCredential).filter(
+        ComplianceCredential.id == credential_id
+    )
+    if org_id:
+        query = query.filter(ComplianceCredential.tenant_id == org_id)
+
+    cred = query.first()
+    if not cred:
+        raise ValueError(
+            f"Stored credential with ID {credential_id} not found or access denied."
+        )
+    return connection_material(cred)
+
+
+def connection_material(cred: ComplianceCredential) -> Dict[str, Any]:
+    """
+    One stored credential's connection material, decrypted.
+
+    The caller is responsible for discarding it. Holds the secret the
+    credential's auth method presents and nothing else.
+    """
+    material = {
+        # The username in the form this credential's auth method expects.
+        # NTLM wants DOMAIN\user, Kerberos wants user@REALM, SSH wants the bare
+        # name — `principal()` owns that mapping so the two callers of this
+        # function cannot disagree about it.
+        "username": cred.principal(),
+        "port": cred.port,
+        "auth_method": cred.auth_method,
+        "credential_type": cred.credential_type,
+        "transport": cred.transport,
+        "domain": cred.domain,
+        "options": dict(cred.options or {}),
+        "password": None,
+        "key_content": None,
+        #: Unlocks an encrypted private key. Separate from ``password``: the two
+        #: unlock different things and a key credential may carry only this one.
+        "key_passphrase": None,
+        #: Pass-the-Hash material. Kept out of ``password`` deliberately — every
+        #: transport that receives a password would present this as one, and
+        #: only the SMB executor knows how to send a hash.
+        "nt_hash": None,
+    }
+    # Driven by the shared AUTH_REQUIRES_* sets rather than an if/elif on two
+    # literal method names. The literal form is what made ``ntlm`` and
+    # ``kerberos`` resolve to a credential with no material at all: both
+    # present a password, neither matched ``== "password"``, so the connection
+    # was attempted with None and failed as "authentication rejected" — a
+    # misleading message for a credential that was never actually sent.
+    if cred.auth_method == AUTH_METHOD_NTLM_HASH and cred.encrypted_password:
+        # The hash is stored in the password column and must not leave this
+        # function as one: handing it to a transport that expects a password
+        # would present the hash as plaintext against the account.
+        material["nt_hash"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
+        material["password"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method in AUTH_REQUIRES_KEY and cred.encrypted_key_content:
+        material["key_content"] = decrypt_credential(cred.encrypted_key_content)
+        if cred.encrypted_key_passphrase:
+            material["key_passphrase"] = decrypt_credential(
+                cred.encrypted_key_passphrase
+            )
+    return material
 
 
 def create(

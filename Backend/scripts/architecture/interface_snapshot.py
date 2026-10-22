@@ -17,8 +17,10 @@ step. This records all of them from the application itself:
   a limit is enforced under, so a renamed or moved handler shows up here);
 * whether each router, ``main`` and ``scan_helpers`` hold the one limiter
   ``main`` registers (``core.rate_limiter.limiter``);
-* the name of every Celery task once the worker's task modules are loaded;
-* the beat schedule: each entry's task and schedule;
+* the name of every Celery task once the worker's task modules are loaded,
+  and what each declares: its queue, time limits, retry and acknowledgement
+  options and the signature of the function it runs;
+* the beat schedule: each entry's task, schedule, options and arguments;
 * a SHA-256 of the OpenAPI document the application generates.
 
 It imports ``main`` and the Celery app and connects to nothing: no database, no
@@ -78,14 +80,8 @@ def snapshot() -> dict:
         if held is not None:
             holders[name] = held is canonical
 
-    # The worker loads these before it accepts a task; without them the
-    # registry holds only what main happened to import.
-    celery_app.loader.import_default_modules()
-    tasks = sorted(name for name in celery_app.tasks if not name.startswith("celery."))
-    beat = {
-        name: {"task": entry["task"], "schedule": str(entry["schedule"])}
-        for name, entry in sorted(celery_app.conf.beat_schedule.items())
-    }
+    registry = task_registry()
+    tasks = sorted(registry["tasks"])
     openapi = json.dumps(app.openapi(), sort_keys=True, separators=(",", ":"))
 
     return {
@@ -98,9 +94,71 @@ def snapshot() -> dict:
         "limiter_holders_are_canonical": holders,
         "celery_tasks": tasks,
         "celery_task_count": len(tasks),
-        "beat": beat,
+        "celery_task_registry": registry["tasks"],
+        "beat": registry["beat"],
         "openapi_sha256": hashlib.sha256(openapi.encode("utf-8")).hexdigest(),
     }
+
+
+#: What a task declares beyond its name. Each is part of how a message is
+#: routed, bounded or retried, so a move that changed one would change the
+#: task's behaviour while leaving its name, and the old snapshot, intact.
+TASK_ATTRIBUTES = (
+    "queue",
+    "soft_time_limit",
+    "time_limit",
+    "acks_late",
+    "ignore_result",
+    "max_retries",
+    "default_retry_delay",
+    "rate_limit",
+    "track_started",
+    "serializer",
+)
+
+
+def task_registry() -> dict:
+    """
+    Every registered task with what it declares, and the beat schedule.
+
+    For each task (Celery's own excepted): the attributes in
+    ``TASK_ATTRIBUTES`` and the signature of the function it runs, which names
+    the arguments a message must carry and, for a ``bind=True`` task, starts
+    with ``self``. For each beat entry: its task, schedule, options and
+    arguments. Loads the worker's task modules first, as a worker does before
+    it accepts a task; connects to nothing.
+    """
+    import inspect
+
+    os.environ.setdefault("SKIP_DOTENV_LOAD", "1")
+    if str(BACKEND_ROOT) not in sys.path:
+        sys.path.insert(0, str(BACKEND_ROOT))
+    from core.celery_app import celery_app
+
+    # The worker loads these before it accepts a task; without them the
+    # registry holds only what the caller happened to import.
+    celery_app.loader.import_default_modules()
+    tasks = {}
+    for name in sorted(celery_app.tasks):
+        if name.startswith("celery."):
+            continue
+        task = celery_app.tasks[name]
+        run = type(task).__dict__.get("run", task.run)
+        run = getattr(run, "__func__", run)
+        record = {attr: getattr(task, attr, None) for attr in TASK_ATTRIBUTES}
+        record["signature"] = str(inspect.signature(run))
+        tasks[name] = record
+    beat = {
+        name: {
+            "task": entry["task"],
+            "schedule": str(entry["schedule"]),
+            "options": entry.get("options") or {},
+            "args": list(entry.get("args") or ()),
+            "kwargs": entry.get("kwargs") or {},
+        }
+        for name, entry in sorted(celery_app.conf.beat_schedule.items())
+    }
+    return json.loads(json.dumps({"tasks": tasks, "beat": beat}, default=str))
 
 
 def _as_set(items: list) -> set[str]:
@@ -139,7 +197,17 @@ def cli(argv: list[str] | None = None) -> int:
         metavar=("BEFORE", "AFTER"),
         help="compare two saved snapshots instead of taking one",
     )
+    parser.add_argument(
+        "--registry",
+        action="store_true",
+        help="print only the task registry and beat schedule "
+        "(the form scripts/architecture/task_registry.json pins)",
+    )
     args = parser.parse_args(argv)
+
+    if args.registry:
+        print(json.dumps(task_registry(), indent=1, sort_keys=True))
+        return 0
 
     if args.compare:
         before, after = (

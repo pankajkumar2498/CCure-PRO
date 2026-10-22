@@ -8,6 +8,7 @@ Endpoints
   POST /scan/credentialed → SSH-based system inspection + CVE matching
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -21,12 +22,19 @@ from db.base import SessionLocal
 from db.models import ComplianceCredential
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
 from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
-from orchestrator.scan_orchestrator import ScanOrchestrator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from core.celery_app import registered_task
 from core.rate_limiter import limiter
-from scan_helpers import log
-from scans.db_helpers import create_scan
+from core.task_names import RUN_CREDENTIALED_SCAN
+from scans.scan_creation import (
+    MAX_CREDENTIALED_TARGETS,
+    create_credentialed_scan,
+    expand_targets,
+)
+
+#: The API's logger, as scan_helpers names it, so these records are unchanged.
+log = logging.getLogger("ccure.api")
 
 router = APIRouter(tags=["Credentialed Scans"])
 
@@ -154,9 +162,6 @@ class CredentialedScanRequest(BaseModel):
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
-from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
-from scans.policy_binding import resolve_scan_policy as _resolve_scan_policy
-
 
 @router.post("/scan/credentialed")
 @limiter.limit("5/minute")
@@ -226,7 +231,7 @@ async def scan_credentialed(
     # Expand ranges and CIDRs into the hosts that will actually be authenticated
     # to. Doing it here rather than in the worker means an unusable target set
     # is rejected while the operator is still looking at the form.
-    hosts = ScanOrchestrator._expand_targets(req.requested_targets())
+    hosts = expand_targets(req.requested_targets())
     if not hosts:
         raise HTTPException(
             status_code=400,
@@ -282,53 +287,22 @@ async def scan_credentialed(
     db = SessionLocal()
     try:
         target_org_id = resolve_active_organisation(user, org_id)
-        scan = create_scan(
-            db=db,
-            user_id=str(user.id),
-            target=target_str,
-            targets=hosts,
-            scan_type="credentialed",
-            # This audit runs no discovery and no port scan. Recording it as a
-            # vulnerability_audit claimed three phases that never executed.
-            pipeline_mode="credentialed",
-            org_id=target_org_id,
-        )
-        # -- Policy gate (GAP-12) --------------------------------------------
-        # Inside the same session that created the scan, so the snapshot and
-        # the row it describes land in one commit, and before dispatch so the
-        # worker can never read a scan whose configuration is unsettled.
-        #
-        # `has_credential` is True for every path that reaches here: the
-        # request has either named a stored credential or supplied material,
-        # both checked above. A policy with `require_credential` therefore
-        # passes here and does its real work on the *scheduled* path and on the
-        # main pipeline, where an unauthenticated fallback is possible.
-        effective, policy_overrides = _resolve_scan_policy(
+        created = create_credentialed_scan(
             db,
-            scan=scan,
-            policy_id=req.policy_id,
+            user_id=str(user.id),
+            hosts=hosts,
             org_id=target_org_id,
-            scan_kind="credentialed",
-            has_credential=True,
-            request_options={"sections": req.sections},
+            policy_id=req.policy_id,
+            sections=req.sections,
         )
-        db.commit()
-        scan_id = str(scan.id)
-        scan_no = scan.scan_no
-        # Read out before the session closes: `effective` is a frozen
-        # dataclass and safe to use afterwards, but the ORM row is not.
-        eff_sections = list(effective.sections) or req.sections
-        policy_summary = {
-            "policy_id": effective.policy_id,
-            "policy_name": effective.policy_name,
-            "fingerprint": effective.fingerprint(),
-            "source": effective.source,
-            "overrides": policy_overrides,
-        }
     finally:
         db.close()
+    scan_id = created.scan_id
+    scan_no = created.scan_no
+    eff_sections = created.sections
+    policy_summary = created.policy
 
-    task = run_credentialed_scan_task.delay(
+    task = registered_task(RUN_CREDENTIALED_SCAN).delay(
         user_id=str(user.id),
         targets=hosts,
         username=req.username,

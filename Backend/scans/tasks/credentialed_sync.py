@@ -44,13 +44,15 @@ def _sync_credentialed_asset_identity(
     Phase 4: Adds forensic logging and provenance.
     """
     from core.oui_lookup import lookup_vendor
+    from core.findings.writer import (
+        _finding_family,
+        _finding_source_from_record,
+        risk_from_open_findings,
+    )
     from scans.asset_syncer import (
         CREDENTIALED_STATUS_SUCCESS,
         _confidence_to_percent,
-        _finding_family,
-        _finding_source_from_record,
         _has_value,
-        _recalculate_asset_risk,
         _record_asset_change,
         _set_asset_field,
         _to_int,
@@ -321,7 +323,7 @@ def _sync_credentialed_asset_identity(
     db.flush()
 
     # Recalculate aggregate vuln_counts
-    counts, agg_score, agg_level = _recalculate_asset_risk(db, asset.id)
+    counts, agg_score, agg_level = risk_from_open_findings(db, asset.id)
     asset.vuln_counts = counts
     asset.risk_score = agg_score
     asset.risk_level = agg_level
@@ -541,8 +543,8 @@ def _port_int(value) -> int | None:
 def _sync_credentialed_services(
     db, asset: Asset, scan_id: str, ports: list[dict], packages: list[dict] = None
 ) -> None:
-    """Persist the host's listening sockets. See asset_syncer for the semantics."""
-    from scans.asset_syncer import upsert_credentialed_services
+    """Persist the host's listening sockets. See core.findings.writer for the semantics."""
+    from core.findings.writer import upsert_credentialed_services
 
     upsert_credentialed_services(db, asset.id, scan_id, ports or [], packages)
 
@@ -569,7 +571,7 @@ def _sync_credentialed_vulnerabilities(
         DEFINITION_TYPE_CVE,
         definition_type_for_id,
     )
-    from scans.asset_syncer import _catalog_title, _resolve_finding_id
+    from core.findings.writer import _catalog_title, _resolve_finding_id
 
     source_family = "credentialed_package"
     for vuln in cve_list or []:

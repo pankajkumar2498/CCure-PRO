@@ -576,7 +576,7 @@ def _apply_credentialed_enrichment(
         # the inventory is in hand. Doing it now means the stored host record
         # does not have to carry a few thousand package rows per host purely so
         # the asset sync can repeat the lookup later.
-        from scans.asset_syncer import _service_identity_from_process
+        from core.findings.writer import service_identity_from_process
 
         packages = stored_report.get("packages") or []
         listeners = []
@@ -587,7 +587,7 @@ def _apply_credentialed_enrichment(
             # match is an inference from a process name. Never let the second
             # overwrite the first.
             if not record.get("product"):
-                product, version = _service_identity_from_process(
+                product, version = service_identity_from_process(
                     record.get("process") or "", packages
                 )
                 if product:

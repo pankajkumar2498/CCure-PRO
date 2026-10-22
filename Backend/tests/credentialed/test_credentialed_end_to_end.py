@@ -451,7 +451,7 @@ def test_prepared_listener_product_survives_to_the_service_row(db_session):
     from db.models.findings import Service
     from db.models.rbac import Organization
     from db.models.scans import Scan
-    from scans.asset_syncer import upsert_credentialed_services
+    from core.findings.writer import upsert_credentialed_services
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     db_session.add(

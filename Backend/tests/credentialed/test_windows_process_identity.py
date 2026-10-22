@@ -253,13 +253,13 @@ def test_collector_identity_outranks_a_package_name_guess():
     A package match is an inference from a process name, and must never
     overwrite the stronger evidence.
     """
-    from scans.asset_syncer import _service_identity_from_process
+    from core.findings.writer import service_identity_from_process
 
     # The package path alone misfires here, and this pairing is real: the host
     # runs a Java service and also has "Java Auto Updater" installed. Substring
     # matching picks the updater; the binary is the Platform SE runtime.
     packages = [{"name": "Java Auto Updater", "version": "2.8.451.16"}]
-    guessed, guessed_version = _service_identity_from_process("java", packages)
+    guessed, guessed_version = service_identity_from_process("java", packages)
     assert guessed == "Java Auto Updater"
     assert guessed_version == "2.8.451.16"
 
@@ -289,10 +289,10 @@ def test_an_os_process_is_never_attributed_to_an_installed_package():
     name, stamping a false product *and version* onto SMB and WinRM. A wrong
     version is worse than none — it is what the CVE range check reads.
     """
-    from scans.asset_syncer import _service_identity_from_process
+    from core.findings.writer import service_identity_from_process
 
     packages = [{"name": "HP System Default Settings", "version": "1.5.20.1"}]
-    product, version = _service_identity_from_process("System", packages)
+    product, version = service_identity_from_process("System", packages)
 
     assert product == "System"
     assert version is None
@@ -303,7 +303,7 @@ def test_a_package_match_must_be_anchored_at_the_name_start():
     Substring-anywhere is not evidence of identity. A package may be claimed
     only when the process name opens it, or matches it exactly.
     """
-    from scans.asset_syncer import _service_identity_from_process
+    from core.findings.writer import service_identity_from_process
 
     packages = [
         {"name": "PostgreSQL 18", "version": "18.3"},
@@ -312,21 +312,21 @@ def test_a_package_match_must_be_anchored_at_the_name_start():
     ]
 
     # Opens the package name — a defensible claim.
-    assert _service_identity_from_process("postgres", packages) == (
+    assert service_identity_from_process("postgres", packages) == (
         "PostgreSQL 18",
         "18.3",
     )
     # Exact match.
-    assert _service_identity_from_process("nginx", packages) == ("nginx", "1.26.3")
+    assert service_identity_from_process("nginx", packages) == ("nginx", "1.26.3")
     # Appears mid-name only — rejected, the process is merely named.
-    assert _service_identity_from_process("code", packages) == ("code", None)
+    assert service_identity_from_process("code", packages) == ("code", None)
 
 
 def test_generic_name_check_ignores_the_exe_suffix():
-    from scans.asset_syncer import _service_identity_from_process
+    from core.findings.writer import service_identity_from_process
 
     packages = [{"name": "Svchost Helper Suite", "version": "3.0"}]
-    assert _service_identity_from_process("svchost.exe", packages) == (
+    assert service_identity_from_process("svchost.exe", packages) == (
         "svchost.exe",
         None,
     )
@@ -397,7 +397,7 @@ def test_resolved_identity_reaches_the_service_row(db_session):
     from db.models.findings import Service
     from db.models.rbac import Organization
     from db.models.scans import Scan
-    from scans.asset_syncer import upsert_credentialed_services
+    from core.findings.writer import upsert_credentialed_services
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     db_session.add(

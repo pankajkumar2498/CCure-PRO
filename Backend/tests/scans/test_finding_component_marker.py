@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 from db.base import gen_asset_id
-from scans.asset_syncer import (
+from core.findings.writer import (
     _COMPONENT_ID_MARK,
     FINDING_SOURCE_FAMILY,
     _component_finding_id,

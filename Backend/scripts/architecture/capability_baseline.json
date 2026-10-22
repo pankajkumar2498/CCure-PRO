@@ -63,10 +63,6 @@
    "tls_details"
   ],
   [
-   "assets",
-   "vulnerability_definitions"
-  ],
-  [
    "audit_boundary",
    "asset_notes"
   ],
@@ -325,22 +321,6 @@
  ],
  "foreign_table_writes": [
   [
-   "assets",
-   "asset_vulnerabilities"
-  ],
-  [
-   "assets",
-   "services"
-  ],
-  [
-   "assets",
-   "tls_details"
-  ],
-  [
-   "assets",
-   "vulnerability_definitions"
-  ],
-  [
    "audit_boundary",
    "asset_notes"
   ],
@@ -588,35 +568,7 @@
   ],
   [
    "scans.asset_syncer",
-   "core.findings.comparison"
-  ],
-  [
-   "scans.asset_syncer",
-   "core.findings.credentialed_scope"
-  ],
-  [
-   "scans.asset_syncer",
-   "core.findings.fix_state"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:Service"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:TLSDetail"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:VulnerabilityDefinition"
+   "core.findings.writer"
   ],
   [
    "scans.nvd_sync",

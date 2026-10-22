@@ -28,6 +28,7 @@ IP = "192.0.2.15"
 
 @pytest.fixture()
 def pipeline(db_session, monkeypatch):
+    from core.findings import writer as findings_writer
     from scans import asset_syncer
 
     monkeypatch.setattr(asset_syncer, "_enrich_findings_with_intel", lambda hosts: None)
@@ -76,7 +77,7 @@ def pipeline(db_session, monkeypatch):
         db_session.commit()
         # The normal pipeline records these services in phase two.
         for endpoint in host.get("open_ports") or []:
-            asset_syncer._upsert_network_service(
+            findings_writer.upsert_network_service(
                 db_session, f"ast_pr_{suffix}", scan.id, endpoint
             )
         db_session.commit()

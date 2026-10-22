@@ -809,17 +809,23 @@ CEILINGS = {
     # (the hub split into scans/tasks/, the scans capability) made its six
     # imports of scans internals internal: a reclassification, not a change.
     # G2 (C5) the credential vault's read of scan_schedules (scheduling counts
-    # its own references now).
-    "lateral_edges": 58,
+    # its own references now). G3 (C3): the asset syncer's eight imports of the
+    # findings capability (its models, comparison, fix state and credentialed
+    # scope) became one, of the findings writer.
+    "lateral_edges": 51,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
     # its other table access the scans capability's (a reclassification).
     # G2 (C5): compliance, the credentialed audit and scheduling stopped
-    # reading compliance_credentials, and the vault scan_schedules.
-    "foreign_table_references": 69,
+    # reading compliance_credentials, and the vault scan_schedules. G3 (C3):
+    # the asset syncer stopped naming vulnerability_definitions.
+    "foreign_table_references": 68,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
-    "foreign_table_writes": 16,
+    # G3 (C3): the asset syncer's writes to services, tls_details,
+    # vulnerability_definitions and asset_vulnerabilities moved to the
+    # findings writer.
+    "foreign_table_writes": 12,
 }
 
 _BASELINE_KEYS = (

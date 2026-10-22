@@ -295,7 +295,7 @@ def test_loopback_listener_is_not_recorded_as_an_open_port(
     indistinguishable from a port a scan had confirmed reachable — so it
     counted toward exposure on the dashboard and in compliance evidence.
     """
-    from scans.asset_syncer import upsert_credentialed_services
+    from core.findings.writer import upsert_credentialed_services
 
     _org, asset, scan_id = org_and_asset
     annotated, _ = correlate_listeners(LISTENERS, network_scanned=False)
@@ -324,7 +324,7 @@ def test_loopback_listener_is_not_recorded_as_an_open_port(
 
 
 def test_correlated_listener_is_recorded_as_open(db_session: Session, org_and_asset):
-    from scans.asset_syncer import upsert_credentialed_services
+    from core.findings.writer import upsert_credentialed_services
 
     _org, asset, scan_id = org_and_asset
     annotated, _ = correlate_listeners(
@@ -353,11 +353,14 @@ def test_credentialed_pass_never_downgrades_a_network_confirmed_port(
     Where the two disagree the direct observation wins, and the credentialed
     pass contributes only what it alone knows.
     """
-    from scans.asset_syncer import _upsert_network_service, upsert_credentialed_services
+    from core.findings.writer import (
+        upsert_credentialed_services,
+        upsert_network_service,
+    )
 
     _org, asset, scan_id = org_and_asset
 
-    _upsert_network_service(
+    upsert_network_service(
         db_session,
         asset.id,
         scan_id,
@@ -401,7 +404,10 @@ def test_credentialed_pass_never_downgrades_a_network_confirmed_port(
 def test_network_scan_preserves_an_earlier_credentialed_confirmation(
     db_session: Session, org_and_asset
 ):
-    from scans.asset_syncer import _upsert_network_service, upsert_credentialed_services
+    from core.findings.writer import (
+        upsert_credentialed_services,
+        upsert_network_service,
+    )
 
     _org, asset, scan_id = org_and_asset
 
@@ -414,7 +420,7 @@ def test_network_scan_preserves_an_earlier_credentialed_confirmation(
     )
     db_session.commit()
 
-    _upsert_network_service(
+    upsert_network_service(
         db_session,
         asset.id,
         scan_id,

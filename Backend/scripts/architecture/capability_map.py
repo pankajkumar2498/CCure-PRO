@@ -783,8 +783,10 @@ CEILINGS = {
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web
-    # module's sslyze wrapper (now the shared engines.tls).
-    "lateral_edges": 69,
+    # module's sslyze wrapper (now the shared engines.tls); B10 the database
+    # collector's and the SCAP evaluator's imports of the credentialed engines
+    # (the executor and the version comparator are injected).
+    "lateral_edges": 67,
     # 80 when introduced; B2 moved the web_scans settler out of scans.
     "foreign_table_references": 79,
     "foreign_table_writes": 17,

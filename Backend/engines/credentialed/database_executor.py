@@ -393,6 +393,17 @@ class DatabaseSession:
         """The engine's own version banner, verbatim, for the evidence record."""
         return self._server_banner
 
+    @staticmethod
+    def normalize_engine(engine: Optional[str]) -> str:
+        """
+        Fold an engine spelling onto this executor's canonical names, or "".
+
+        The configuration audit's database collector asks the session it was
+        handed (``rule names "postgres"; is that you?``) rather than importing
+        this module, so the configuration audit depends on no engine (B10).
+        """
+        return normalize_engine(engine)
+
     @property
     def product_name(self) -> str:
         """

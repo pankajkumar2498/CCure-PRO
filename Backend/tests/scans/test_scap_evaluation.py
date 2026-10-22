@@ -22,6 +22,7 @@ from core.config_audit.collectors.scap import (
 )
 from core.scap.evaluate import Outcome, evaluate_definition
 from core.scap.probes import PROBES, ProbeResult, collect_object, supported_object_types
+from engines.credentialed.vuln_matcher import compare_distro_versions
 
 
 # ── A shell that answers exactly what it is told to ──────────────────────────
@@ -58,6 +59,8 @@ def ctx(shell=None, **kwargs):
         "os_name": "Rocky Linux",
         "os_version_id": "9.6",
         "executor": shell,
+        # The comparator production's contexts carry (core/tasks.py, B10).
+        "version_compare": compare_distro_versions,
     }
     params.update(kwargs)
     return CollectionContext(**params)

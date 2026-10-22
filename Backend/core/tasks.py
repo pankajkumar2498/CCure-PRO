@@ -2885,6 +2885,7 @@ def _run_configuration_audit(
     from core.config_audit.builtin import builtin_checks
     from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
     from core.config_audit.findings import config_definition_id
+    from engines.credentialed.vuln_matcher import compare_distro_versions
 
     platform = "windows" if os_type == "windows" else "linux"
     # Built-ins plus whatever benchmark content the organisation has loaded.
@@ -2968,6 +2969,9 @@ def _run_configuration_audit(
         asset_id=asset_id,
         org_id=org_id,
         timeout=timeout,
+        # The package matcher's version ordering, for the SCAP evaluator's
+        # version comparisons; injected so the audit imports no engine (B10).
+        version_compare=compare_distro_versions,
     )
     report = ConfigAuditEngine().run(checks, context)
 
@@ -4142,6 +4146,7 @@ def audit_database_target(
         DatabaseSession,
         normalize_engine,
     )
+    from engines.credentialed.vuln_matcher import compare_distro_versions
 
     register_builtin_collectors()
 
@@ -4224,6 +4229,9 @@ def audit_database_target(
             os_version_id=version,
             executor=db_session,
             timeout=max(timeout, 30),
+            # As on the host path, so every context production builds carries
+            # the same comparator (B10).
+            version_compare=compare_distro_versions,
         )
         report = ConfigAuditEngine().run(checks, context)
 

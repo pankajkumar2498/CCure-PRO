@@ -199,13 +199,20 @@ class DatabaseQueryCollector(Collector):
         ``os_name``. This is the backstop for a rule that forgot to declare it,
         which would otherwise run a MySQL ``SHOW VARIABLES`` against PostgreSQL
         and record the syntax error as an unassessed check.
+
+        The session folds the engine names: it is the executor the context was
+        handed, and the vocabulary of engine names is the executor's
+        (``DatabaseSession.normalize_engine``). Importing the executor module
+        for it put the configuration audit on top of the credentialed engine
+        (B10). A session that cannot fold names gets no backstop, as when that
+        import failed; the query then runs, and a statement in the wrong
+        dialect comes back as an error, never a verdict.
         """
         wanted = params.get("engine")
         if not wanted:
             return None
-        try:
-            from engines.credentialed.database_executor import normalize_engine
-        except Exception:  # pragma: no cover - import guard
+        normalize_engine = getattr(session, "normalize_engine", None)
+        if not callable(normalize_engine):
             return None
 
         names = wanted if isinstance(wanted, (list, tuple)) else [wanted]

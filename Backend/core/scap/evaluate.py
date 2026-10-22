@@ -34,7 +34,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.config_audit.collection import CollectionContext
 from core.scap.probes import ProbeResult, collect_object
@@ -45,6 +45,10 @@ __all__ = [
     "evaluate_applicability",
     "evaluate_definition",
 ]
+
+#: ``compare(left, right)`` → negative, zero or positive, or None when the two
+#: cannot be ordered: ``CollectionContext.version_compare``.
+VersionCompare = Callable[[str, str], Optional[int]]
 
 
 class Outcome(str, Enum):
@@ -95,23 +99,34 @@ def _as_number(value: Any) -> Optional[float]:
         return None
 
 
-def _version_compare(left: Any, right: Any) -> Optional[int]:
+def _version_compare(
+    left: Any, right: Any, compare: Optional[VersionCompare]
+) -> Optional[int]:
     """
-    Order two version strings.
+    Order two version strings with the comparator the context was given.
 
-    Delegates to the package matcher's rpmvercmp implementation rather than
-    growing a second one. Epoch handling and ``~`` ordering are what make an
-    EVR comparison correct, and CLAUDE.md records what a naive comparison cost
-    the last time: a backported fix compared equal to the vulnerable version it
-    fixed, on the distributions that backport nearly everything.
+    That is the package matcher's rpmvercmp implementation
+    (``compare_distro_versions``), passed in by whoever built the context
+    rather than imported (B10), and not a second implementation. Epoch handling
+    and ``~`` ordering are what make an EVR comparison correct, and CLAUDE.md
+    records what a naive comparison cost the last time: a backported fix
+    compared equal to the vulnerable version it fixed, on the distributions
+    that backport nearly everything.
+
+    No comparator means the comparison cannot be made: None, which the caller
+    reads as unknown. Falling back to a naive order would be the defect above.
     """
-    from engines.credentialed.vuln_matcher import compare_distro_versions
-
-    return compare_distro_versions(str(left), str(right))
+    if compare is None:
+        return None
+    return compare(str(left), str(right))
 
 
 def _compare(
-    actual: Any, operation: str, expected: Any, datatype: str
+    actual: Any,
+    operation: str,
+    expected: Any,
+    datatype: str,
+    version_compare: Optional[VersionCompare] = None,
 ) -> Optional[bool]:
     """
     One OVAL comparison. ``None`` means it could not be performed.
@@ -166,7 +181,7 @@ def _compare(
         return None
 
     if datatype in ("version", "evr_string", "debian_evr_string", "ios_version"):
-        order = _version_compare(actual, expected)
+        order = _version_compare(actual, expected, version_compare)
         if order is None:
             return None
         return _from_order(order, operation)
@@ -244,7 +259,9 @@ def _fold_three_valued(
 
 
 def _item_satisfies(
-    item: Mapping[str, Any], state: Mapping[str, Any]
+    item: Mapping[str, Any],
+    state: Mapping[str, Any],
+    version_compare: Optional[VersionCompare] = None,
 ) -> Optional[bool]:
     """Whether one collected item is in the state the rule describes."""
     operator = str(state.get("operator") or "AND").upper()
@@ -270,7 +287,7 @@ def _item_satisfies(
             # satisfied when any of them matches; that is what a variable
             # holding a set of acceptable answers means.
             matched = [
-                _compare(one, operation, expected, datatype)
+                _compare(one, operation, expected, datatype, version_compare)
                 for expected in expected_values
             ]
             if not matched:
@@ -305,6 +322,7 @@ def _apply_filters(
     items: Sequence[Mapping[str, Any]],
     obj: Mapping[str, Any],
     compiled: Mapping[str, Any],
+    version_compare: Optional[VersionCompare] = None,
 ) -> Tuple[Tuple[Mapping[str, Any], ...], str]:
     """
     Narrow a collected item set by the object's ``<filter>`` elements.
@@ -332,7 +350,7 @@ def _apply_filters(
         action = str(spec.get("action") or "exclude")
         kept: List[Mapping[str, Any]] = []
         for item in surviving:
-            satisfied = _item_satisfies(item, state)
+            satisfied = _item_satisfies(item, state, version_compare)
             if satisfied is None:
                 return (), (
                     "an item could not be compared against the object's "
@@ -366,7 +384,9 @@ def _evaluate_test(
         notes.append((Outcome.UNKNOWN, f"{obj.get('type')}: {probe.detail}"))
         return Outcome.UNKNOWN
 
-    items, filter_failure = _apply_filters(probe.items, obj, compiled)
+    items, filter_failure = _apply_filters(
+        probe.items, obj, compiled, ctx.version_compare
+    )
     if filter_failure:
         notes.append((Outcome.UNKNOWN, f"{obj.get('type')}: {filter_failure}"))
         return Outcome.UNKNOWN
@@ -393,7 +413,7 @@ def _evaluate_test(
     per_item: List[Optional[bool]] = []
     for item in probe.items:
         item_results = [
-            _item_satisfies(item, states[state_id])
+            _item_satisfies(item, states[state_id], ctx.version_compare)
             for state_id in state_ids
             if state_id in states
         ]

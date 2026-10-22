@@ -25,13 +25,17 @@ from core.config_audit.collectors import collector_registry, register_builtin_co
 from core.config_audit.collectors.database import DatabaseQueryCollector
 from core.config_audit.engine import ConfigAuditEngine
 from core.config_audit.spec import AbsencePolicy, ConfigCheck, Expectation
-from engines.credentialed.database_executor import QueryResult
+from engines.credentialed.database_executor import QueryResult, normalize_engine
 
 register_builtin_collectors()
 
 
 class FakeSession:
     """A database session that returns whatever the test prescribes."""
+
+    # The executor folds engine names for the collector's engine backstop, as
+    # DatabaseSession does (B10).
+    normalize_engine = staticmethod(normalize_engine)
 
     def __init__(self, result=None, engine="postgresql", raises=None):
         self.engine = engine

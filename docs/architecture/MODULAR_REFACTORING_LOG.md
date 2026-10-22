@@ -2110,6 +2110,174 @@ for one at B9. §11 puts the next full run at the end of Phase B, which is B10; 
 - **The golden's listener speaks TLS 1.2 and 1.3 only,** which is Python's default. The weak-protocol
   and weak-cipher branches are pinned by `test_tls_deep`'s truth tables, not by a live listener.
 
+### B10 — the executor and the version matcher are injected into the configuration audit
+
+Commit `cbd94fe`, committed in place, on top of `abbe662`. That is the merge of this branch into
+`master` through GitLab (21 Oct 2026, 14:35–14:37 IST), which the branch was then fast-forwarded
+to; its tree is `858e904`'s exactly.
+
+**The scope** (analysis §10, B10): "Config-audit database collector and SCAP evaluator import
+credentialed engines lazily → executor and matcher injected". Files: `database.py`,
+`evaluate.py`. Target: "Config audit depends only on the check kernel".
+
+**The dependency.** Inspected on `abbe662`. Two lateral edges, config audit → credentialed audit,
+both lazy:
+
+- **The database collector's engine backstop** (`_engine_mismatch`) imported `normalize_engine`
+  from `engines.credentialed.database_executor`, to fold a rule's engine names ("postgres",
+  "MariaDB", "SQL Server") and the session's onto canonical ones. The collector already had the
+  executor: the `DatabaseSession` arrives as `ctx.executor`.
+- **The SCAP evaluator** imported `compare_distro_versions` from
+  `engines.credentialed.vuln_matcher` for every OVAL comparison of a `version`, `evr_string`,
+  `debian_evr_string` or `ios_version`.
+  - **What one comparison loaded:** that module brings the vulnerability-intelligence layer with
+    it, so one version comparison inside the evaluator loaded `config`, `db` and
+    `core.vuln_intel`, 142 modules in all.
+  - **With `engines` unimportable,** the comparison raised `ModuleNotFoundError` out of
+    `evaluate_definition`. The backstop silently stood down, and a query in another engine's
+    dialect ran.
+
+**The change.**
+
+- **The executor folds the names.** `DatabaseSession.normalize_engine` is the module function as a
+  method, and the collector asks the session it was handed.
+  - **An executor that cannot fold gets no backstop:** the query runs and its answer stands, which
+    is what a failed import used to mean.
+  - **Only one test's fake session was affected:** `test_database_collector`'s gains the method.
+    The database-areas fake always matches the rule's own engine.
+- **The context carries the comparator.** `CollectionContext.version_compare` (optional) is
+  threaded by the evaluator from `_evaluate_test` through `_apply_filters`, `_item_satisfies` and
+  `_compare`.
+  - **No comparator means the comparison cannot be made:** it reads as unknown, never a verdict,
+    and never a naive order. A naive order is the backport defect CLAUDE.md records.
+  - **Who builds a context:** only `core/tasks.py`, in two places, the credentialed host's audit
+    and the database audit. Both pass `compare_distro_versions`, imported inside the function
+    beside the code that already imported the credentialed engine.
+  - **The evaluation tests' context helper** carries it as well, as production's do.
+
+**Golden: identical.** `b10_golden.py`, a scratch script, runs production's own composition, so
+the contexts are the ones `core/tasks.py` builds:
+
+- **SCAP:** `_run_configuration_audit` over the Linux built-ins plus 15 `scap_rule` checks, with a
+  fake shell.
+  - **The cases are those naive ordering gets wrong:** an epoch, a tilde, a backported release,
+    `1.0` against `1.0.0`, a Debian EVR and an IOS version.
+  - **Also:** an object filter that keeps items above a version, and an integer control.
+- **Database:** `audit_database_target` for PostgreSQL, MySQL, MariaDB and SQL Server.
+  - **The session** is a stand-in subclass of the real `DatabaseSession`: connection and query
+    replaced, its product naming, read-only guard and, on B10, its folding its own.
+  - **The checks:** the 49 built-in database rules plus ten rules naming engines by alias, each
+    reaching the backstop.
+
+| Capture                                       | Result                                                                            |
+| --------------------------------------------- | --------------------------------------------------------------------------------- |
+| `abbe662`, twice                              | identical: the capture is deterministic                                           |
+| B10 working tree; clean worktree of `cbd94fe` | **byte-identical** to `abbe662`                                                   |
+| Mutations P4 and P5 (below)                   | differ by 195 and 17 lines: the capture sees a comparator that is not passed down |
+
+What the capture shows:
+
+- **The version cases:** 13 of the 15 hold. `1.0 equals 1.0.0` fails, as rpmvercmp orders it, and
+  `abc equals abd` fails, as it should.
+- **The aliases fold as the module does:** "postgres", "PostgreSQL" and "pgsql" to PostgreSQL;
+  "MariaDB" to MySQL; "SQL Server" to SQL Server.
+- **The backstop:** a mismatch is not applicable, and the unknown "oracle" is not a mismatch.
+
+**Interfaces: identical.** **Coupling** (`capability_map`):
+
+| Measure                                    | Before (`abbe662`) | After (`cbd94fe`) |
+| ------------------------------------------ | -----------------: | ----------------: |
+| Lateral edges                              |                 69 |            **67** |
+| Upward edges                               |                 37 |                37 |
+| Largest cycle, all imports / top-level     |     15 (4, 2) / 12 |    15 (4, 2) / 12 |
+| Foreign-table references / writes          |            79 / 17 |           79 / 17 |
+| Cross-capability imports, top-level / lazy |          470 / 385 |         470 / 385 |
+
+- **The two edges went and none came** (`capability_edges`, edge by edge). `core/tasks.py`
+  already imported the matcher and the executor module. The statement count stays the same because
+  its two new lazy imports replace the two removed. `CEILINGS` holds lateral edges at 67.
+- **The target, read exactly.** Every cross-capability import of `core.config_audit` is now into the
+  check kernel, and so is every one of `core.scap` but one.
+  - **The exception:** `core.scap.cci` → `core.compliance_seeds` (lazy), the CCI crosswalk resolving
+    the seeded NIST catalogue's path. It is a seed-file lookup, not an engine, and the new test
+    names it.
+- **What still holds config audit in the cycle** is `core.benchmarks`: the loader writes the
+  compliance catalogue and selection reads it. The plan gives that to C4.
+
+**Import cost:** unchanged at import (both imports were lazy). `core.config_audit` 23/64,
+`core.scap.evaluate` 32/90, `core.tasks` 140/1456 first-party/all, before and after. At run time,
+the evaluator's version comparison loaded 142 modules on `abbe662` and loads none on B10; the
+comparator arrives with the context.
+
+**Tests.**
+
+| Step                | Command / targets                                                                                                                                                                                                                                                                                                                                                                           | Passed | Failed | Skipped | Notes                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: | -----: | ------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Affected, first run | the configuration-audit, SCAP, database, middleware, container and privilege tests, the benchmark end-to-end and the SMB transport (16 files)                                                                                                                                                                                                                                               |  1,413 |  **3** |       0 | All three were fixtures without the new interface: `test_database_collector`'s fake session could not fold names, and `test_scap_evaluation`'s context carried no comparator (two version cases). Both fixtures now provide what production does                                                                                                                                          |
+| New                 | `tests/scans/test_config_audit_injection.py`                                                                                                                                                                                                                                                                                                                                                |     11 |      0 |       0 | The engine and SCAP evaluation import only the check kernel (one named exception); no config-audit module imports an engine; both run with `engines` unimportable; every production context carries the comparator, and only `core/tasks.py` builds one; no comparator is unknown; the matcher's order decides states and filters; the executor's folding is used and equals the module's |
+| Mutation            | the new file, the two fixture files and the capability ratchet, on scratch worktrees with: P1 the evaluator falling back to importing the matcher; P2 the collector falling back to importing the executor module; P3 the database audit's context without the comparator; P4 the state comparison not passing it; P5 the filter not passing it; P6 the executor without `normalize_engine` |      — |      — |       — | Caught: P1 by 5 tests and `check.py`; P2 by 4 and `check.py`; P3 by 1; P4 by 4; P5 by 1; P6 by 2. The golden also saw P4 and P5                                                                                                                                                                                                                                                           |
+| Architecture        | `check.py`; `capability_map --check`; pre-commit                                                                                                                                                                                                                                                                                                                                            |      — |      — |       — | All pass                                                                                                                                                                                                                                                                                                                                                                                  |
+
+**The new test's first run failed, on the test.** Its stand-in executor's fold table had no entry
+for `postgresql` itself. The instance's own engine folded to nothing, the backstop stood down and
+the query ran, which is the collector folding both names through the session, as designed. The
+table was corrected.
+
+**Live validation.**
+
+- **Not required.** §11 does not require it for B10.
+- **Run anyway.** B10 changes `core/tasks.py`, which every scan loads, as B6 did.
+
+| Run      | Commit    | Interface (`pinned` / `scapy_default`) | Full audit                                                             | Stopped sweep |
+| -------- | --------- | -------------------------------------- | ---------------------------------------------------------------------- | ------------- |
+| `before` | `abbe662` | `eth0` / `eth0`, `172.30.250.5`        | complete: 3 phases, 4 assets, 4 services, 7 findings, 13 frames, 313 s | `cancelled`   |
+| `after`  | `cbd94fe` | `eth0` / `eth0`, `172.30.250.5`        | the same, 320 s                                                        | `cancelled`   |
+
+- **Identical apart from time**, with nothing needing tolerance.
+- **What it cannot show: the configuration audit.** That runs only inside a credentialed scan, and
+  the harness's scans are unauthenticated.
+  - **What covers it instead:** the golden, which drives the two functions `core/tasks.py` builds
+    contexts in;
+  - and the full suite, whose credentialed and benchmark end-to-end tests run the audit through the
+    task code.
+
+#### End of Phase B
+
+**Full suite, the end-of-Phase-B milestone** (§11): `tests` on a clean worktree of `cbd94fe`,
+**8,036 passed, 0 failed, 211 skipped** (15 min 41 s). The skips are the audit-chain and retention
+DBA bootstraps and the environment-dependent ones, the same 211 as every full run on this branch.
+The selector had named a targeted scope of 12 of the 14 groups, because `core/tasks.py` reaches
+most of them; the full run covers it.
+
+| Measure (capability map)          | When the ratchet was introduced (A2, `aa215dc`) | End of Phase B (`cbd94fe`) |
+| --------------------------------- | ----------------------------------------------: | -------------------------: |
+| Upward edges                      |                                              50 |                         37 |
+| Lateral edges                     |                                              74 |                         67 |
+| Largest cycle, all imports        |                                              22 |              15 (and 4, 2) |
+| Largest cycle, top-level          |                                              13 |                         12 |
+| Foreign-table references / writes |                                         80 / 17 |                    79 / 17 |
+
+**Against the plan's simulation.** §10 predicted the cycle would shrink "from 20 capabilities to
+10", with "every engine, kernel and renderer" leaving it.
+
+- **What left:** the port inventory (B8). B7 split two cycles out of the 22-capability knot: the
+  renderers with the check kernel, infra and the platform (4), and the scan kernel with
+  vulnerability intelligence (2).
+- **Six engines are still in it,** each through edges no B step named:
+
+| Engine             | The edge that holds it                                                                                                 | Where it is answered                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Discovery          | `core.discovery.techniques.arp`/`arp_cache` → `core.oui_lookup` (assets)                                               | §7 (B3); the analysis's target grouping puts it in the scan kernel |
+| Network checks     | `vulnerability_engine` → `core.device_classifier` (assets)                                                             | §7 (B9); the same target grouping                                  |
+| Credentialed audit | `routers.credentialed` → `core.tasks`, `scan_orchestrator`, `scan_helpers`, `scans.db_helpers`, `scans.policy_binding` | C1 (dispatch by name, a scan-creation service)                     |
+| Config audit       | `core.benchmarks.loader`/`selection` → the compliance catalogue                                                        | C4                                                                 |
+| Topology           | `core.topology.engine` → `Asset` and `Scan`, `core.oui_lookup`                                                         | §7 (B6)                                                            |
+| Web DAST           | `reporting.web_pdf_generator` → `scan_helpers.make_pdf_cve_paragraph`, a rendering helper kept in the scans module     | §7 (new, below)                                                    |
+
+- **The simulation's grouping differs from the ratchet's.** It counted the classifier and the
+  MAC-vendor lookup as scan kernel, so on its terms discovery and the network checks would
+  already be out.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
@@ -2131,3 +2299,4 @@ for one at B9. §11 puts the next full run at the end of Phase B, which is B10; 
 | new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                            | B7, §6                                                             |
 | new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models | B8, §6                                                             |
 | new | Take the network checks and web DAST out of the capability cycle. After B9 each is held by one upward edge: `engines.vulnerability.vulnerability_engine` imports `core.device_classifier` (assets; the analysis's target grouping puts the classifier in the scan kernel), and `reporting.web_pdf_generator` imports `scan_helpers` (scans)                                                      | B9, §6                                                             |
+| new | Move `make_pdf_cve_paragraph` out of `scan_helpers` into the renderers. `reporting.web_pdf_generator` imports it from there, which is the one edge holding web DAST in the capability cycle at the end of Phase B                                                                                                                                                                                | B10, §6                                                            |

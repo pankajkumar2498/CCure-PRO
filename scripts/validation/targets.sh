@@ -12,11 +12,16 @@
 # on the bridge (VALIDATION_HOST_ADDRESS); that address is the VM itself, and
 # live_scan.sh excludes it from every scan.
 #
-# `up` is idempotent: a running target holding its defined address and MAC is
-# left alone; a missing one is started, and one holding anything else (created
-# by hand, or before the MACs were fixed) is replaced.
+# `up` is idempotent: a running target holding its defined address and MAC, and
+# running its defined image, is left alone; a missing one is started, and one
+# holding anything else (created by hand, before the MACs were fixed, or from an
+# older SSH image without the audit account) is replaced.
 # The SSH target's image is built once from the pinned base and kept, so a
 # later `up` serves the same OpenSSH build; `down --images` removes it too.
+#
+# The audit accounts (SSH_AUDIT_USER, PG_AUDIT_ROLE) cannot log in outside a
+# run: live_scan.sh gives them a throwaway password for one run and revokes it.
+# `status` shows their state, never a secret.
 # docs/ci/LIVE_SCAN_VALIDATION.md has the whole procedure.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -37,6 +42,9 @@ network_up() {
   fi
 }
 
+# The image a container was created from, as `docker run` was given it.
+image_of() { docker container inspect -f '{{.Config.Image}}' "$1" 2>/dev/null || true; }
+
 # "<ip> <mac>" of a container on the validation network, empty if it is not on it.
 address_of() {
   docker container inspect -f \
@@ -48,8 +56,10 @@ start() { # name ip mac image [docker run args...]
   local name=$1 ip=$2 mac=$3 image=$4
   shift 4
   if running "$name"; then
-    if [ "$(address_of "$name")" = "$ip $mac" ]; then return 0; fi
-    echo "replacing $name: it does not hold $ip $mac"
+    if [ "$(address_of "$name")" = "$ip $mac" ] && [ "$(image_of "$name")" = "$image" ]; then
+      return 0
+    fi
+    echo "replacing $name: it does not hold $ip $mac on $image"
   fi
   if exists "$name"; then docker rm -f "$name" >/dev/null; fi
   docker run -d --name "$name" --network "$VALIDATION_NETWORK" --ip "$ip" --mac-address "$mac" \
@@ -61,7 +71,8 @@ up() {
   network_up
   if ! docker image inspect "$SSH_IMAGE_TAG" >/dev/null 2>&1; then
     echo "building $SSH_IMAGE_TAG from $SSH_BASE_IMAGE"
-    docker build -q --build-arg BASE="$SSH_BASE_IMAGE" -t "$SSH_IMAGE_TAG" "$HERE/ssh-target" >/dev/null
+    docker build -q --build-arg BASE="$SSH_BASE_IMAGE" --build-arg AUDIT_USER="$SSH_AUDIT_USER" \
+      -t "$SSH_IMAGE_TAG" "$HERE/ssh-target" >/dev/null
   fi
   start "$SSH_CONTAINER" "$SSH_TARGET" "$SSH_MAC" "$SSH_IMAGE_TAG"
   start "$WEB_CONTAINER" "$WEB_TARGET" "$WEB_MAC" "$WEB_IMAGE"
@@ -97,6 +108,20 @@ status() {
     printf 'web   %s .env: ' $WEB_TARGET; wget -q -O- http://$WEB_TARGET/.env | head -1 || echo unreachable
     printf 'redis %s ' $REDIS_TARGET; (printf 'PING\r\n'; sleep 1) | nc -w 2 $REDIS_TARGET 6379 | head -1 || echo unreachable
     printf 'pg    %s port 5432: ' $PG_TARGET; nc -z -w 2 $PG_TARGET 5432 && echo open || echo closed"
+  audit_accounts
+}
+
+# Whether the audit accounts can log in. Outside a run both must say they
+# cannot: "L" (locked) for the SSH account, "absent" or "nologin" for the role.
+audit_accounts() {
+  local ssh_state role_state
+  ssh_state=$(docker exec "$SSH_CONTAINER" passwd -S "$SSH_AUDIT_USER" 2>/dev/null) \
+    && ssh_state=$(echo "$ssh_state" | awk '{print $2}') || ssh_state="unknown (not answering)"
+  role_state=$(docker exec "$PG_CONTAINER" psql -U postgres -tAc \
+    "SELECT CASE WHEN rolcanlogin THEN 'login' ELSE 'nologin' END FROM pg_roles WHERE rolname = '$PG_AUDIT_ROLE'" \
+    2>/dev/null) || role_state="unknown (not answering)"
+  printf 'audit %s on ssh: %s\n' "$SSH_AUDIT_USER" "$ssh_state"
+  printf 'audit %s on pg: %s\n' "$PG_AUDIT_ROLE" "${role_state:-absent}"
 }
 
 down() {

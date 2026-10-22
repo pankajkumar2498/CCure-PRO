@@ -157,6 +157,8 @@ PREFIXES: dict[str, str] = {
     "db.audit_hardening": "infra",
     "db.email_canonical": "infra",
     "db.fork_safety": "infra",
+    # G2 (C5): the CHECK-constraint SQL helper both model modules share.
+    "db.constraint_sql": "infra",
     "core.celery_app": "infra",
     "core.redis_client": "infra",
     "core.rate_limit_middleware": "infra",
@@ -246,6 +248,8 @@ PREFIXES: dict[str, str] = {
     "core.remediation": "remediation",
     "routers.remediation": "remediation",
     "core.credential_vault": "credential_vault",
+    # G2 (C5): the vault's model, moved out of db/models/compliance.py.
+    "db.models.credentials": "credential_vault",
     "routers.credentials": "credential_vault",
     "core.scan_policy": "scan_policy",
     "routers.scan_policies": "scan_policy",
@@ -783,7 +787,9 @@ CEILINGS = {
     # enrichment) took the port inventory out of the 16. G1's C1 (the routers
     # dispatch by name) took the task hub out of both.
     "largest_cycle": 14,
-    "largest_cycle_top_level": 11,
+    # G2's model move (the credential vault's model out of the compliance
+    # file) broke the top-level cycle into 5, 2 and 2.
+    "largest_cycle_top_level": 5,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
     # network checks register their plugins with the check kernel) removed 2;

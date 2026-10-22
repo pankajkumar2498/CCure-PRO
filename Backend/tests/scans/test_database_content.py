@@ -219,7 +219,7 @@ def test_host_rules_are_never_selected_for_a_database_scan():
 
 
 def test_the_database_credential_type_is_usable():
-    from db.models.compliance import (
+    from db.models.credentials import (
         CREDENTIAL_TYPE_DATABASE,
         CREDENTIAL_TYPES,
         USABLE_CREDENTIAL_TYPES,
@@ -230,7 +230,7 @@ def test_the_database_credential_type_is_usable():
 
 
 def test_every_database_transport_matches_a_supported_engine():
-    from db.models.compliance import DATABASE_TRANSPORTS, TRANSPORTS
+    from db.models.credentials import DATABASE_TRANSPORTS, TRANSPORTS
 
     assert set(DATABASE_TRANSPORTS) == set(SUPPORTED_ENGINES)
     assert set(DATABASE_TRANSPORTS) <= set(TRANSPORTS)
@@ -243,7 +243,7 @@ def test_reserved_transports_are_admitted_by_the_column_but_not_offered():
     next phase adds a collector; the API is not, so nobody can save a
     credential nothing would use.
     """
-    from db.models.compliance import TRANSPORTS, USABLE_TRANSPORTS
+    from db.models.credentials import TRANSPORTS, USABLE_TRANSPORTS
 
     assert "oracle" in TRANSPORTS and "mongodb" in TRANSPORTS
     assert "oracle" not in USABLE_TRANSPORTS
@@ -267,7 +267,7 @@ def test_the_transport_check_constraint_matches_the_model():
     import importlib.util
     from pathlib import Path
 
-    from db.models.compliance import TRANSPORTS as MODEL_TRANSPORTS
+    from db.models.credentials import TRANSPORTS as MODEL_TRANSPORTS
 
     path = (
         Path(__file__).resolve().parents[2]

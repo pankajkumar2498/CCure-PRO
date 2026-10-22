@@ -54,7 +54,6 @@ from db.base import (
 from db.models import Asset
 from db.models.compliance import (
     ComplianceControl,
-    ComplianceCredential,
     ComplianceEvidenceFile,
     ComplianceException,
     ComplianceFinding,
@@ -71,6 +70,7 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
+from db.models.credentials import ComplianceCredential
 from core.rate_limiter import limiter
 
 log = logging.getLogger("ccure.compliance")

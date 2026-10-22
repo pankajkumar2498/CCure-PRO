@@ -34,7 +34,7 @@ from typing import Any, Dict, Optional
 from ccure_platform import api as platform_api
 from core.security_crypto import decrypt_credential, encrypt_credential
 from db.base import gen_compliance_credential_id
-from db.models.compliance import (
+from db.models.credentials import (
     AUTH_METHOD_NTLM_HASH,
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,

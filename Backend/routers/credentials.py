@@ -57,7 +57,7 @@ from core import credential_vault
 from core.security_crypto import encrypt_credential
 from db.base import get_db
 from db.models import ComplianceCredential
-from db.models.compliance import (
+from db.models.credentials import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
     USABLE_AUTH_METHODS,

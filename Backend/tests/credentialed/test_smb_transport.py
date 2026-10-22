@@ -500,7 +500,7 @@ def test_remote_registry_state_is_unknown_until_it_is_measured():
 
 
 def test_smb_is_a_usable_transport_for_a_windows_credential():
-    from db.models.compliance import (
+    from db.models.credentials import (
         CREDENTIAL_TYPE_WINDOWS,
         TRANSPORT_SMB,
         USABLE_TRANSPORTS,
@@ -517,7 +517,7 @@ def test_winrm_remains_the_default_windows_transport():
     every check, where SMB drives the subset readable from WMI and the registry.
     Neither is a superset, and the default must stay the deeper one.
     """
-    from db.models.compliance import CREDENTIAL_TYPE_WINDOWS, TRANSPORT_WINRM
+    from db.models.credentials import CREDENTIAL_TYPE_WINDOWS, TRANSPORT_WINRM
     from routers.credentials import TYPE_DEFAULTS
 
     assert TYPE_DEFAULTS[CREDENTIAL_TYPE_WINDOWS]["transport"] == TRANSPORT_WINRM

@@ -18,7 +18,7 @@ from core.celery_app import celery_app
 from db.base import SessionLocal, utcnow
 from db.models import AssetVulnerability, Scan
 from ccure_platform import api as platform_api
-from db.models.compliance import CREDENTIAL_TYPE_DATABASE, CREDENTIAL_TYPE_SSH
+from db.models.credentials import CREDENTIAL_TYPE_DATABASE, CREDENTIAL_TYPE_SSH
 from engines.credentialed.coverage import (
     correlate_listeners,
     credentialed_coverage,

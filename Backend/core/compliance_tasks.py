@@ -20,7 +20,6 @@ from db.base import SessionLocal
 from db.models import Asset, Service
 from db.models.compliance import (
     ComplianceControl,
-    ComplianceCredential,
     ComplianceException,
     ComplianceFinding,
     ComplianceFindingHistory,
@@ -34,6 +33,7 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
+from db.models.credentials import ComplianceCredential
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 

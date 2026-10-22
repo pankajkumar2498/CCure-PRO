@@ -15,7 +15,7 @@ than at the moment somebody saved it.
 """
 
 import pytest
-from db.models.compliance import (
+from db.models.credentials import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,
@@ -66,7 +66,7 @@ def test_the_api_refuses_a_kerberos_credential():
 
 
 def test_windows_credentials_are_not_offered_kerberos():
-    from db.models.compliance import CREDENTIAL_TYPE_WINDOWS
+    from db.models.credentials import CREDENTIAL_TYPE_WINDOWS
     from routers.credentials import TYPE_AUTH_MATRIX
 
     assert "kerberos" not in TYPE_AUTH_MATRIX[CREDENTIAL_TYPE_WINDOWS]

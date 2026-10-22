@@ -291,6 +291,7 @@ RULES: tuple[Rule, ...] = (
             "db.models.amt",
             "db.models.assets",
             "db.models.compliance",
+            "db.models.credentials",  # the credential vault's (G2)
             "db.models.findings",
             "db.models.scan_policies",
             "db.models.scan_reports",

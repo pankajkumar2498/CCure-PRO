@@ -325,7 +325,7 @@ def main() -> int:
         print(f"  (could not read the collector registry: {exc})")
 
     try:
-        from db.models.compliance import USABLE_CREDENTIAL_TYPES
+        from db.models.credentials import USABLE_CREDENTIAL_TYPES
 
         print(
             f"  credential types the API will create       : {USABLE_CREDENTIAL_TYPES}"

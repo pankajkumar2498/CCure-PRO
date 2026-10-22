@@ -14,7 +14,7 @@ unit test of the resolver could never have caught:
 """
 
 import pytest
-from db.models.compliance import (
+from db.models.credentials import (
     CREDENTIAL_TYPE_DATABASE,
     CREDENTIAL_TYPE_SSH,
     CREDENTIAL_TYPE_WINDOWS,

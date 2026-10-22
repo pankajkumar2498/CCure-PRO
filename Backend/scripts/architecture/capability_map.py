@@ -808,12 +808,16 @@ CEILINGS = {
     # phase-scan and traditional-scan routers' imports of the hub. G1's C2
     # (the hub split into scans/tasks/, the scans capability) made its six
     # imports of scans internals internal: a reclassification, not a change.
-    "lateral_edges": 59,
+    # G2 (C5) the credential vault's read of scan_schedules (scheduling counts
+    # its own references now).
+    "lateral_edges": 58,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
     # its other table access the scans capability's (a reclassification).
-    "foreign_table_references": 73,
+    # G2 (C5): compliance, the credentialed audit and scheduling stopped
+    # reading compliance_credentials, and the vault scan_schedules.
+    "foreign_table_references": 69,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     "foreign_table_writes": 16,
 }

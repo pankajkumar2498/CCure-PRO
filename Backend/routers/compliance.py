@@ -70,7 +70,6 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from db.models.credentials import ComplianceCredential
 from core.rate_limiter import limiter
 
 log = logging.getLogger("ccure.compliance")
@@ -2428,13 +2427,13 @@ def apply_remediation(
     cred_id = None
 
     if payload.credential_id:
-        cred = (
-            db.query(ComplianceCredential)
-            .filter_by(id=payload.credential_id, tenant_id=user.org_id)
-            .first()
-        )
-        if not cred:
-            raise HTTPException(status_code=404, detail="Stored credential not found")
+        # Through the credential vault, which owns the table (G2).
+        try:
+            cred = credential_vault.get_for_org(db, user.org_id, payload.credential_id)
+        except credential_vault.CredentialNotFound:
+            raise HTTPException(
+                status_code=404, detail="Stored credential not found"
+            ) from None
         cred_id = cred.id
         username = cred.username
         enc_password = cred.encrypted_password
@@ -2883,13 +2882,13 @@ def rollback_remediation_request(
     cred_id = None
 
     if payload.credential_id:
-        cred = (
-            db.query(ComplianceCredential)
-            .filter_by(id=payload.credential_id, tenant_id=user.org_id)
-            .first()
-        )
-        if not cred:
-            raise HTTPException(status_code=404, detail="Stored credential not found")
+        # Through the credential vault, which owns the table (G2).
+        try:
+            cred = credential_vault.get_for_org(db, user.org_id, payload.credential_id)
+        except credential_vault.CredentialNotFound:
+            raise HTTPException(
+                status_code=404, detail="Stored credential not found"
+            ) from None
         cred_id = cred.id
         username = cred.username
         enc_password = cred.encrypted_password

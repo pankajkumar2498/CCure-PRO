@@ -33,7 +33,6 @@ from db.models.compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
-from db.models.credentials import ComplianceCredential
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -1239,15 +1238,18 @@ def _resolve_remediation_credentials(
         stored_cred_id = request.credential_id
 
     if stored_cred_id:
-        cred = db.query(ComplianceCredential).filter_by(id=stored_cred_id).first()
-        if cred:
-            username = cred.username
-            port = cred.port
-            auth_method = cred.auth_method
-            if cred.encrypted_password:
-                dec_password = decrypt_credential(cred.encrypted_password)
-            if cred.encrypted_key_content:
-                dec_key_content = decrypt_credential(cred.encrypted_key_content)
+        # The credential vault looks the row up and decrypts it (G2), in the form
+        # this function always used: credential_vault.stored_secrets says how it
+        # differs from what the collectors are given.
+        from core import credential_vault
+
+        stored = credential_vault.stored_secrets(db, stored_cred_id)
+        if stored:
+            username = stored["username"]
+            port = stored["port"]
+            auth_method = stored["auth_method"]
+            dec_password = stored["password"]
+            dec_key_content = stored["key_content"]
     elif request and request.auth_method:
         username = request.username
         port = request.port or 22

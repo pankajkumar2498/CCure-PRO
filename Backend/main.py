@@ -69,6 +69,7 @@ from routers.scan_schedules import router as scan_schedules_router
 import ccure_audit.offboarding  # noqa: F401,E402
 import ccure_audit.preferences  # noqa: F401,E402  (Audit's user-preference block)
 import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's category)
+import core.scheduling.credential_references  # noqa: F401,E402  (answers the vault)
 
 # The worker's task modules — core/celery_app.py's include list — loaded here
 # once, as a worker loads them at start-up. Since G1 (C1) no router imports a

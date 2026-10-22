@@ -19,7 +19,7 @@ from ccure_platform.api import (
     resolve_active_organisation,
 )
 from db.base import SessionLocal
-from db.models import ComplianceCredential
+from core import credential_vault
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
 from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -205,19 +205,16 @@ async def scan_credentialed(
         db = SessionLocal()
         try:
             target_org_id = resolve_active_organisation(user, org_id)
-            cred = (
-                db.query(ComplianceCredential)
-                .filter(
-                    ComplianceCredential.id == req.credential_id,
-                    ComplianceCredential.tenant_id == target_org_id,
+            # Through the credential vault, which owns the table (G2).
+            try:
+                cred = credential_vault.get_for_org(
+                    db, target_org_id, req.credential_id
                 )
-                .first()
-            )
-            if not cred:
+            except credential_vault.CredentialNotFound:
                 raise HTTPException(
                     status_code=404,
                     detail="Stored credential not found or access denied.",
-                )
+                ) from None
             # An explicit port on the request wins. Previously the stored
             # credential's port overwrote it unconditionally, so the field was
             # dead whenever a credential was named and an operator could not

@@ -927,7 +927,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 288,
+      "line": 287,
       "function": "_may_bypass_maker_checker",
       "mechanism": "has_permission",
       "permission": "audit.compliance.approve_exception",
@@ -937,7 +937,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 493,
+      "line": 492,
       "function": "get_marketplace_frameworks",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -947,7 +947,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 576,
+      "line": 575,
       "function": "install_marketplace_framework",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_frameworks",
@@ -957,7 +957,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 718,
+      "line": 717,
       "function": "uninstall_marketplace_framework",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_frameworks",
@@ -967,7 +967,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 753,
+      "line": 752,
       "function": "list_policies",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -977,7 +977,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 805,
+      "line": 804,
       "function": "get_policy_rules",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -987,7 +987,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 878,
+      "line": 877,
       "function": "update_compliance_rule",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_rules",
@@ -997,7 +997,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 901,
+      "line": 900,
       "function": "update_compliance_rule",
       "mechanism": "has_permission",
       "permission": "audit.compliance.manage_shared_rules",
@@ -1007,7 +1007,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 957,
+      "line": 956,
       "function": "create_policy_baseline",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_rules",
@@ -1017,7 +1017,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1054,
+      "line": 1053,
       "function": "trigger_compliance_scan",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.scan",
@@ -1027,7 +1027,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1170,
+      "line": 1169,
       "function": "list_findings",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1037,7 +1037,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1347,
+      "line": 1346,
       "function": "attest_manual_control",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.attest",
@@ -1047,7 +1047,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1504,
+      "line": 1503,
       "function": "list_framework_controls",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1057,7 +1057,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1709,
+      "line": 1708,
       "function": "upload_control_evidence",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.attest",
@@ -1067,7 +1067,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1904,
+      "line": 1903,
       "function": "list_control_evidence",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1077,7 +1077,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1936,
+      "line": 1935,
       "function": "download_control_evidence",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1087,7 +1087,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 1973,
+      "line": 1972,
       "function": "delete_control_evidence",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.attest",
@@ -1097,7 +1097,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2016,
+      "line": 2015,
       "function": "list_scan_runs",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1107,7 +1107,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2049,
+      "line": 2048,
       "function": "get_scan_run",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1117,7 +1117,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2107,
+      "line": 2106,
       "function": "create_scan_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_schedules",
@@ -1127,7 +1127,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2166,
+      "line": 2165,
       "function": "list_scan_schedules",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1137,7 +1137,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2209,
+      "line": 2208,
       "function": "update_scan_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_schedules",
@@ -1147,7 +1147,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2245,
+      "line": 2244,
       "function": "delete_scan_schedule",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.manage_schedules",
@@ -1157,7 +1157,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2291,
+      "line": 2290,
       "function": "create_credential",
       "mechanism": "require_authorized",
       "permission": "audit.credential.manage",
@@ -1167,7 +1167,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2298,
+      "line": 2297,
       "function": "create_credential",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1177,7 +1177,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2338,
+      "line": 2337,
       "function": "list_credentials",
       "mechanism": "require_authorized",
       "permission": "audit.credential.read",
@@ -1187,7 +1187,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2341,
+      "line": 2340,
       "function": "list_credentials",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1197,7 +1197,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2351,
+      "line": 2350,
       "function": "delete_credential",
       "mechanism": "require_authorized",
       "permission": "audit.credential.delete",
@@ -1207,7 +1207,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2358,
+      "line": 2357,
       "function": "delete_credential",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1217,7 +1217,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2382,
+      "line": 2381,
       "function": "apply_remediation",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.remediate",
@@ -1227,7 +1227,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2548,
+      "line": 2547,
       "function": "list_remediation_requests",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1237,7 +1237,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2641,
+      "line": 2640,
       "function": "approve_remediation_request",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.approve_exception",
@@ -1247,7 +1247,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2758,
+      "line": 2757,
       "function": "cancel_remediation_request",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.remediate",
@@ -1257,7 +1257,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 2819,
+      "line": 2818,
       "function": "rollback_remediation_request",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.remediate",
@@ -1267,7 +1267,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 3015,
+      "line": 3014,
       "function": "request_exception_waiver",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.attest",
@@ -1277,7 +1277,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 3068,
+      "line": 3067,
       "function": "approve_exception_waiver",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.approve_exception",
@@ -1287,7 +1287,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 3135,
+      "line": 3134,
       "function": "get_dashboard_summary",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1297,7 +1297,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 3980,
+      "line": 3979,
       "function": "download_statement_of_applicability",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1307,7 +1307,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 4098,
+      "line": 4097,
       "function": "download_executive_compliance_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1317,7 +1317,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 4248,
+      "line": 4247,
       "function": "get_compliance_gap_analysis",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1327,7 +1327,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 4862,
+      "line": 4861,
       "function": "download_nist_csf_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1337,7 +1337,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 4936,
+      "line": 4935,
       "function": "download_cis_v8_1_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1347,7 +1347,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 5001,
+      "line": 5000,
       "function": "download_soc2_type2_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1357,7 +1357,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 5092,
+      "line": 5091,
       "function": "download_cert_in_2022_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1367,7 +1367,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 5334,
+      "line": 5333,
       "function": "download_pci_dss_v4_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1377,7 +1377,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 5545,
+      "line": 5544,
       "function": "download_dpdp_2023_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1387,7 +1387,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 5618,
+      "line": 5617,
       "function": "download_gdpr_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1397,7 +1397,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 5972,
+      "line": 5971,
       "function": "download_nist_800_53_r5_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1407,7 +1407,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 6338,
+      "line": 6337,
       "function": "download_iec_62443_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1417,7 +1417,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 6661,
+      "line": 6660,
       "function": "download_nist_800_82_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1427,7 +1427,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 7314,
+      "line": 7313,
       "function": "download_nerc_cip_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1437,7 +1437,7 @@
     },
     {
       "file": "routers/compliance.py",
-      "line": 7383,
+      "line": 7382,
       "function": "download_nis2_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1517,7 +1517,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 289,
+      "line": 286,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "permission": null,

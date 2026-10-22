@@ -29,7 +29,7 @@ and are never logged, returned or written to the audit trail.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ccure_platform import api as platform_api
 from core.security_crypto import decrypt_credential, encrypt_credential
@@ -296,6 +296,45 @@ def connection_material(cred: ComplianceCredential) -> Dict[str, Any]:
     return material
 
 
+def stored_secrets(db: Session, credential_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Every secret one stored credential holds, decrypted, with its username,
+    port and auth method; ``None`` when there is no such credential.
+
+    The form compliance remediation has always used, moved here unchanged by
+    G2 (C5) from ``core/compliance_tasks.py``:
+
+    * the stored ``username``, not ``principal()``;
+    * the password and the private key, each decrypted whenever the row holds
+      one, whatever the auth method — so a key credential that also stores a
+      password, for sudo, keeps it;
+    * looked up by id alone. The remediation routes check that the credential
+      belongs to the caller's organisation before its id reaches the task.
+
+    ``connection_material``, which the collectors use, differs on all three.
+    Making remediation use it would change what a remediation authenticates
+    with, and is a decision of its own (refactoring log §7).
+    """
+    cred = db.query(ComplianceCredential).filter_by(id=credential_id).first()
+    if cred is None:
+        return None
+    return {
+        "username": cred.username,
+        "port": cred.port,
+        "auth_method": cred.auth_method,
+        "password": (
+            decrypt_credential(cred.encrypted_password)
+            if cred.encrypted_password
+            else None
+        ),
+        "key_content": (
+            decrypt_credential(cred.encrypted_key_content)
+            if cred.encrypted_key_content
+            else None
+        ),
+    }
+
+
 def create(
     db: Session,
     *,
@@ -377,6 +416,43 @@ def create(
     return cred
 
 
+#: Who refers to a stored credential, asked when one is deleted:
+#: ``counter(db, org_id, credential_id) -> int``. The vault does not read other
+#: capabilities' tables to find out (G2, C5). The capability holding the
+#: references registers its own counter, as a module answers a user purge
+#: (``ccure_platform/offboarding.py``). Scheduling registers
+#: ``SCAN_SCHEDULE_REFERENCES`` from ``core/scheduling/credential_references.py``,
+#: which ``main.py`` imports; ``tests/repo/test_credential_vault_boundary.py``
+#: checks the application has it.
+CredentialReferenceCounter = Callable[[Session, str, str], int]
+
+SCAN_SCHEDULE_REFERENCES = "scan_schedules"
+
+_reference_counters: Dict[str, CredentialReferenceCounter] = {}
+
+
+def register_reference_counter(name: str, counter: CredentialReferenceCounter) -> None:
+    """Register ``counter`` under a unique ``name`` (the same one again is a no-op)."""
+    existing = _reference_counters.get(name)
+    if existing is not None and existing is not counter:
+        raise ValueError(
+            f"A credential reference counter named {name!r} is already registered."
+        )
+    _reference_counters[name] = counter
+
+
+def registered_reference_counters() -> tuple:
+    return tuple(_reference_counters)
+
+
+def references(db: Session, org_id: str, credential_id: str) -> Dict[str, int]:
+    """How many records of each registered kind refer to the credential."""
+    return {
+        name: counter(db, org_id, credential_id)
+        for name, counter in tuple(_reference_counters.items())
+    }
+
+
 def delete(
     db: Session, *, actor, org_id: str, credential_id: str, request=None
 ) -> tuple:
@@ -393,13 +469,8 @@ def delete(
     cred = get_for_org(db, org_id, credential_id)
     name = cred.name
 
-    from db.models.scan_schedules import ScanSchedule
-
-    affected = (
-        db.query(ScanSchedule.id)
-        .filter(ScanSchedule.credential_id == cred.id, ScanSchedule.org_id == org_id)
-        .count()
-    )
+    # Scheduling's own count, registered with the vault (above).
+    affected = references(db, org_id, cred.id).get(SCAN_SCHEDULE_REFERENCES, 0)
 
     platform_api.log_audit_event(
         db,

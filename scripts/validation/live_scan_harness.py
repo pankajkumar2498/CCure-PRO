@@ -414,11 +414,11 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
     harness does what the commit's own route does, so a before and an after
     run each exercise their own code.
     """
+    from core import credential_vault
     from core.celery_app import registered_task
     from core.scan_scope import enforce_org_scan_scope, org_scan_scope
     from core.task_names import RUN_CREDENTIALED_SCAN
     from db.base import SessionLocal
-    from db.models import ComplianceCredential
     from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
 
     try:
@@ -436,14 +436,8 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
 
     db = SessionLocal()
     try:
-        cred = (
-            db.query(ComplianceCredential)
-            .filter(
-                ComplianceCredential.id == credential_id,
-                ComplianceCredential.tenant_id == org_id,
-            )
-            .one()
-        )
+        # As the route reads it since G2: through the credential vault.
+        cred = credential_vault.get_for_org(db, org_id, credential_id)
         target_port = cred.port
         target_transport = cred.transport or TRANSPORT_SSH
         use_tls = (cred.options or {}).get("use_tls")

@@ -120,10 +120,6 @@
   ],
   [
    "compliance",
-   "compliance_credentials"
-  ],
-  [
-   "compliance",
    "network_links"
   ],
   [
@@ -165,14 +161,6 @@
   [
    "config_audit",
    "compliance_tenant_frameworks"
-  ],
-  [
-   "credential_vault",
-   "scan_schedules"
-  ],
-  [
-   "credentialed_audit",
-   "compliance_credentials"
   ],
   [
    "dashboard",
@@ -316,10 +304,6 @@
   ],
   [
    "scheduling",
-   "compliance_credentials"
-  ],
-  [
-   "scheduling",
    "scan_policies"
   ],
   [
@@ -432,19 +416,15 @@
   ],
   [
    "core.compliance_tasks",
+   "core.credential_vault"
+  ],
+  [
+   "core.compliance_tasks",
    "db.models.assets:Asset"
   ],
   [
    "core.compliance_tasks",
-   "db.models.credentials:ComplianceCredential"
-  ],
-  [
-   "core.compliance_tasks",
    "db.models.findings:Service"
-  ],
-  [
-   "core.credential_vault",
-   "db.models.scan_schedules:ScanSchedule"
   ],
   [
    "core.cve_database",
@@ -511,12 +491,16 @@
    "db.models.compliance:ComplianceTenantFramework"
   ],
   [
-   "core.scheduling.dispatcher",
-   "core.scan_policy"
+   "core.scheduling.credential_references",
+   "core.credential_vault"
   ],
   [
    "core.scheduling.dispatcher",
-   "db.models.credentials:ComplianceCredential"
+   "core.credential_vault"
+  ],
+  [
+   "core.scheduling.dispatcher",
+   "core.scan_policy"
   ],
   [
    "core.scheduling.dispatcher",
@@ -569,10 +553,6 @@
   [
    "routers.compliance",
    "db.models.assets:Asset"
-  ],
-  [
-   "routers.compliance",
-   "db.models.credentials:ComplianceCredential"
   ],
   [
    "routers.findings",
@@ -975,7 +955,7 @@
   ],
   [
    "routers.credentialed",
-   "db.models.credentials:ComplianceCredential"
+   "core.credential_vault"
   ],
   [
    "routers.credentialed",

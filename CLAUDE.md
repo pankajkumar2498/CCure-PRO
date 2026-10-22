@@ -267,7 +267,7 @@ line while that happens, and it is a **ratchet in both directions**:
 
 - **Layering** — `Backend/scripts/architecture/layer_rules.py` forbids twelve
   directions of dependency (routers are the HTTP edge; models are leaves;
-  engines are libraries; `core/tasks.py` is not imported back; shared
+  engines are libraries; the scan task modules are not imported back; shared
   infrastructure imports no features; identity does not import scanning;
   `ccure_contracts` imports no module's code; the three `ccure_audit` rules
   below; …),
@@ -280,6 +280,39 @@ line while that happens, and it is a **ratchet in both directions**:
 - **Table ownership** — `Backend/scripts/architecture/table_ownership.yaml`
   names the owning module (`platform`, `audit`, later `policy_pro`/`rank`/`ir`)
   of every table. **A new table needs an entry in the same change.**
+
+**Scan tasks and stored credentials (Phase C, G1–G2, 22 Oct 2026).** Record:
+`docs/architecture/MODULAR_REFACTORING_LOG.md` §6.
+
+- **The scan tasks live in `scans/tasks/`**, one module per area: `phases`,
+  `credentialed`, `credentialed_sync`, `topology`, `maintenance`, `schedules`,
+  `reapers`, over the shared helpers in `common`.
+  - **Dispatch by name.** Nothing outside that package imports a task module;
+    code that starts a task dispatches it by name, with `core/task_names.py` and
+    `core.celery_app.registered_task`. `main.py` loads the task modules at
+    start-up through Celery's loader.
+  - **The registry is pinned.** `scripts/architecture/task_registry.json` pins
+    every task's name, queue, limits, options and signature
+    (`tests/repo/test_task_registry.py`).
+- **`core/tasks.py` is a compatibility facade.** It re-exports every name the
+  hub defined, and **refuses a patch**: setting an attribute on it raises.
+  - **Where to patch:** in the `scans.tasks` module whose code reads the name.
+    `mark_scan_failed`, for instance, is read inside `_settle_failure`, in
+    `scans.tasks.common`.
+  - **The guard:** `tests/repo/test_task_modules.py` checks every patch does
+    this.
+- **Only the credential vault touches `compliance_credentials`.** Its model is
+  `db/models/credentials.py` (`db.models.compliance` re-exports the names), and
+  only `core/credential_vault.py` and its router query it. Everything else asks
+  the vault:
+  - `get_for_org`, for a row in an organisation;
+  - `resolve` / `connection_material`, for what a collector connects with;
+  - `stored_secrets`, for compliance remediation, which deliberately keeps its
+    own form;
+  - registered **reference counters**, which say how many records a deletion
+    leaves without a credential (scheduling registers its own).
+
+  `tests/repo/test_credential_vault_boundary.py` enforces this.
 
 Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
@@ -1826,7 +1859,8 @@ compounded, and each is worth keeping in mind separately:
   identical error on _its_ first query. Nothing was written.
   `core.scan_control.force_terminal_status` is the answer: plain SQL against
   `scans`, no mapper, no relationship, no model attribute. It is deliberately
-  the only helper there written that way. `core.tasks._settle_failure` tries
+  the only helper there written that way. `_settle_failure`
+  (`scans/tasks/common.py`) tries
   the ORM first (an audit entry and a notification are worth having) and falls
   back to it. **Never call `mark_scan_failed` directly from an `except` block.**
 
@@ -2079,8 +2113,8 @@ still the deeper transport.
   `login(user, "", domain, lmhash=…, nthash=…)` — passing both would let
   impacket fall back to the password when the hash is refused, which is two
   failed logons instead of one and hides which material the target rejected. The
-  hash is stored in `encrypted_password` but **must not leave
-  `_resolve_stored_credential` as `material["password"]`**: every transport
+  hash is stored in `encrypted_password` but **must not leave the credential
+  vault's `connection_material` as `material["password"]`**: every transport
   would present it as plaintext against the account. A value that is not 32 hex
   characters is refused rather than sent — an unparsed one produces a failed
   logon against a real account, which is a lockout caused by a typo.
@@ -2126,7 +2160,7 @@ so "the operator chose 22" and "nobody said anything" are the same row.
   attempt is made however many candidates were considered. A **rejected**
   credential is never retried on another port; only a transport failure —
   nothing answered — advances, which is what `_is_transport_failure` in
-  `core/tasks.py` decides. Retrying a rejection turns one failed logon into
+  `scans/tasks/credentialed.py` decides. Retrying a rejection turns one failed logon into
   three against an account the lockout control must not trip.
 
 - **Discovery is authoritative where it exists; a TCP probe is the fallback
@@ -3715,7 +3749,9 @@ never had (below).
   reserved). `domain` is a column rather than
   a prefix on `username` because NTLM wants `DOMAIN\user` and Kerberos wants
   `user@REALM`; `principal()` owns that mapping. Never put a secret in
-  `options` — it is returned to clients and logged.
+  `options` — it is returned to clients and logged. Its model is the credential
+  vault's, `db/models/credentials.py` (G2); only `core/credential_vault.py`
+  queries it, and the rest of the application asks that service.
 
 - **The catalogue holds checks as well as CVEs.** `vulnerability_definitions`
   gained `definition_type` (`cve` | `config_check` | `plugin_check` |

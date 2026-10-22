@@ -2585,6 +2585,162 @@ Import cost (first-party / all modules):
 - **The old SSH validation image** (`ccure-validation-ssh:ubuntu-24.04`) was removed on the
   owner's approval (22 Oct 2026).
 
+### G2 — C5: the credential vault becomes a capability of its own
+
+Commits `123cc33` (the model) and `c1192d1` (resolution through the vault), on top of `9c96582`.
+
+**The scope** (analysis §10, C5): "Credential vault capability. Model out of
+`db/models/compliance.py` (same table, alias kept); one API; `resolve()` used by credentialed
+audit, scheduling and compliance remediation." Unlocks: "Credentialed audit stops depending on
+compliance's model file".
+
+**The owner's terms (22 Oct):**
+
+- keep the encrypted records, the APIs, the permissions and scan behaviour unchanged;
+- keep the old model import paths as compatibility aliases, and route credential resolution
+  through the vault service;
+- run the credential API tests, the related regression tests, the architecture guards and a
+  credentialed live smoke test, and update `CLAUDE.md` where needed.
+
+"One API" was already true at the service level: S2 made both HTTP surfaces, `/credentials`
+and `/compliance/credentials`, adapters over `core.credential_vault`. G2 adds no route and
+removes none. Whether the legacy surface is retired is still D-3.
+
+#### The model — `123cc33`
+
+- **The move.** `db/models/credentials.py` holds `ComplianceCredential` and the 27
+  vocabularies its CHECK constraints are rendered from.
+  - **Verbatim:** all 28 definitions are AST-identical to the originals.
+  - **The data is untouched:** the same table, constraints and encrypted rows, and no
+    migration.
+- **The old import paths still work.**
+  - **The alias:** `db/models/compliance.py` re-exports all 28 names.
+  - **The registry:** it imports the class from its new module.
+  - **The test:** every old path resolves to the same object
+    (`tests/repo/test_credential_vault_boundary.py`).
+- **A shared helper.** `_sql_in_list`, used by both model files' constraints, moved to
+  `db/constraint_sql.py`, so neither model module imports the other for it.
+- **Imports.** Imports of the moved names name `db.models.credentials`, in the application,
+  its scripts and the tests.
+- **The platform rule.** `platform-is-shared-foundation` forbids the new model module to the
+  platform, as it forbids every Audit model; the identity-boundary test requires every model
+  module to be classified.
+
+#### Resolution through the vault — `c1192d1`
+
+| Reader                                     | Before                                          | After                               |
+| ------------------------------------------ | ----------------------------------------------- | ----------------------------------- |
+| The credentialed route                     | queried the table by id and organisation        | `credential_vault.get_for_org`      |
+| The two compliance remediation routes      | the same                                        | `get_for_org`                       |
+| The schedule dispatcher                    | the same                                        | `get_for_org`                       |
+| Compliance remediation's stored credential | queried by id and decrypted both secrets itself | `credential_vault.stored_secrets`   |
+| A credential's deletion                    | the vault counted `scan_schedules` rows itself  | scheduling's own registered counter |
+
+- **The three `get_for_org` callers.** The query is unchanged, scoped to the same
+  organisation, and each answers a missing credential as it did: the two 404s and the
+  dispatch error.
+- **`stored_secrets`** is the form remediation has always used, moved unchanged:
+
+  - the username as stored, not `principal()`;
+  - every secret the row holds, whatever the auth method, so a key credential that also
+    stores a sudo password keeps it;
+  - looked up by id alone. The routes check the organisation first.
+
+  The collectors' `connection_material` differs on all three. Choosing one is a decision
+  (§7).
+
+- **The reference counters.**
+  - **The registry:** the vault keeps one, the user-purge hook pattern.
+  - **Scheduling's answer:** `core/scheduling/credential_references.py`, imported by
+    `main.py`, registers the count the vault used to run.
+  - **Unchanged:** the API's `schedules_affected` and the audit event.
+  - **Newly tested:** nothing tested that figure before; a test now deletes a credential
+    through the API and finds the schedule's reference cleared.
+- **The live harness** reads the credential through `get_for_org`, as the route does. It
+  exists on every commit since S2.
+
+**The guards** (`tests/repo/test_credential_vault_boundary.py`):
+
+- **Only the vault's modules import the credential model,** lazily or not. The two
+  re-exporters are the exception.
+- **The vault depends on nothing beside or above it.**
+- **The application registers scheduling's counter,** and a counter cannot be replaced under
+  its name.
+
+#### Verification
+
+| Check                                                                                                                            | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The model move's nearest groups (`repo`, `security`, `credentialed`, `compliance`, the schedule and database-content scan tests) | 2,362 passed, **2 failed**. The new model module needed classifying for the platform rule; the RBAC inventory test had run before the commit hook re-formatted two routers, and the regenerated inventory matched `HEAD`. After both: the failed tests and the boundary tests, 95 passed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Commit B's nearest groups (the same, and `rbac`)                                                                                 | 2,990 passed, 2 skipped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Full suite, `c1192d1`, a clean worktree                                                                                          | **8,082 passed, 0 failed, 211 skipped** (15 min 58 s)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Interfaces against `9c96582`                                                                                                     | Identical after each commit: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| The model move, statically                                                                                                       | 28 of 28 definitions AST-identical                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Credentialed live pair, `9c96582` against `c1192d1`, the same target instances                                                   | Four runs, two of each commit in alternation; each exited 0 and authenticated, the secret check passed, and the credentials were revoked and confirmed. **Every stored result is identical across all four:** scan rows, phases, task results, the verdicts (86, 86, 49) and the 4 assets, 5 services and 13 findings. The comparison reported one difference in three pairings, including **both same-commit pairings**: two of the host audit's progress frames, "Collected Software Inventory" and "Collected Login Events" (both 45 %), in either order. Both orders occur on both commits. The Linux collector runs its sections in a thread pool and reports each as it finishes, so this is timing, not G2. The fourth pairing (`9c96582` against the second `c1192d1`) is identical apart from time. Recorded as a known variation in the validation guide; the comparison still reports it |
+| Mutations                                                                                                                        | 6 of 6 caught, each in its own worktree of `c1192d1`: a router importing the credential model again (boundary test and ratchet); the vault reading `scan_schedules` again (the lower-layers test and ratchet); scheduling's counter not registered (the registration test, and the API deletion reporting 0 schedules); a key credential losing its stored password in `stored_secrets` (remediation test); the dispatcher looking the credential up in another organisation (the scheduled-dispatch test); the alias dropping a name (alias test)                                                                                                                                                                                                                                                                                                                                                  |
+
+#### Coupling
+
+| Measure                           | `9c96582` |    `123cc33` | `c1192d1` |
+| --------------------------------- | --------: | -----------: | --------: |
+| Capability cycle, all imports     |        14 |           14 |        14 |
+| Capability cycle, top-level       |        11 | 5 (and 2, 2) |         5 |
+| Upward edges                      |        31 |           31 |        31 |
+| Lateral edges                     |        59 |           59 |        58 |
+| Foreign-table references / writes |   73 / 16 |      73 / 16 |   69 / 16 |
+
+- **What the model move changed.**
+  - **The vault and its router** no longer import the compliance model file.
+  - **The compatibility alias** adds the compliance model file's import of the vault's: the
+    direction compliance already depended in.
+  - **The top-level capability cycle** falls 11 → 5, because the vault's top-level
+    dependency on compliance is gone.
+- **What routing through the vault changed.**
+  - **Foreign-table references (four gone):** compliance's, the credentialed audit's and
+    scheduling's reads of `compliance_credentials`, and the vault's of `scan_schedules`.
+  - **Edges:** each former reader now has an edge to `core.credential_vault`, replacing its
+    edge to the model.
+- **The vault now depends only on lower layers:** the platform, infrastructure, the scan
+  kernel's scope admission, and the credentialed engines it tests a credential with.
+- **It is still in the capability cycle.** That's not its own doing: `routers.credentialed`
+  (the credentialed audit's) reaches up into it and into the scans capability. Classifying
+  that router as the scans capability's API, the decision G1 recorded, would take the vault
+  and the credentialed audit out of the cycle (14 → 12, upward edges 31 → 29), measured.
+
+**Import cost** rises slightly (first-party modules, `9c96582` → `c1192d1`):
+
+| Module                       | Before | After |
+| ---------------------------- | -----: | ----: |
+| `core.credential_vault`      |     63 |    65 |
+| `routers.credentials`        |     66 |    68 |
+| `core.scheduling.dispatcher` |     34 |    36 |
+| `core.compliance_tasks`      |     61 |    63 |
+| `routers.credentialed`       |     75 |    79 |
+
+The two new modules account for this. Importing any `db.models.*` module runs the model
+registry, which loads every model, so moving the credential model is a structural
+decoupling, not an import-time saving.
+
+#### What G2 leaves, and what it found
+
+- **The vault's cycle membership:** see Coupling, and §7.
+- **Two credential forms.** Remediation authenticates with every secret the row stores and
+  the username as stored. The collectors use `principal()` and only the secret their method
+  needs. G2 kept both, in the vault, side by side (§7).
+- **Remediation copies ciphertext out of the vault's table.**
+  - **What happens:** the maker-checker routes copy a stored credential's _encrypted_
+    password and key into `compliance_remediation_requests`, and into the task's arguments
+    for an emergency bypass.
+  - **The consequence:** a second copy of the secret, which outlives the credential's
+    deletion.
+  - **Status:** pre-existing and unchanged (§7).
+- **The load-profile ratchet** records that the topology engine and the web-scan router now
+  load the vault's model module. Both load the model registry, and the class was already
+  loaded as part of the compliance file, so this is a reclassification.
+- **Line endings.** `tests/compliance/test_compliance_remediation.py` is CRLF in this
+  working tree. Git stores it LF, before and after, and the commit's diff is the added lines
+  only.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
@@ -2611,5 +2767,8 @@ Import cost (first-party / all modules):
 | new | Give the Nuclei probe's corroboration merge a deterministic tie-break, for example severity and then template id. Today a severity tie keeps whichever template Nuclei printed first, so the stored finding's id can change between runs of the same code                                                                                                                                        | T0, §6                                                             |
 | new | Write the evidence's NVD reference only for a real CVE in `scans/asset_syncer.py`, as `core/tasks.py` already does. Today every network-check and Nuclei finding's evidence links its minted `CCURE-CHK-…` id to an NVD page that does not exist                                                                                                                                                 | T0, §6                                                             |
 | new | Whether the Phase 3.5 pipeline and the standalone credentialed audit should record a configuration finding under the same detection method. Today one files it as `credentialed_package` and the other as `config_check`                                                                                                                                                                         | T0, §6                                                             |
-| new | Classify `routers.credentialed` as the scans capability's API, as `routers.phase_scans` is. It serves one route, `POST /scan/credentialed`, which creates a scan. Measured, not committed: credentialed audit leaves the capability cycle (14 → 13, top-level 11 → 10) and upward edges fall 31 → 29                                                                                             | G1, §6                                                             |
+| new | Classify `routers.credentialed` as the scans capability's API, as `routers.phase_scans` is. It serves one route, `POST /scan/credentialed`, which creates a scan. Measured, not committed: after G2, the credentialed audit and the credential vault both leave the capability cycle (14 → 12) and upward edges fall 31 → 29                                                                     | G1, G2, §6                                                         |
 | new | Import the orchestrator inside `scans.tasks.common`'s two functions that use it, so the credentialed and topology task modules load without the scan engines (Scapy, nmap). Today `common` imports it at module level, as the hub did                                                                                                                                                            | G1, §6                                                             |
+| new | Choose one credential form. Compliance remediation authenticates with every secret a credential row stores and the username as stored (`credential_vault.stored_secrets`); the collectors use `principal()` and only the secret their auth method needs (`connection_material`). G2 kept both                                                                                                    | G2, §6                                                             |
+| new | Whether a remediation request should keep copying a stored credential's encrypted password and key into `compliance_remediation_requests`, and into the task's arguments for an emergency bypass. The copy outlives the credential's deletion; referring to the credential by id, as scans and schedules do, would not                                                                           | G2, §6                                                             |
+| new | Teach `compare_live_scans.py` to tolerate the credentialed collector's section frames in either order (consecutive collection frames at one percentage), as B3 taught it discovery's sampled frames. Measured in G2: two runs of the same commit differ only in that order. Until then the comparison reports it, and a pair is repeated to place it                                             | G2, §6                                                             |

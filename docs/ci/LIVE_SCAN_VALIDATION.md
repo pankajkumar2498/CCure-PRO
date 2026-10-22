@@ -300,10 +300,10 @@ two commits run on the same image and the same targets, not against this list.
 
 ## Known variation between runs
 
-Three differences can appear between runs of the same code. B3 measured the
-first two and T0 the third (refactoring log §6). The comparison tolerates the
-second and reports the other two. Before reading a reported one as a regression,
-repeat the runs in alternation (before, after, before, after).
+Four differences can appear between runs of the same code. B3 measured the
+first two, T0 the third and G2 the fourth (refactoring log §6). The comparison
+tolerates the second and reports the others. Before reading a reported one as a
+regression, repeat the runs in alternation (before, after, before, after).
 
 - **An extra Nuclei finding on the Redis target**, most often
   `CCURE-CHK-NUCLEI-CVE-2025-46817`.
@@ -340,6 +340,17 @@ repeat the runs in alternation (before, after, before, after).
     loading the host at once, stored `CCURE-CHK-NUCLEI-LARAVEL-ENV`. The evidence
     of the one run read for it names all three templates as matching.
   - **Status.** A defect in the probe's tie-break, recorded in the log's §7.
+
+**The order of the credentialed host audit's section frames.**
+
+- **What varies:** two of the standalone host audit's progress frames, "Collected Software
+  Inventory" and "Collected Login Events", both at 45 %, arrive in either order.
+- **Why it happens:** the Linux collector runs its sections in a thread pool and reports each as
+  it finishes, so the order is whichever section finishes first.
+- **Measured** in G2, in four runs, two per commit in alternation: both orders occur on both
+  commits, and every stored result is identical.
+- **Status:** the comparison reports it as a difference. Repeat the pair to place it; a
+  difference in that order and nothing else is this.
 
 **The SSH target's DNS listener port.** Docker's embedded DNS listens inside every
 container on `127.0.0.11`, on a TCP port chosen when the container starts. The host

@@ -2378,6 +2378,213 @@ T0. All but the last are in §7.
 The image the SSH target used before T0, `ccure-validation-ssh:ubuntu-24.04`, is no longer used.
 It is kept until its removal is approved.
 
+### G1 — C1 and C2: the routers dispatch by name, and the task hub becomes `scans/tasks/`
+
+Commits `b2c4303` (C1), `9c47298` (C2) and `57b4d04` (a test the mutation check called for), on top of
+`92c224c`. G1 is the first code group of
+Phase C, approved by the owner on 22 Oct 2026 with the grouping proposed that day (T0, G1–G6, F).
+Phase C's record continues in this section, so that §7 keeps its number.
+
+**The scope** (analysis §10):
+
+- **C1.** "Dispatch by name everywhere. Routers stop importing `core.tasks` (`phase_scans`,
+  `traditional_scans`, `credentialed`, `assets`, `credentials`). A scan-creation service in the
+  scans capability replaces the credentialed router's use of `scan_orchestrator`, `db_helpers` and
+  `policy_binding`." Unlocks: "No capability imports the hub".
+- **C2.** "Split `core/tasks.py` into per-capability task modules … Every `name=` is kept; the
+  `include` list is updated." Unlocks: "Hub gone".
+- **The owner's terms (22 Oct):**
+  - keep every task name, queue, limit and beat entry, every API and permission, and scan
+    behaviour;
+  - retarget the 66 test patches, and guard against patching the facade's re-exports;
+  - run the full suite, show the task registry and the API interfaces unchanged, and compare
+    credentialed and unauthenticated live scans on the same target instances.
+
+#### C1 — `b2c4303`: the routers dispatch by name
+
+- **By-name dispatch.** `core/task_names.py` gains the four tasks the routers start: asset
+  discovery, the vulnerability audit, the traditional scan and AMT reconciliation. The hub
+  registers them under the constants, with their names unchanged.
+  - **The routers:** `phase_scans`, `traditional_scans`, `credentialed` and `assets` call
+    `registered_task(NAME).delay(...)`.
+  - **What that returns:** the registered task itself, so queues, limits, eager execution and a
+    patched `.delay` behave as before.
+- **Loading the task modules.** `main.py` loads the worker's task modules once at start-up
+  through Celery's loader: the include list a worker loads.
+  - **Why:** with no router importing them, the first by-name dispatch would otherwise import
+    the scan pipeline inside a request.
+  - **No static edge:** the loader takes module names as strings, so this adds no import edge
+    and does not undo the decoupling.
+- **The scan-creation service** (`scans/scan_creation.py`). It holds the credentialed route's
+  target expansion, the target ceiling (`MAX_CREDENTIALED_TARGETS`, moved from the hub) and the
+  scan row with its policy snapshot, all moved unchanged.
+  - **The route** no longer imports the orchestrator, `scan_helpers`, the persistence helpers or
+    the policy binding.
+  - **Logging** stays under the `ccure.api` logger.
+- **The credential vault decrypts its own rows.** `core.credential_vault.resolve()` and
+  `connection_material()` hold what the hub's `_resolve_stored_credential` did.
+  - **The hub's wrapper** reads the scan's organisation and delegates. The vault sits below the
+    scans capability, so it does not read the `scans` table.
+  - **The credentials route's validate call** uses the row it already found in its organisation,
+    instead of looking it up again unscoped.
+- **The layer rule.** `task-hub-is-a-leaf` now covers `routers`, `main` and `ccure_audit`.
+- **The interface probe.** `interface_snapshot` now records each task's queue, time limits,
+  retry and acknowledgement options and signature, and the beat entries' options and arguments.
+  - **The pin:** `scripts/architecture/task_registry.json` was written from `92c224c`.
+  - **The test:** `tests/repo/test_task_registry.py` compares the live registry with the pin.
+- **The live harness** (`4ee2abc`) follows the routes. It dispatches by name, and takes the
+  credentialed scan record from `scans.scan_creation` on a commit that has it and from the old
+  helpers on one that does not. So a before and an after run each exercise their own route.
+
+#### C2 — `9c47298`: `core/tasks.py` split into `scans/tasks/`
+
+| Module              | Lines | Tasks | Contents                                                                       |
+| ------------------- | ----: | ----: | ------------------------------------------------------------------------------ |
+| `common`            |   224 |     0 | the scoped orchestrator, cancellation, task ids, settling a failure            |
+| `credentialed_sync` |   814 |     0 | writing a credentialed audit's identity, services and findings                 |
+| `credentialed`      | 2,948 |     1 | the credentialed scan, host and database audits, configuration audit, 3.5      |
+| `topology`          |   234 |     1 | SNMP topology mapping and when a scan chains it                                |
+| `phases`            |   930 |     7 | host and asset discovery, the vulnerability audit, the sync tasks, traditional |
+| `maintenance`       |   135 |     3 | risk-acceptance expiry, AMT reconciliation, MAC vendors                        |
+| `schedules`         |   114 |     1 | recurring scans that are due                                                   |
+| `reapers`           |   362 |     2 | settling scans nothing is working on                                           |
+
+- **Moved verbatim.** Every one of the 55 definitions is AST-identical to the hub's.
+  - **The one exception:** the two lazy self-imports that chained phase 2 and phase 3 are
+    gone. The chained task is now a global of the same module.
+  - **Logging:** every module logs under `ccure.tasks`.
+  - **Imports:** each module has only the imports its own code reads.
+  - **Direction:** the modules import one another one way only, with `common` at the bottom and
+    `phases` at the top. The import-cycle ratchet holds.
+- **The worker.** It loads the six modules that define tasks (`core/celery_app.py`'s include
+  list) and no longer loads `core/tasks.py`.
+- **The facade** (`core/tasks.py`, 144 lines).
+  - **What it offers:** every name the hub defined (62, including the mail tasks and
+    `MAX_CREDENTIALED_TARGETS`), as the same objects.
+  - **What it refuses:** setting or deleting an attribute raises `AttributeError`. The message
+    names the module to patch.
+- **The layer rules.** `task-hub-is-a-leaf`, `services-do-not-speak-contracts` and
+  `reporting-below-http` forbid `scans.tasks` as they forbid `core.tasks`.
+- **The capability map.** `task_hub` is gone, and `core.tasks` and `scans.tasks` are the scans
+  capability.
+
+**The 66 patches.**
+
+- **45 are retargeted to the module whose code reads the name.**
+  - **Where one function calls another:** `mark_scan_failed` is read inside `_settle_failure`,
+    in `common`, so the four patches of it go there. The task that fails reaches it only through
+    that call.
+- **19 patch the mail tasks' `.delay`.** They now name `ccure_platform.identity.mail_tasks`.
+- **2 are removed.** In `tests/scans/test_tasks.py` both patched `create_completed_scan`, which
+  `run_host_discovery_task` never reads. They replaced nothing before the split. After it they
+  would raise, because `scans.tasks.phases` does not hold the name.
+
+**What else the tests needed.**
+
+- **Tests that read the hub's source.** These read it by path or with `inspect.getsource`, and
+  now read the `scans/tasks` modules.
+  - **Those that assert absence:** two of them, and the status-vocabulary check, which is a
+    subset test, would otherwise have passed silently on the facade.
+  - **Equivalence:** the option reads and status writes across the modules equal the old hub's.
+- **Imports.** Test imports name the defining module.
+  - **Why:** the CI selector chooses test groups by the names tests import and patch. A test
+    importing through the facade would not be selected when `scans/tasks/` changes.
+- **Indirect module references.** The end-to-end credentialed tests name the module they patch
+  themselves, instead of taking it from a fixture, which the static check cannot follow.
+
+**The guards** (`tests/repo/test_task_modules.py`):
+
+- **No patch through the facade,** in any form: a string target, a module alias in the
+  function's scope, or a direct assignment.
+- **Every patch on a task module replaces a name that module's own code reads.** A name a
+  module only re-exports is the hazard.
+- **The scan's forms are pinned** against a fixture, so a blind scanner cannot pass.
+- **The facade refuses at run time,** and offers all 62 names as their own objects.
+- **The worker loads the six task modules and not the facade.**
+
+#### Verification
+
+| Check                                                                                                                         | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full suite, C1 as first committed (`0b030a7`)                                                                                 | 8,055 passed, **2 failed**, 211 skipped. Both failures were the RBAC migration inventory: it was regenerated before black re-wrapped two routers in the commit hook, so its line numbers were stale. C1 was amended with the regenerated file (`b2c4303`; the only difference, `git diff --stat`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `tests/rbac` and `tests/repo`, `b2c4303`                                                                                      | 1,416 passed, 2 skipped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Full suite, `9c47298` (C2, the whole of G1), a clean worktree                                                                 | **8,069 passed, 0 failed, 211 skipped** (15 min 47 s). The skips are the same environment-dependent ones as every full run on this branch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Interfaces, `interface_snapshot --compare` against `92c224c`                                                                  | Identical after C1 and after C2: routes, limiter keys, the OpenAPI digest, every task's queue, limits, options and signature, the beat schedule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| The task registry against its pin                                                                                             | Byte-identical after C1 and after C2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| A worker started from the backend image (`celery inspect registered` with queue, limits and options), `92c224c` and `9c47298` | The same 36 tasks with the same attributes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| The split, statically                                                                                                         | All 55 definitions AST-identical to the hub's (the two self-imports aside)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Live, credentialed and unauthenticated, `92c224c` against `9c47298`, the same target instances                                | Both exit 0; the secret check passed and the credentials were revoked and confirmed after each. **Identical apart from time**, with nothing tolerated; `--strict` agrees. Each: the unauthenticated audit 7 findings; the Phase 3.5 and standalone host audits 86 verdicts each; the database audit 49; the stopped sweep cancelled; after the four, 4 assets, 5 services, 13 findings. The four targets kept the same container ids from before the first run to after the second                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Mutations                                                                                                                     | 15 mutations of `9c47298`, each in its own worktree, against `tests/repo` and the five test files with the most patches. **14 caught**: a patch through the facade, as a string (M1) or through an alias (M3); a patch on a module whose code does not read the name (M2); the facade accepting a patch (M4) or dropping a name (M5); the worker loading the facade (M6) or missing a task module (M7, caught by the worker test and the include-list pin, not by the registry test, because that test's process had already imported the module another way); a time limit (M8), a signature default (M9) or a beat entry (M10) changing; a router importing a task module (M11) or the orchestrator again (M12); the vault returning an NTLM hash as a password (M14); a task module importing the facade back (M15, a cycle). **Survived:** M13, the credentialed route's section fallback dropped from the service. Nothing tested it, before C1 moved it or after. `57b4d04` adds `tests/scans/test_scan_creation.py`, which catches it |
+
+#### Coupling and load profiles
+
+| Measure                           |     `92c224c` | C1 `b2c4303` | C2 `9c47298` |
+| --------------------------------- | ------------: | -----------: | -----------: |
+| Capability cycle, all imports     | 15 (and 4, 2) |           14 |           14 |
+| Capability cycle, top-level       |    12 (and 2) |           11 |           11 |
+| Upward edges                      |            37 |           31 |           31 |
+| Lateral edges                     |            67 |           65 |           59 |
+| Foreign-table references / writes |       79 / 17 |      78 / 17 |      73 / 16 |
+
+- **What C1 changed:** dependencies.
+  - **Upward edges:** the credentialed router's six into the scans capability's internals
+    went, and so did the assets and credentials routers' imports of the hub. One edge is new,
+    the credentialed router's call of `scans.scan_creation`.
+  - **Lateral edges:** the phase-scan and traditional-scan routers' imports of the hub.
+  - **Foreign references:** the hub's read of `compliance_credentials`.
+  - **The cycle:** the task hub left it.
+- **What C2 changed:** classification only. The hub became part of the scans capability, so
+  its six imports of scans internals and its reads of `scans` and `scan_phases` became
+  internal. Its other table access is now the scans capability's, so the baseline records
+  `scans -> web_scans` and writes to `assets` and the two findings tables, which were the hub's.
+  No dependency changed.
+
+Import cost (first-party / all modules):
+
+| Module                                                        |   `92c224c` |                                                         `9c47298` |
+| ------------------------------------------------------------- | ----------: | ----------------------------------------------------------------: |
+| `routers.credentialed`                                        | 149 / 1,591 |                 75 / 1,011: no Scapy, nmap, ReportLab or psycopg2 |
+| `routers.phase_scans`                                         | 149 / 1,466 | 143 / 1,455 (still loads the orchestrator through `scan_helpers`) |
+| `routers.traditional_scans`                                   | 142 / 1,458 |                                                       126 / 1,437 |
+| `main`                                                        | 283 / 1,946 |        301 / 1,967: the worker's task modules, loaded at start-up |
+| `core.tasks`                                                  | 140 / 1,456 |                  150 / 1,466 (the facade loads every task module) |
+| `scans.tasks.maintenance`, `.schedules`, `.reapers`           |           — |                                   13–14 / 484–485: no scan engine |
+| `scans.tasks.credentialed_sync`                               |           — |                                                          69 / 639 |
+| `scans.tasks.common`, `.topology`, `.credentialed`, `.phases` |           — |                                             127–142 / 1,217–1,453 |
+
+#### What G1 leaves, and what it found
+
+- **Credentialed audit is still in the capability cycle, through one edge.**
+  - **The edge:** `routers.credentialed -> scans.scan_creation`. The capability map (A2) puts
+    the router in the credentialed-audit capability, an engine layer, so its call into the
+    scans capability points up.
+  - **What the router is:** it serves one route, `POST /scan/credentialed`, which creates a
+    scan, as `routers.phase_scans` does in the scans capability.
+  - **What reclassifying it would do,** measured, not committed: credentialed audit leaves the
+    cycle (14 -> 13, top-level 11 -> 10), and upward edges fall 31 -> 29.
+  - **Decision:** a classification decision for the owner (§7). G1 leaves the map as A2 set it.
+- **The plan's "credentialed audit gets an application service of its own" is
+  `scans.tasks.credentialed`,** in the scans capability's orchestration layer.
+  - **Why there:** placed in the credentialed-audit capability, an engine layer, its writes to
+    findings and assets and its use of the scans internals would all be upward edges.
+- **`scans.tasks.common` imports the orchestrator at module level,** verbatim from the hub.
+  - **The effect:** the topology, credentialed and phase modules load the scan engines (Scapy,
+    nmap) at import.
+  - **Not affected:** the housekeeping modules do not import `common` and load 13–14 modules.
+  - **The fix:** importing it inside `_new_orchestrator` and `_bind_scan_scope` would let the
+    credentialed and topology modules load without them. A small follow-up (§7).
+- **`core.tasks.MAX_CREDENTIALED_TARGETS`** was absent at C1 alone, because the facade did not
+  exist yet. Nothing in the repository read it there: the live harness reads it from where it
+  lives. C2 restores it.
+- **Test selection follows the split.** `scripts/ci/select_tests.py` maps a change in
+  `scans/tasks/` to the groups whose tests import or patch that module: for example
+  `credentialed_sync.py` selects assets and topology, and `reapers.py` selects web. A change in
+  `core/tasks.py` used to select twelve groups.
+- **CLAUDE.md still names `core/tasks.py`** where it describes the scan pipeline. Every name
+  still resolves through the facade, read-only. The file is the owner's to revise.
+- **The old SSH validation image** (`ccure-validation-ssh:ubuntu-24.04`) was removed on the
+  owner's approval (22 Oct 2026).
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
@@ -2404,4 +2611,5 @@ It is kept until its removal is approved.
 | new | Give the Nuclei probe's corroboration merge a deterministic tie-break, for example severity and then template id. Today a severity tie keeps whichever template Nuclei printed first, so the stored finding's id can change between runs of the same code                                                                                                                                        | T0, §6                                                             |
 | new | Write the evidence's NVD reference only for a real CVE in `scans/asset_syncer.py`, as `core/tasks.py` already does. Today every network-check and Nuclei finding's evidence links its minted `CCURE-CHK-…` id to an NVD page that does not exist                                                                                                                                                 | T0, §6                                                             |
 | new | Whether the Phase 3.5 pipeline and the standalone credentialed audit should record a configuration finding under the same detection method. Today one files it as `credentialed_package` and the other as `config_check`                                                                                                                                                                         | T0, §6                                                             |
-| new | Remove the unused validation image `ccure-validation-ssh:ubuntu-24.04`, which T0 replaced                                                                                                                                                                                                                                                                                                        | T0, §6                                                             |
+| new | Classify `routers.credentialed` as the scans capability's API, as `routers.phase_scans` is. It serves one route, `POST /scan/credentialed`, which creates a scan. Measured, not committed: credentialed audit leaves the capability cycle (14 → 13, top-level 11 → 10) and upward edges fall 31 → 29                                                                                             | G1, §6                                                             |
+| new | Import the orchestrator inside `scans.tasks.common`'s two functions that use it, so the credentialed and topology task modules load without the scan engines (Scapy, nmap). Today `common` imports it at module level, as the hub did                                                                                                                                                            | G1, §6                                                             |

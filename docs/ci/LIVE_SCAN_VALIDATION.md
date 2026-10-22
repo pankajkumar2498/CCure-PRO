@@ -184,7 +184,11 @@ Only exit 0 produces a result worth comparing.
 
 **The harness** (`live_scan_harness.py`) then runs four scans at once, one
 thread each, each created and dispatched exactly as its route creates and
-dispatches it:
+dispatches it. Every task is dispatched by registered name, as the routes do
+since G1. On a commit that has `scans/scan_creation.py`, the credentialed scan
+record comes from it, as the route's does; on an older commit, from the
+orchestrator and the persistence helpers. A before and an after run therefore
+each exercise their own code. The four:
 
 1. **full**: an unauthenticated vulnerability audit of the four targets and the
    two empty addresses (`POST /scan/host-discovery`);

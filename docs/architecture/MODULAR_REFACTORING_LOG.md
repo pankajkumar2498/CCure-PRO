@@ -2278,6 +2278,106 @@ most of them; the full run covers it.
   MAC-vendor lookup as scan kernel, so on its terms discovery and the network checks would
   already be out.
 
+### Before Phase C: the credentialed live harness (T0)
+
+Commit `4ee2abc`, tooling only, on top of `3541224`. It is the first group of the Phase C plan
+proposed on 22 Oct 2026 (T0, then G1–G6). C2, C3 and C6 need a live check, and analysis §11 asks
+that it run "concurrent credentialed and unauthenticated scans". Until T0 the harness ran no
+credentialed scan at all. The application is unchanged.
+
+**What changed.** All of it is in `scripts/validation/`, plus its tests.
+
+- **Two audit accounts on the targets.**
+  - **The SSH target** gains `ccure-audit`: created locked (password field `!`), with sudo that
+    asks for the password (no `NOPASSWD`). The image also installs `iproute2`, for `ss`. The
+    image tag is now `ccure-validation-ssh:ubuntu-24.04-audit`, and `targets.sh up` replaces a
+    target running any other image.
+  - **The PostgreSQL target** gains the role `ccure_audit`, made by the first run with
+    `pg_read_all_settings` and `pg_read_all_stats`, and `NOLOGIN` outside a run.
+  - **Nothing can log in outside a run.** `targets.sh status` prints both accounts' state.
+- **Throwaway credentials per run** (`live_scan.sh`).
+  - **Made and granted.** Two random passwords, held in unexported shell variables and given
+    only to `printf`, so they are in no process's arguments. They are granted over
+    `docker exec -i` stdin, the role's in a session with statement logging off.
+  - **Handed over.** They reach the harness as one JSON line on its stdin.
+  - **Searched for.** After the scans, the run's output, every container's log since the run
+    began, the scanner's configuration and a dump of the throwaway database are searched for
+    them. A find is exit 3, and the message names where, never what.
+  - **Revoked.** On exit, whatever happened, both are revoked and read back from the targets. An
+    unconfirmed revocation is exit 4.
+- **Four scans at once, then the stop** (`live_scan_harness.py`).
+  - **Credentials are stored as production stores them:** through `core.credential_vault`,
+    encrypted. The harness keeps only the ids.
+  - **The scans,** each dispatched as its route dispatches it:
+    - the unauthenticated vulnerability audit, as before;
+    - a vulnerability audit carrying the SSH credential in `options.credentials` (the pipeline's
+      Phase 3.5);
+    - the standalone credentialed host audit;
+    - the standalone database audit.
+  - **They run concurrently,** one thread each; the cancel run then runs alone.
+  - **What is recorded:** each credentialed scan's verdicts, read as the export reads them, and
+    the organisation's assets, services and findings once after the four.
+  - **A run whose credentialed scans did not authenticate exits 5**, after writing its result.
+- **The comparison** reads the new runs, the shared end state and the authentication record. It
+  ignores the send time the credentialed task stamps on its frames.
+
+**Verification.**
+
+| Check                                                      | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/repo/test_live_scan_tooling.py`, the tree committed | 53 passed: the 37 before and 16 new (the audit account; where a credential may go; the non-logging role session; revocation on every exit; the leak check, three planted and one clean; credentials read from stdin; the credentialed dispatch pinned to the route; storage encrypted; the Phase 3.5 plan merged as the route merges it; the authentication refusal and its exit 5; the comparison of the credentialed runs; `up` replacing another image)                  |
+| Mutations                                                  | 13 of 13 caught, each by the one test aimed at it (1 failed, 52 passed): a password in the scanner's environment, or exported; the role session logging statements; cleanup not revoking; the leak check skipping the database dump, or a target's log; the authentication check ignoring verdicts; the harness not exiting 5; a password stored beside the ciphertext; the comparison ignoring verdicts, or comparing send times; `NOPASSWD` sudo; `up` ignoring the image |
+| Smoke run, `3541224`                                       | Exit 0. full: 7 findings, 313.7 s. credentialed (Phase 3.5): 86 verdicts, 228 s. host: 86 verdicts, 7.8 s. database: 49 verdicts, 1.0 s. After the four: 4 assets, 5 services, 13 findings. Every authentication check true                                                                                                                                                                                                                                                 |
+| During a run                                               | The account read `P` and the role `login`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| After each run                                             | The account locked (`!`), no process of it; the role `NOLOGIN`, no password, no session. No `ccure-live-*` container or network, no work directory left. The targets publish no port                                                                                                                                                                                                                                                                                        |
+| Secret check                                               | Passed on every run: neither password in any place searched                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Two consecutive runs, `3541224`, the same targets          | Both exit 0. **Identical apart from time**, with nothing tolerated; `--strict` agrees. Each: full 7 findings (323.5 s, 309.2 s); credentialed 86 verdicts (263 s); host 86; database 49; after the four, the same 4 assets, 5 services and 13 findings. Against the smoke run, run 1 differs in one row: the `.env` template (below)                                                                                                                                        |
+
+**What the credentialed runs found.** These are pre-existing product behaviour, not caused by
+T0. All but the last are in §7.
+
+- **Port 22's service is named `0.0.0.0:*` after a credentialed audit.**
+  - **The defect:** `engines/credentialed/linux_collector._parse_ss_output` takes the last column
+    of `ss -tlnp` as the process.
+  - **When it bites:** if the scanning account cannot see process names, that column is empty and
+    the last one is the peer address.
+  - **What it costs:** the audit's record replaces the port scan's `ssh`/`OpenSSH`.
+- **Nuclei's corroborated `.env` finding is stored under whichever template Nuclei printed first.**
+  - **The defect:** `nuclei_probe._collapse_corroborating` merges the templates that matched one
+    URL and keeps `max(group, key=severity)`. On a tie that is the first in Nuclei's output order.
+  - **What varies:** `codeigniter-env` and `laravel-env` are both high. Every run from B3 to B10
+    stored `CCURE-CHK-NUCLEI-CODEIGNITER-ENV`, and so did T0's smoke run. Both runs of T0's pair
+    stored `…-LARAVEL-ENV`. Run 2's stored evidence names all three templates
+    (`codeigniter-env,generic-env,laravel-env`) as matching, and its id is Laravel's, so the
+    choice among them is what varied.
+  - **Why now:** this is the first time it has varied, in runs where four scans load the host at
+    once. The comparison reports it as a difference, as it does the Redis template variation.
+- **The network-path evidence links a minted id to NVD.** The stored `.env` finding's evidence
+  ends `Reference : https://nvd.nist.gov/vuln/detail/CCURE-CHK-NUCLEI-…`, a page that does not
+  exist. `scans/asset_syncer.py` writes that line for any identifier, while the credentialed
+  writer in `core/tasks.py` writes it only for a real CVE. CLAUDE.md ("Network checks") says a
+  minted id must never carry an NVD link.
+- **The two SSH scans file the same configuration findings differently.** The Phase 3.5 pipeline
+  records them as `credentialed_package` and the standalone audit as `config_check`. Each scan
+  keeps its own rows (the key includes `scan_id`), so these are not duplicates. Whether the two
+  paths should agree is not settled here.
+- **The host audit records Docker's embedded DNS listener** (`127.0.0.11`, a port chosen when the
+  container starts) as a host-only service. It is a real socket, so it is not a defect, but it
+  makes a `down` and `up` between a before and an after a difference. The guide says to compare
+  against the same targets.
+
+**What T0 does not cover.**
+
+- **Credentialed coverage is Linux over SSH and PostgreSQL only.** There is no WinRM, SMB, MySQL
+  or SQL Server target.
+- **No CVE matching.** There is no vulnerability feed, so credentialed package matching reports
+  "not assessed".
+- **No process-level isolation.** The four scans are threads in one process; the worker runs them
+  in separate processes.
+
+The image the SSH target used before T0, `ccure-validation-ssh:ubuntu-24.04`, is no longer used.
+It is kept until its removal is approved.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
@@ -2300,3 +2400,8 @@ most of them; the full run covers it.
 | new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models | B8, §6                                                             |
 | new | Take the network checks and web DAST out of the capability cycle. After B9 each is held by one upward edge: `engines.vulnerability.vulnerability_engine` imports `core.device_classifier` (assets; the analysis's target grouping puts the classifier in the scan kernel), and `reporting.web_pdf_generator` imports `scan_helpers` (scans)                                                      | B9, §6                                                             |
 | new | Move `make_pdf_cve_paragraph` out of `scan_helpers` into the renderers. `reporting.web_pdf_generator` imports it from there, which is the one edge holding web DAST in the capability cycle at the end of Phase B                                                                                                                                                                                | B10, §6                                                            |
+| new | Fix the Linux collector's `ss` parser (a pre-existing defect). When the scanning account cannot see process names, `_parse_ss_output` takes the peer address (`0.0.0.0:*`) as the process, and a credentialed audit renames port 22's `ssh`/`OpenSSH` with it                                                                                                                                    | T0, §6                                                             |
+| new | Give the Nuclei probe's corroboration merge a deterministic tie-break, for example severity and then template id. Today a severity tie keeps whichever template Nuclei printed first, so the stored finding's id can change between runs of the same code                                                                                                                                        | T0, §6                                                             |
+| new | Write the evidence's NVD reference only for a real CVE in `scans/asset_syncer.py`, as `core/tasks.py` already does. Today every network-check and Nuclei finding's evidence links its minted `CCURE-CHK-…` id to an NVD page that does not exist                                                                                                                                                 | T0, §6                                                             |
+| new | Whether the Phase 3.5 pipeline and the standalone credentialed audit should record a configuration finding under the same detection method. Today one files it as `credentialed_package` and the other as `config_check`                                                                                                                                                                         | T0, §6                                                             |
+| new | Remove the unused validation image `ccure-validation-ssh:ubuntu-24.04`, which T0 replaced                                                                                                                                                                                                                                                                                                        | T0, §6                                                             |

@@ -10,7 +10,7 @@ now injected:
 * the collector asks the executor it was handed (``DatabaseSession.
   normalize_engine``);
 * the evaluator uses ``CollectionContext.version_compare``, which the two places
-  production builds a context (``core/tasks.py``) set to the matcher's
+  production builds a context (``scans/tasks/credentialed.py``) set to the matcher's
   comparator.
 
 These pin the purpose (statically, and by running both with ``engines`` made
@@ -183,7 +183,7 @@ def test_every_context_production_builds_carries_the_comparator():
     """A context without one would turn every OVAL version comparison into an
     unknown, and every such rule into an ERROR on every host."""
     sites = []
-    for path in (BACKEND_ROOT / "core" / "tasks.py",):
+    for path in (BACKEND_ROOT / "scans" / "tasks" / "credentialed.py",):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.Call)
@@ -207,7 +207,7 @@ def test_no_other_production_module_builds_a_context():
         source = path.read_text(encoding="utf-8")
         if "CollectionContext(" in source and module != "core.config_audit.collection":
             builders.add(module)
-    assert builders == {"core.tasks"}
+    assert builders == {"scans.tasks.credentialed"}
 
 
 # ── The seams ────────────────────────────────────────────────────────────────

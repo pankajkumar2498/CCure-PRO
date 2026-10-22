@@ -678,11 +678,13 @@ def test_the_registry_hardening_block_carries_absence_through():
     to ``False``, which asserts the *insecure* state — the same defect pointing
     the other way, and a FAIL nothing established.
     """
-    import inspect
+    # The hub's code, split into scans/tasks/ by G1; core/tasks.py is a facade.
+    from testpaths import BACKEND_ROOT
 
-    import core.tasks as tasks_mod
-
-    source = inspect.getsource(tasks_mod)
+    source = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((BACKEND_ROOT / "scans" / "tasks").glob("*.py"))
+    )
     for key in _POSTURE_KEYS:
         assert 'system_data.get("%s", False)' % key not in source, key
         assert 'system_data.get("%s")' % key in source, key
@@ -714,7 +716,7 @@ def test_a_hardening_row_for_an_unread_setting_is_not_assessed():
     Fourth leg: the report. A row printing PASS or FAIL for a control nothing
     examined is worse than one saying the scan looked at less.
     """
-    from core.tasks import _credentialed_hardening_audits
+    from scans.tasks.credentialed import _credentialed_hardening_audits
 
     audits = _credentialed_hardening_audits({"security_issues": []}, "windows")
     for name in ("smbv1", "netbios", "legacy_tls", "telnet"):
@@ -723,7 +725,7 @@ def test_a_hardening_row_for_an_unread_setting_is_not_assessed():
 
 
 def test_a_hardening_row_for_a_read_setting_still_reports_a_verdict():
-    from core.tasks import _credentialed_hardening_audits
+    from scans.tasks.credentialed import _credentialed_hardening_audits
 
     audits = _credentialed_hardening_audits(
         {"security_issues": [], "telnet_disabled": True, "smbv1_disabled": False},
@@ -738,7 +740,7 @@ def test_rdp_off_still_satisfies_nla_without_reading_the_setting():
     A host with RDP switched off passes whatever NLA says, so that answer needs
     no reading and must not become NOT_ASSESSED.
     """
-    from core.tasks import _credentialed_hardening_audits
+    from scans.tasks.credentialed import _credentialed_hardening_audits
 
     audits = _credentialed_hardening_audits(
         {"security_issues": [], "rdp_enabled": False}, "windows"

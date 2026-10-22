@@ -348,7 +348,7 @@ def test_the_scan_task_has_a_database_branch():
     """
     import inspect
 
-    from core.tasks import run_credentialed_scan_task
+    from scans.tasks.credentialed import run_credentialed_scan_task
 
     source = inspect.getsource(run_credentialed_scan_task)
     assert "CREDENTIAL_TYPE_DATABASE" in source
@@ -363,7 +363,7 @@ def test_database_targets_are_excluded_from_host_asset_sync():
     """
     import inspect
 
-    from core.tasks import run_credentialed_scan_task
+    from scans.tasks.credentialed import run_credentialed_scan_task
 
     source = inspect.getsource(run_credentialed_scan_task)
     assert 'if os_type == "database":' in source
@@ -376,7 +376,7 @@ def test_the_database_auditor_reports_its_own_scope():
     """
     import inspect
 
-    from core.tasks import audit_database_target
+    from scans.tasks.credentialed import audit_database_target
 
     source = inspect.getsource(audit_database_target)
     assert '"packages_assessed": False' in source

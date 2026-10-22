@@ -358,7 +358,7 @@ class TestPhase3StillBehavesAsItDid:
         Phase 4 adds content; it does not replace the built-in pack. A
         regression here would silently drop twenty checks from every scan.
         """
-        from core.tasks import _run_configuration_audit
+        from scans.tasks.credentialed import _run_configuration_audit
 
         extra = benchmark_checks_for_org(db_session, installed_benchmark["org_id"])
         summary, _findings = _run_configuration_audit(
@@ -381,7 +381,7 @@ class TestPhase3StillBehavesAsItDid:
         assert summary["checks_run"] == expected_builtin + 10
 
     def test_a_scan_with_no_benchmark_installed_still_runs_the_builtins(self):
-        from core.tasks import _run_configuration_audit
+        from scans.tasks.credentialed import _run_configuration_audit
 
         summary, _findings = _run_configuration_audit(
             executor=FakeExecutor(), ip="10.0.0.7", os_type="windows", system_data={}
@@ -598,7 +598,7 @@ class TestBenchmarkResolutionIsDefensive:
     def test_a_scan_row_without_an_organisation_does_not_crash_enrichment(
         self, db_session
     ):
-        from core import tasks
+        from scans.tasks import credentialed as tasks
 
         # The same stand-in shape `tests/credentialed/test_credentialed_end_to_end`
         # supplies: an id and options, and deliberately no org_id. Returning
@@ -617,7 +617,7 @@ class TestBenchmarkResolutionIsDefensive:
         """
         import inspect
 
-        from core import tasks
+        from scans.tasks import credentialed as tasks
 
         source = inspect.getsource(tasks._apply_credentialed_enrichment)
         plan_at = source.index("plan = _credentialed_plan_for_scan")

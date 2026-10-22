@@ -62,7 +62,7 @@ def enrichment(monkeypatch):
     own post-processing — asset sync, risk, coverage — stays out of the way of
     what these assert, which is the arguments it was handed.
     """
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     calls = []
 
@@ -265,7 +265,7 @@ def test_open_ports_that_are_not_the_transport_are_never_authenticated_to(enrich
 @pytest.fixture()
 def audit_calls(monkeypatch):
     """Capture what ``_audit_host_over_transport`` attempts, in order."""
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     calls = []
 
@@ -468,7 +468,7 @@ def test_the_resolved_tls_setting_reaches_the_retry(audit_calls, monkeypatch):
     ],
 )
 def test_transport_failures_are_told_apart_from_rejections(message, is_transport):
-    from core.tasks import _is_transport_failure
+    from scans.tasks.credentialed import _is_transport_failure
 
     assert _is_transport_failure(RuntimeError(message)) is is_transport
 

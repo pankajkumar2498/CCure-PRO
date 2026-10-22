@@ -14,7 +14,7 @@ def test_invalid_ports_leave_no_scan_or_dispatched_task(
 ):
     from unittest.mock import Mock
 
-    from core.tasks import run_host_discovery_task
+    from scans.tasks.phases import run_host_discovery_task
 
     dispatch = Mock()
     monkeypatch.setattr(run_host_discovery_task, "delay", dispatch)

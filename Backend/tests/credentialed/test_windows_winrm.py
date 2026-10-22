@@ -152,7 +152,7 @@ class TestCredentialModel:
         attempted with None — failing as "authentication rejected" for a
         credential that was never actually sent.
         """
-        from core.tasks import _resolve_stored_credential
+        from scans.tasks.credentialed import _resolve_stored_credential
 
         for method in ("ntlm", "kerberos"):
             cred = ComplianceCredential(

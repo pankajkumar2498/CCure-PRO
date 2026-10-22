@@ -202,6 +202,10 @@ def test_every_rule_says_why():
         # G1 (C1): a route dispatches by name; importing the hub loads the pipeline.
         ("routers.phase_scans", "core.tasks", "task-hub-is-a-leaf"),
         ("main", "core.tasks", "task-hub-is-a-leaf"),
+        # G1 (C2): the same holds for the modules the hub was split into.
+        ("routers.phase_scans", "scans.tasks.phases", "task-hub-is-a-leaf"),
+        ("scans.db_helpers", "scans.tasks.phases", "task-hub-is-a-leaf"),
+        ("reporting.exports", "scans.tasks.common", "reporting-below-http"),
     ],
 )
 def test_the_rules_catch_what_they_describe(src, dst, rule):
@@ -215,6 +219,9 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("routers.web_scans", "routers.scan_history"),  # routers may use routers
         ("main", "routers.web_scans"),  # the composition root mounts them
         ("core.tasks", "scans.db_helpers"),  # the task hub may depend downwards
+        ("core.tasks", "scans.tasks.phases"),  # the facade re-exports them
+        ("scans.tasks.phases", "scans.tasks.credentialed"),  # siblings, one way
+        ("scans.tasks.credentialed", "scans.db_helpers"),  # and depend downwards
         ("routers.phase_scans", "core.task_names"),  # routes dispatch by task name
         ("db.models.users", "db.base"),  # models may use the session layer
         ("ccure_audit.integration.m", "ccure_contracts.common.v1"),  # its job
@@ -242,30 +249,30 @@ def test_the_rules_allow_ordinary_downward_dependencies(src, dst):
 
 def test_task_names_resolve_to_the_hub_tasks(monkeypatch):
     """
-    Code below core.tasks dispatches by registered name (core/task_names.py)
-    rather than importing the hub. A constant that drifted from its decorator
-    would otherwise surface as NotRegistered on a live dispatch.
+    Code outside a task's module dispatches by registered name
+    (core/task_names.py) rather than importing it. A constant that drifted from
+    its decorator would otherwise surface as NotRegistered on a live dispatch.
 
     The module attribute is Celery's lazy proxy to the registered task, so the
     check is on the object behind it — and on the property the scan tests rely
-    on: a ``.delay`` patched through ``core.tasks`` is what a by-name dispatch
-    calls.
+    on: a ``.delay`` patched on the task is what a by-name dispatch calls. The
+    tasks live in scans/tasks/ since G1.
     """
-    import core.tasks as hub
     from core import task_names
     from core.celery_app import registered_task
+    from scans.tasks import credentialed, maintenance, phases
 
     expected = {
-        "RUN_HOST_DISCOVERY": hub.run_host_discovery_task,
+        "RUN_HOST_DISCOVERY": phases.run_host_discovery_task,
         # G1 (C1): the routers dispatch these by name.
-        "RUN_ASSET_DISCOVERY": hub.run_asset_discovery_task,
-        "RUN_VULNERABILITY_AUDIT": hub.run_vulnerability_audit_task,
-        "RUN_TRADITIONAL_SCAN": hub.run_traditional_scan_task,
-        "RECONCILE_AMT_INVENTORY": hub.reconcile_amt_inventory_task,
-        "RUN_CREDENTIALED_SCAN": hub.run_credentialed_scan_task,
-        "SYNC_HOST_DISCOVERY": hub.sync_host_discovery_task,
-        "SYNC_ASSET_DISCOVERY": hub.sync_asset_discovery_task,
-        "SYNC_VULNERABILITY_AUDIT": hub.sync_vulnerability_audit_task,
+        "RUN_ASSET_DISCOVERY": phases.run_asset_discovery_task,
+        "RUN_VULNERABILITY_AUDIT": phases.run_vulnerability_audit_task,
+        "RUN_TRADITIONAL_SCAN": phases.run_traditional_scan_task,
+        "RECONCILE_AMT_INVENTORY": maintenance.reconcile_amt_inventory_task,
+        "RUN_CREDENTIALED_SCAN": credentialed.run_credentialed_scan_task,
+        "SYNC_HOST_DISCOVERY": phases.sync_host_discovery_task,
+        "SYNC_ASSET_DISCOVERY": phases.sync_asset_discovery_task,
+        "SYNC_VULNERABILITY_AUDIT": phases.sync_vulnerability_audit_task,
     }
     declared = {name for name in vars(task_names) if name.isupper()}
     assert declared == set(expected)

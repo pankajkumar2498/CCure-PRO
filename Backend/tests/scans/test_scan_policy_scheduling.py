@@ -121,10 +121,11 @@ def captured_dispatch(monkeypatch):
         captured.update(kwargs)
         return _Task()
 
-    import core.tasks as tasks
+    from scans.tasks.credentialed import run_credentialed_scan_task
+    from scans.tasks.phases import run_host_discovery_task
 
-    monkeypatch.setattr(tasks.run_host_discovery_task, "delay", _fake_delay)
-    monkeypatch.setattr(tasks.run_credentialed_scan_task, "delay", _fake_delay)
+    monkeypatch.setattr(run_host_discovery_task, "delay", _fake_delay)
+    monkeypatch.setattr(run_credentialed_scan_task, "delay", _fake_delay)
     return captured
 
 

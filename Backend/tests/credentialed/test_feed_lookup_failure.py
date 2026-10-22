@@ -63,7 +63,7 @@ def test_a_successful_matcher_reports_no_failure():
 
 
 def _audit(coverage: dict):
-    from core import tasks
+    from scans.tasks import credentialed as tasks  # reads the patched name
 
     class StubConnection:
         def __enter__(self):

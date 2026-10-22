@@ -372,11 +372,13 @@ def test_password_policy_is_collected_not_assumed():
     reading it passed unconditionally everywhere — fabricated evidence behind
     an auditor-facing verdict.
     """
-    import inspect
+    # The hub's code, split into scans/tasks/ by G1; core/tasks.py is a facade.
+    from testpaths import BACKEND_ROOT
 
-    from core import tasks
-
-    source = inspect.getsource(tasks)
+    source = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((BACKEND_ROOT / "scans" / "tasks").glob("*.py"))
+    )
     assert '"history_length": 24' not in source
     assert '"min_length": 14' not in source
 

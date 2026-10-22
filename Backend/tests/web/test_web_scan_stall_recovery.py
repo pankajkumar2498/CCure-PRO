@@ -21,7 +21,7 @@ from datetime import timedelta
 import pytest
 
 from core.web.scan_status import force_terminal_web_scan_status
-from core.tasks import reap_stalled_web_scans
+from scans.tasks.reapers import reap_stalled_web_scans
 from db.base import SessionLocal, utcnow
 from db.models.web_scans import WebScan
 

@@ -92,7 +92,7 @@ class _FakeMatcher:
 @pytest.fixture
 def fake_scanner(monkeypatch):
     """Replace the SSH session, collector and matcher with doubles."""
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
     from engines.credentialed import linux_collector, ssh_scanner, vuln_matcher
 
     monkeypatch.setattr(ssh_scanner, "PARAMIKO_AVAILABLE", True, raising=False)
@@ -194,7 +194,9 @@ def test_audit_will_not_call_an_unprobed_port_filtered(fake_scanner):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _stub_persistence(monkeypatch, tasks_mod, captured):
+def _stub_persistence(monkeypatch, captured):
+    import scans.tasks.credentialed as tasks_mod
+
     def _fake_completed_scan(**kwargs):
         captured.update(kwargs)
 
@@ -220,7 +222,10 @@ def test_an_unreachable_host_does_not_abandon_the_others(fake_scanner, monkeypat
     A dead host must not discard the ones that were audited successfully — and
     must still be reported, because an omitted host reads as a clean one.
     """
-    tasks_mod = fake_scanner
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
+
     real = tasks_mod.audit_credentialed_host
 
     def _flaky(**kwargs):
@@ -230,7 +235,7 @@ def test_an_unreachable_host_does_not_abandon_the_others(fake_scanner, monkeypat
 
     monkeypatch.setattr(tasks_mod, "audit_credentialed_host", _flaky)
     captured = {}
-    _stub_persistence(monkeypatch, tasks_mod, captured)
+    _stub_persistence(monkeypatch, captured)
 
     result = tasks_mod.run_credentialed_scan_task(
         user_id="usr_1",
@@ -261,15 +266,21 @@ def test_an_unreachable_host_does_not_abandon_the_others(fake_scanner, monkeypat
 
 def test_every_host_failing_marks_the_scan_failed(fake_scanner, monkeypatch):
     """For a single target this is the same outcome the task always produced."""
-    tasks_mod = fake_scanner
+    import scans.tasks.common as scans_tasks_common
+
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
 
     def _always_fail(**kwargs):
         raise RuntimeError("SSH authentication failed for root@10.0.0.5")
 
     monkeypatch.setattr(tasks_mod, "audit_credentialed_host", _always_fail)
     marked = {}
+    # The failure is settled by _settle_failure, which reads mark_scan_failed
+    # in scans.tasks.common.
     monkeypatch.setattr(
-        tasks_mod,
+        scans_tasks_common,
         "mark_scan_failed",
         lambda db, sid, uid, reason, status=None: marked.update(
             {"reason": reason, "status": status}
@@ -291,7 +302,11 @@ def test_every_host_failing_marks_the_scan_failed(fake_scanner, monkeypatch):
 
 def test_unreachable_single_host_keeps_its_distinct_status(fake_scanner, monkeypatch):
     """ "Unreachable" and "failed" drive different UI, so they must stay apart."""
-    tasks_mod = fake_scanner
+    import scans.tasks.common as scans_tasks_common
+
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
 
     def _unreachable(**kwargs):
         raise RuntimeError("Cannot reach 10.0.0.5:22 — no route to host")
@@ -299,7 +314,7 @@ def test_unreachable_single_host_keeps_its_distinct_status(fake_scanner, monkeyp
     monkeypatch.setattr(tasks_mod, "audit_credentialed_host", _unreachable)
     marked = {}
     monkeypatch.setattr(
-        tasks_mod,
+        scans_tasks_common,
         "mark_scan_failed",
         lambda db, sid, uid, reason, status=None: marked.update({"status": status}),
     )
@@ -327,7 +342,10 @@ def test_credentials_enrich_the_audit_pipeline_in_place(
     on the same host record the port scan produced, and the host's ports gain
     the confirmation from both sides.
     """
-    tasks_mod = fake_scanner
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
+
     material = {"username": "root", "password": "pw", "port": 22, "key_content": None}
     monkeypatch.setattr(
         tasks_mod,
@@ -393,7 +411,10 @@ def test_enriched_host_carries_posture_not_the_package_inventory(
     so the enrichment resolves each listening process to its package up front
     and keeps only what nothing else carries.
     """
-    tasks_mod = fake_scanner
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
+
     material = {"username": "root", "password": "pw", "port": 22, "key_content": None}
     monkeypatch.setattr(
         tasks_mod,
@@ -494,7 +515,10 @@ def test_enrichment_skips_hosts_whose_ssh_port_is_closed(
     The port scan already established what is reachable. Spending a 20-second
     handshake per host to relearn it would add minutes to a large scan.
     """
-    tasks_mod = fake_scanner
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
+
     material = {"username": "root", "password": "pw", "port": 22, "key_content": None}
     monkeypatch.setattr(
         tasks_mod,
@@ -528,7 +552,10 @@ def test_a_failed_login_does_not_fail_the_scan(fake_scanner, monkeypatch, db_ses
     The unauthenticated results are valid and worth delivering. A credential
     that does not work is recorded in coverage, not raised.
     """
-    tasks_mod = fake_scanner
+    # The fixture stubs the transport; the module is named here so that
+    # tests/repo/test_task_modules.py can check what each patch replaces.
+    import scans.tasks.credentialed as tasks_mod
+
     material = {"username": "root", "password": "pw", "port": 22, "key_content": None}
     monkeypatch.setattr(
         tasks_mod,
@@ -558,7 +585,7 @@ def test_a_failed_login_does_not_fail_the_scan(fake_scanner, monkeypatch, db_ses
 
 def test_no_credentials_configured_leaves_the_scan_untouched(db_session):
     """An ordinary unauthenticated audit must be unaffected by any of this."""
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     class _ScanRow:
         id = "scn_1"
@@ -573,7 +600,7 @@ def test_no_credentials_configured_leaves_the_scan_untouched(db_session):
 
 def test_a_malformed_credential_entry_is_skipped_not_fatal(db_session):
     """One unusable credential must not take the whole scan down with it."""
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     class _ScanRow:
         id = "scn_1"

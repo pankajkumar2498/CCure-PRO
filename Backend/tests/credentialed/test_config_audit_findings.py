@@ -303,7 +303,7 @@ class TestConfigurationAuditRunsInsideTheCredentialedScan:
             return FakeResult(stderr="no stub", exit_code=1, success=False)
 
     def _run(self, table, system_data=None):
-        from core.tasks import _run_configuration_audit
+        from scans.tasks.credentialed import _run_configuration_audit
 
         return _run_configuration_audit(
             executor=self._Executor(table),
@@ -354,7 +354,7 @@ class TestConfigurationAuditRunsInsideTheCredentialedScan:
         assert summary["checks_run"] > summary["checks_assessed"]
 
     def test_the_platform_selects_the_rule_set(self):
-        from core.tasks import _run_configuration_audit
+        from scans.tasks.credentialed import _run_configuration_audit
 
         summary, _ = _run_configuration_audit(
             executor=self._Executor({}),
@@ -394,7 +394,7 @@ class TestConfigurationAuditRunsInsideTheCredentialedScan:
         swallowing here would leave the caller with an empty result that looks
         exactly like a clean host.
         """
-        from core.tasks import _run_configuration_audit
+        from scans.tasks.credentialed import _run_configuration_audit
 
         with patch(
             "core.config_audit.ConfigAuditEngine.run",
@@ -422,7 +422,7 @@ class TestTheWholeCredentialedAuditEndToEnd:
     """
 
     def _audit(self, *, config_raises=False, system_data=None):
-        from core import tasks
+        from scans.tasks import credentialed as tasks  # reads the patched name
 
         collected = (
             system_data
@@ -626,7 +626,7 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
     LONG_CHECK_ID = "CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING"
 
     def test_an_over_long_check_identifier_does_not_abort_the_sync(self, db_session):
-        from core.tasks import _sync_credentialed_vulnerabilities
+        from scans.tasks.credentialed_sync import _sync_credentialed_vulnerabilities
         from db.models.findings import AssetVulnerability
 
         org_id, asset, scan_id = self._fixture(db_session)
@@ -670,7 +670,7 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
         assert "CVE-2024-6387" in written
 
     def test_a_check_row_carries_no_cve_id_and_a_cve_row_still_does(self, db_session):
-        from core.tasks import _sync_credentialed_vulnerabilities
+        from scans.tasks.credentialed_sync import _sync_credentialed_vulnerabilities
         from db.models.findings import VulnerabilityDefinition
 
         org_id, asset, scan_id = self._fixture(db_session)
@@ -721,7 +721,7 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
         "Package: unknown", "Fixed in: no fixed version published" and an NVD
         link for an identifier NVD has never heard of.
         """
-        from core.tasks import _sync_credentialed_vulnerabilities
+        from scans.tasks.credentialed_sync import _sync_credentialed_vulnerabilities
         from db.models.findings import AssetVulnerability
 
         org_id, asset, scan_id = self._fixture(db_session)

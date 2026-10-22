@@ -138,7 +138,7 @@ def test_links_are_keyed_by_the_slug_passed_in(db_session, test_org, scan):
 def test_the_task_passes_the_organisations_slug(
     db_session, test_org, scan, monkeypatch, organisation_found
 ):
-    import core.tasks as tasks
+    from scans.tasks import topology as tasks
 
     seen = {}
 

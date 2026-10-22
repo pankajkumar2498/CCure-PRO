@@ -420,7 +420,7 @@ def test_the_resolver_really_returns_a_hash_and_not_a_password(db_session, test_
     import uuid
 
     from core.security_crypto import encrypt_credential
-    from core.tasks import _resolve_stored_credential
+    from scans.tasks.credentialed import _resolve_stored_credential
     from db.base import gen_compliance_credential_id
     from db.models import ComplianceCredential
 
@@ -447,7 +447,7 @@ def test_the_resolver_returns_a_key_passphrase_when_one_is_stored(db_session, te
     import uuid
 
     from core.security_crypto import encrypt_credential
-    from core.tasks import _resolve_stored_credential
+    from scans.tasks.credentialed import _resolve_stored_credential
     from db.base import gen_compliance_credential_id
     from db.models import ComplianceCredential
 

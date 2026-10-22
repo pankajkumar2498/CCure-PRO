@@ -194,7 +194,7 @@ def test_enrichment_records_a_failed_authentication_on_the_host(monkeypatch):
     syncer to find. A rejected credential used to leave no trace on the host at
     all — only a line in the scan's skipped list, which nothing persists.
     """
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     material = {
         "username": "root",
@@ -227,7 +227,7 @@ def test_enrichment_records_a_failed_authentication_on_the_host(monkeypatch):
 
 def test_enrichment_leaves_a_skipped_host_unmarked(monkeypatch):
     """A host with no credential in scope was never attempted."""
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     monkeypatch.setattr(
         tasks_mod,

@@ -115,7 +115,9 @@ CAPABILITIES: dict[str, tuple[int, str]] = {
     "scheduling": (4, "Recurring scans"),
     "compliance": (4, "Frameworks, rules, evaluation, attestation, evidence"),
     "scans": (5, "Scan records, phase persistence, scan API, orchestration"),
-    "task_hub": (5, "core/tasks.py: the Celery tasks of every scan phase"),
+    # "task_hub" (core/tasks.py, every scan phase's Celery tasks) was dissolved
+    # by G1: C1 took every import of it out of the routers, C2 split it into
+    # scans/tasks/, the scans capability's orchestration.
     "reporting": (6, "Report and export read side"),
     "dashboard": (6, "Dashboard read model"),
     "audit_boundary": (6, "ccure_audit: read services, contract adapter"),
@@ -289,7 +291,10 @@ PREFIXES: dict[str, str] = {
     # The service root: its body is the scanner runtime's own report.
     "routers.health": "scans",
     "db.models.scans": "scans",
-    "core.tasks": "task_hub",
+    # G1 (C2): the scan tasks, one module per area, and the facade that
+    # re-exports them under the hub's old name.
+    "scans.tasks": "scans",
+    "core.tasks": "scans",
     # read side
     "reporting.exports": "reporting",
     "routers.reports": "reporting",
@@ -794,12 +799,17 @@ CEILINGS = {
     # module's sslyze wrapper (now the shared engines.tls); B10 the database
     # collector's and the SCAP evaluator's imports of the credentialed engines
     # (the executor and the version comparator are injected). G1's C1 the
-    # phase-scan and traditional-scan routers' imports of the hub.
-    "lateral_edges": 65,
+    # phase-scan and traditional-scan routers' imports of the hub. G1's C2
+    # (the hub split into scans/tasks/, the scans capability) made its six
+    # imports of scans internals internal: a reclassification, not a change.
+    "lateral_edges": 59,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
-    "foreign_table_references": 78,
-    "foreign_table_writes": 17,
+    # G1's C2 made the hub's scans and scan_phases references internal, and
+    # its other table access the scans capability's (a reclassification).
+    "foreign_table_references": 73,
+    # 17 when introduced; G1's C2 made the hub's writes to scans internal.
+    "foreign_table_writes": 16,
 }
 
 _BASELINE_KEYS = (

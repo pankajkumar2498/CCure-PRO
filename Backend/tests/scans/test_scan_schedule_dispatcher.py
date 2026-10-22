@@ -66,7 +66,7 @@ def make_schedule(db_session, test_org, test_user):
 @pytest.fixture
 def fake_network_task(monkeypatch):
     """Capture the arguments the existing network scan task is called with."""
-    import core.tasks as tasks
+    from scans.tasks import phases as tasks
 
     captured = {}
 
@@ -320,7 +320,7 @@ def test_a_manual_run_does_not_advance_the_schedule(
 def test_the_beat_task_dispatches_due_schedules(
     db_session, make_schedule, fake_network_task
 ):
-    from core.tasks import run_due_scan_schedules
+    from scans.tasks.schedules import run_due_scan_schedules
 
     schedule = make_schedule(next_run_at=_now() - timedelta(minutes=1))
     db_session.commit()
@@ -348,7 +348,7 @@ def test_a_second_concurrent_tick_backs_off_instead_of_double_dispatching(
     the second tick exits instead of queueing behind the first and dispatching
     everything twice.
     """
-    import core.tasks as tasks
+    import scans.tasks.schedules as tasks  # the module whose code reads SessionLocal
 
     make_schedule(next_run_at=_now() - timedelta(minutes=1))
     db_session.commit()

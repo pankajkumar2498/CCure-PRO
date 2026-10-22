@@ -252,7 +252,7 @@ def test_no_other_status_is_overwritten(db_session, org_and_scan, status):
 
 def test_the_async_sync_task_records_its_failure(monkeypatch, db_session, org_and_scan):
     """The task is the retry of the inline sync; its failure is the final word."""
-    from core import tasks
+    from scans.tasks import phases as tasks
     from scans import asset_syncer
 
     org_id, _ = org_and_scan

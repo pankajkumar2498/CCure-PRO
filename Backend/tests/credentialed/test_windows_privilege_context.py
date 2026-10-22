@@ -178,7 +178,7 @@ def test_the_privilege_context_reaches_the_stored_report():
     """
     import inspect
 
-    from core import tasks
+    from scans.tasks import credentialed as tasks
 
     source = inspect.getsource(tasks.audit_credentialed_host)
     assert '"privilege_context": system_data.get("privilege_context")' in source

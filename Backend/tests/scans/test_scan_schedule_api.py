@@ -422,7 +422,7 @@ def test_run_now_dispatches_the_existing_network_scan_task(
     scheduled network scan must reach ``run_host_discovery_task`` — the same
     task ``POST /scan/host-discovery`` dispatches.
     """
-    import core.tasks as tasks
+    from scans.tasks import phases as tasks
 
     captured = {}
 
@@ -455,7 +455,7 @@ def test_run_now_dispatches_the_existing_credentialed_task_by_reference(
     puts a plaintext password in the task arguments; a schedule that did the
     same would put one in the broker payload on every run.
     """
-    import core.tasks as tasks
+    from scans.tasks import credentialed as tasks
 
     captured = {}
 
@@ -487,7 +487,7 @@ def test_run_now_does_not_advance_the_recurrence(client, auth_headers, monkeypat
     """
     Testing a schedule at 11:00 must not cancel that night's real run.
     """
-    import core.tasks as tasks
+    from scans.tasks import phases as tasks
 
     class _Result:
         id = "task-network-2"
@@ -506,7 +506,7 @@ def test_run_now_works_on_a_disabled_schedule(client, auth_headers, monkeypatch)
     definition is unusable. Running one by hand is how an operator confirms a
     fix before switching it back on.
     """
-    import core.tasks as tasks
+    from scans.tasks import phases as tasks
 
     class _Result:
         id = "task-network-3"

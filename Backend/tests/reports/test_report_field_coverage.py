@@ -347,7 +347,7 @@ def _sections_text(**extra):
 
 class TestHardeningAudits:
     """
-    The verdicts are produced by `core.tasks._credentialed_hardening_audits`,
+    The verdicts are produced by `scans.tasks.credentialed._credentialed_hardening_audits`,
     so the fixtures are built by calling it rather than by hand. A hand-written
     shape proves the renderer agrees with my memory of the producer; this
     proves it agrees with the producer.
@@ -355,7 +355,7 @@ class TestHardeningAudits:
 
     @staticmethod
     def _audits(system_data, os_type="linux"):
-        from core.tasks import _credentialed_hardening_audits
+        from scans.tasks.credentialed import _credentialed_hardening_audits
 
         return _credentialed_hardening_audits(system_data, os_type)
 

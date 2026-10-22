@@ -441,7 +441,7 @@ def test_sync_asset_discovery_reconcile(db_session: Session, test_user: User):
     db_session.commit()
 
     # 4. Trigger sync_asset_discovery_task
-    from core.tasks import sync_asset_discovery_task
+    from scans.tasks.phases import sync_asset_discovery_task
 
     sync_asset_discovery_task(
         scan_id=scan.id,
@@ -506,7 +506,7 @@ def test_sync_vulnerability_audit_reconcile(db_session: Session, test_user: User
     db_session.commit()
 
     # 4. Trigger sync_vulnerability_audit_task
-    from core.tasks import sync_vulnerability_audit_task
+    from scans.tasks.phases import sync_vulnerability_audit_task
 
     sync_vulnerability_audit_task(
         scan_id=scan.id,
@@ -557,7 +557,7 @@ def test_credentialed_scan_reconcile(db_session: Session, test_user: User):
     db_session.commit()
 
     # 3. Trigger _sync_credentialed_asset_identity to sync the asset
-    from core.tasks import _sync_credentialed_asset_identity
+    from scans.tasks.credentialed_sync import _sync_credentialed_asset_identity
 
     _sync_credentialed_asset_identity(
         db_session,

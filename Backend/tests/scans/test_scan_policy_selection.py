@@ -294,7 +294,7 @@ class _Executor:
 
 
 def _audit(policy=None, extra_checks=None):
-    from core.tasks import _run_configuration_audit
+    from scans.tasks.credentialed import _run_configuration_audit
 
     return _run_configuration_audit(
         executor=_Executor(),

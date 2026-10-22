@@ -19,7 +19,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 
 def test_the_audits_own_suppressions_reach_the_host(monkeypatch, db_session):
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     material = {"username": "root", "password": "pw", "port": 22}
     monkeypatch.setattr(

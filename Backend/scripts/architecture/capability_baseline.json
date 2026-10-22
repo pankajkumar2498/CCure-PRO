@@ -313,36 +313,16 @@
    "vulnerability_definitions"
   ],
   [
+   "scans",
+   "web_scans"
+  ],
+  [
    "scheduling",
    "compliance_credentials"
   ],
   [
    "scheduling",
    "scan_policies"
-  ],
-  [
-   "task_hub",
-   "asset_vulnerabilities"
-  ],
-  [
-   "task_hub",
-   "assets"
-  ],
-  [
-   "task_hub",
-   "scan_phases"
-  ],
-  [
-   "task_hub",
-   "scans"
-  ],
-  [
-   "task_hub",
-   "vulnerability_definitions"
-  ],
-  [
-   "task_hub",
-   "web_scans"
   ],
   [
    "topology",
@@ -411,19 +391,15 @@
    "compliance_rules"
   ],
   [
-   "task_hub",
+   "scans",
    "asset_vulnerabilities"
   ],
   [
-   "task_hub",
+   "scans",
    "assets"
   ],
   [
-   "task_hub",
-   "scans"
-  ],
-  [
-   "task_hub",
+   "scans",
    "vulnerability_definitions"
   ],
   [
@@ -551,30 +527,6 @@
   [
    "core.scheduling.dispatcher",
    "db.models.scan_policies:ScanPolicy"
-  ],
-  [
-   "core.tasks",
-   "core.scan_control"
-  ],
-  [
-   "core.tasks",
-   "db.models.scans:Scan"
-  ],
-  [
-   "core.tasks",
-   "db.models.scans:ScanPhase"
-  ],
-  [
-   "core.tasks",
-   "orchestrator.scan_orchestrator"
-  ],
-  [
-   "core.tasks",
-   "scan_helpers"
-  ],
-  [
-   "core.tasks",
-   "scans.db_helpers"
   ],
   [
    "core.utils",

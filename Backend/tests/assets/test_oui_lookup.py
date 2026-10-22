@@ -185,7 +185,7 @@ def test_oui_database_lookup_sync_fallback(
 @patch("requests.get")
 def test_update_mac_vendor_registry_task_success(mock_get, temp_manuf_file):
     """Verify that update_mac_vendor_registry_task downloads registry and refreshes memory."""
-    from core.tasks import update_mac_vendor_registry_task
+    from scans.tasks.maintenance import update_mac_vendor_registry_task
 
     mock_response = MagicMock()
     mock_response.status_code = 200

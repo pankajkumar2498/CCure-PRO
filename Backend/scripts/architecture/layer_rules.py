@@ -206,14 +206,16 @@ RULES: tuple[Rule, ...] = (
             "main",
             "ccure_audit",
         ),
-        exempt_importers=("core.tasks",),
-        forbidden=("core.tasks",),
+        # G1 (C2): the tasks live in scans/tasks/, which import one another;
+        # core/tasks.py is the compatibility facade re-exporting them.
+        exempt_importers=("core.tasks", "scans.tasks"),
+        forbidden=("core.tasks", "scans.tasks"),
         reason=(
-            "core/tasks.py is the Celery task hub and depends on 22 components. "
-            "Anything it depends on importing it back creates the cycle the "
-            "baseline measured, and a router importing it loads the whole scan "
-            "pipeline to dispatch one task. Dispatch through a task *name* "
-            "(core/task_names.py) or a port."
+            "The scan tasks (scans/tasks/, and core/tasks.py, the facade that "
+            "re-exports them) depend on 22 components. Anything they depend on "
+            "importing them back creates the cycle the baseline measured, and a "
+            "router importing one loads the whole scan pipeline to dispatch one "
+            "task. Dispatch through a task *name* (core/task_names.py) or a port."
         ),
     ),
     Rule(
@@ -378,6 +380,7 @@ RULES: tuple[Rule, ...] = (
             "routers",
             "main",
             "core.tasks",
+            "scans.tasks",
         ),
         reason=(
             "Audit's application services return Audit's own views. If they "
@@ -399,7 +402,7 @@ RULES: tuple[Rule, ...] = (
     Rule(
         name="reporting-below-http",
         importer=("reporting",),
-        forbidden=("routers", "orchestrator", "core.tasks", "main"),
+        forbidden=("routers", "orchestrator", "core.tasks", "scans.tasks", "main"),
         reason="Report renderers take a payload and return a document; they do not dispatch or serve.",
     ),
     Rule(

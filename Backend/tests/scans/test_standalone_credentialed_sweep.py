@@ -28,7 +28,7 @@ PKG = {
 
 
 def _sync(db_session, org, user, cve_list, stored_report):
-    from core.tasks import _sync_credentialed_asset_identity
+    from scans.tasks.credentialed_sync import _sync_credentialed_asset_identity
 
     scan_id = f"scn_{uuid.uuid4().hex[:8]}"
     db_session.add(

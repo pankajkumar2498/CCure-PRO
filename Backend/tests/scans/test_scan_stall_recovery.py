@@ -139,7 +139,7 @@ def test_it_does_not_raise_on_a_missing_scan_id(db_session):
 
 def test_the_watchdog_settles_a_scan_past_its_deadline(db_session, org, monkeypatch):
     from config import AppConfig
-    from core.tasks import reap_stalled_scans
+    from scans.tasks.reapers import reap_stalled_scans
 
     monkeypatch.setattr(AppConfig, "SCAN_STALL_TIMEOUT_MINUTES", 90, raising=False)
     stalled = _scan(db_session, org, status="running", started_minutes_ago=200)
@@ -160,7 +160,7 @@ def test_a_scan_inside_its_deadline_is_left_alone(db_session, org, monkeypatch):
     real fault.
     """
     from config import AppConfig
-    from core.tasks import reap_stalled_scans
+    from scans.tasks.reapers import reap_stalled_scans
 
     monkeypatch.setattr(AppConfig, "SCAN_STALL_TIMEOUT_MINUTES", 90, raising=False)
     healthy = _scan(db_session, org, status="running", started_minutes_ago=10)
@@ -179,7 +179,7 @@ def test_a_queued_scan_gets_its_own_shorter_deadline_and_message(
     places, so they are separate deadlines with separate wording.
     """
     from config import AppConfig
-    from core.tasks import reap_stalled_scans
+    from scans.tasks.reapers import reap_stalled_scans
 
     monkeypatch.setattr(AppConfig, "SCAN_STALL_TIMEOUT_MINUTES", 90, raising=False)
     monkeypatch.setattr(AppConfig, "SCAN_QUEUE_TIMEOUT_MINUTES", 15, raising=False)
@@ -197,7 +197,7 @@ def test_a_queued_scan_gets_its_own_shorter_deadline_and_message(
 
 def test_the_watchdog_can_be_switched_off(db_session, org, monkeypatch):
     from config import AppConfig
-    from core.tasks import reap_stalled_scans
+    from scans.tasks.reapers import reap_stalled_scans
 
     monkeypatch.setattr(AppConfig, "SCAN_STALL_TIMEOUT_MINUTES", 0, raising=False)
     monkeypatch.setattr(AppConfig, "SCAN_QUEUE_TIMEOUT_MINUTES", 0, raising=False)
@@ -222,7 +222,7 @@ def test_a_broken_mark_scan_failed_still_settles_the_scan(db_session, org, monke
     demonstrated in production, is a row that stays `running` for ever with a
     UI reporting a live scan against a host that was never probed.
     """
-    import core.tasks as tasks
+    import scans.tasks.common as tasks  # _settle_failure and what it reads
 
     scan = _scan(db_session, org, status="running", started_minutes_ago=1)
     scan_id = scan.id

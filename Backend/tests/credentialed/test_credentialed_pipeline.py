@@ -444,7 +444,7 @@ def test_package_findings_are_stamped_so_verification_keeps_them():
     fingerprinted services is read as a network claim about a product the host
     does not appear to run — and suppressed.
     """
-    from core.tasks import _as_credentialed_findings
+    from scans.tasks.credentialed import _as_credentialed_findings
 
     prepared = _as_credentialed_findings(
         [
@@ -465,7 +465,7 @@ def test_credentialed_findings_survive_verification_on_a_scanned_host():
     """End-to-end of the above: the merged finding must reach the report."""
     from scans.finding_normalizer import verify_host_findings
 
-    from core.tasks import _as_credentialed_findings
+    from scans.tasks.credentialed import _as_credentialed_findings
 
     host = {
         "ip_address": "10.0.0.5",
@@ -492,7 +492,7 @@ def test_credentialed_findings_survive_verification_on_a_scanned_host():
 
 
 def test_credential_scope_selects_the_right_host():
-    from core.tasks import _credential_for_host
+    from scans.tasks.credentialed import _credential_for_host
 
     scoped = {"username": "svc-a", "port": 22}
     fallback = {"username": "svc-b", "port": 2222}
@@ -510,7 +510,7 @@ def test_credential_scope_selects_the_right_host():
 
 
 def test_credential_with_no_matching_scope_is_not_applied():
-    from core.tasks import _credential_for_host
+    from scans.tasks.credentialed import _credential_for_host
 
     plan = [
         {
@@ -784,7 +784,7 @@ def test_an_exact_host_version_replaces_an_open_ended_remote_guess():
     9.6. On a real host that left 34 CVEs reported against PostgreSQL 18.3,
     none of which affect it.
     """
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -807,7 +807,7 @@ def test_an_exact_host_version_replaces_an_open_ended_remote_guess():
 
 def test_a_precise_remote_version_is_left_alone():
     """The scan already measured it exactly; there is nothing to improve."""
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -832,7 +832,7 @@ def test_disagreeing_products_are_never_merged():
     port the scanner reached. Stamping the local binary's version onto it would
     be worse than the imprecise fingerprint it replaced.
     """
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -852,7 +852,7 @@ def test_disagreeing_products_are_never_merged():
 
 def test_an_inexact_host_version_is_not_promoted():
     """Only an exact host-side reading is better than the remote guess."""
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -875,7 +875,7 @@ def test_findings_are_restated_only_on_the_corrected_port():
     Verification reads the version recorded on the finding before it looks at
     the host's inventory, so correcting the inventory alone changes nothing.
     """
-    from core.tasks import _restate_findings_for_corrected_ports
+    from scans.tasks.credentialed import _restate_findings_for_corrected_ports
 
     findings = [
         {"cve_id": "CVE-A", "port": 5432, "detected_version": "9.6.0 or later"},
@@ -903,7 +903,7 @@ def test_correction_rules_out_the_inapplicable_and_keeps_the_real():
     """
     from scans.finding_normalizer import verify_host_findings
 
-    from core.tasks import (
+    from scans.tasks.credentialed import (
         _restate_findings_for_corrected_ports,
         _upgrade_network_fingerprints,
     )
@@ -974,7 +974,7 @@ def test_restating_a_finding_drops_what_was_derived_from_the_old_version():
     — chosen while the version was only "9.6.0 or later" — was read back as if
     the feed had published it, and an 18.3 server was told to upgrade to 14.23.
     """
-    from core.tasks import _restate_findings_for_corrected_ports
+    from scans.tasks.credentialed import _restate_findings_for_corrected_ports
 
     derived = {
         "cve_id": "CVE-2026-6473",
@@ -1004,7 +1004,7 @@ def test_a_corrected_version_gets_its_own_branchs_fixed_release():
     """End to end: scan #9's PostgreSQL record, before and after correction."""
     from scans.finding_normalizer import build_scan_report, verify_host_findings
 
-    from core.tasks import (
+    from scans.tasks.credentialed import (
         _restate_findings_for_corrected_ports,
         _upgrade_network_fingerprints,
     )

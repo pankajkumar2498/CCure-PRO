@@ -16,7 +16,15 @@ celery_app = Celery(
     broker=AppConfig.CELERY_BROKER_URL,
     backend=AppConfig.CELERY_RESULT_BACKEND,
     include=[
-        "core.tasks",  # Network scan background jobs
+        # The scan tasks, one module per area (G1 split them out of core/tasks.py,
+        # now a compatibility facade the worker does not load). Strings, not
+        # imports: this module is infrastructure and imports no feature.
+        "scans.tasks.phases",  # Network scan pipeline: phases 1–3, sync tasks
+        "scans.tasks.topology",  # SNMP topology mapping
+        "scans.tasks.credentialed",  # Credentialed host and database audits
+        "scans.tasks.maintenance",  # Risk acceptances, AMT, MAC vendors
+        "scans.tasks.schedules",  # Recurring scans that are due
+        "scans.tasks.reapers",  # Scans nothing is working on
         "core.web.tasks",  # Web application scan background jobs
         "core.compliance_tasks",  # Compliance scan background jobs
         "core.email_security_tasks",  # Email domain screening and account hygiene
@@ -195,11 +203,13 @@ def registered_task(name: str):
     The task registered under ``name`` — the same object ``.delay()`` is called
     on when the defining module is imported directly.
 
-    Code below the task hub dispatches through this rather than importing
-    ``core.tasks``: importing the hub to reach one task put the scheduler, the
-    scan persistence helpers and the hub in one import cycle. The object is the
-    registered task itself, so its queue, time limits, eager execution and any
-    test patch of ``.delay`` all behave exactly as before.
+    Code outside a task's own module dispatches through this rather than
+    importing it: importing the hub (``core.tasks``, until G1) to reach one
+    task put the scheduler, the scan persistence helpers and the hub in one
+    import cycle, and since G1 the routers dispatch this way too
+    (``core/task_names.py``). The object is the registered task itself, so its
+    queue, time limits, eager execution and any test patch of ``.delay`` all
+    behave exactly as before.
 
     A process that has not imported the task modules yet (a script, a shell)
     loads the modules this app is configured with — the same list a worker

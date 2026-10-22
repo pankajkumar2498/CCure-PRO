@@ -17,7 +17,7 @@ import re
 
 import pytest
 from core.mac import RESERVED_MACS, collector_mac, mac_colon, mac_hex, mac_identity
-from core.tasks import _normalize_mac as tasks_mac
+from scans.tasks.credentialed_sync import _normalize_mac as tasks_mac
 from db.base import gen_asset_id
 from db.models.assets import Asset
 from engines.credentialed import linux_collector, windows_collector
@@ -241,7 +241,7 @@ def test_both_collectors_share_one_implementation():
 
 
 # =============================================================================
-# core.tasks._normalize_mac — the colon-counting fall-through
+# scans.tasks.credentialed_sync._normalize_mac (core.tasks until G1) — the colon-counting fall-through
 # =============================================================================
 
 

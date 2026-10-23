@@ -19,7 +19,7 @@ pol.record.snapshot.
 import uuid
 
 import pytest
-from core.benchmarks.selection import benchmark_checks_for_org
+from core.compliance_catalogue.benchmark_selection import benchmark_checks_for_org
 from core.scan_policy import effective_from_config, read_policy_snapshot
 from db.models import Organization
 from db.models.compliance import (

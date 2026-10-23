@@ -59,7 +59,8 @@ DEFAULT_ACTIVE_FRAMEWORK_IDS: tuple[str, ...] = (
     # Note this is the *Controls*, not the *Benchmarks*. They are separate
     # publications: 153 governance safeguards here, per-platform hardening
     # recommendations there. Benchmark content is loaded as its own framework
-    # by `core/benchmarks/loader.py` and is not seeded in this repository.
+    # by `core/compliance_catalogue/benchmark_loader.py` and is not seeded in
+    # this repository.
     "cfw_cis_v8_1",
     # PCI DSS v4.0.1 is parked, not missing: it was switched on and parked
     # again on 28 Sep 2026, when the project owner narrowed the work to ISO

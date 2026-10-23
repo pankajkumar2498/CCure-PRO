@@ -4,7 +4,6 @@
   [
    "assets",
    "compliance",
-   "config_audit",
    "credential_vault",
    "credentialed_audit",
    "discovery",
@@ -34,10 +33,6 @@
    "findings",
    "network_checks",
    "scans"
-  ],
-  [
-   "compliance",
-   "config_audit"
   ],
   [
    "infra",
@@ -136,26 +131,6 @@
   [
    "compliance",
    "web_scans"
-  ],
-  [
-   "config_audit",
-   "compliance_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_frameworks"
-  ],
-  [
-   "config_audit",
-   "compliance_rule_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_rules"
-  ],
-  [
-   "config_audit",
-   "compliance_tenant_frameworks"
   ],
   [
    "dashboard",
@@ -322,22 +297,6 @@
   [
    "audit_boundary",
    "scans"
-  ],
-  [
-   "config_audit",
-   "compliance_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_frameworks"
-  ],
-  [
-   "config_audit",
-   "compliance_rule_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_rules"
   ],
   [
    "scans",
@@ -763,42 +722,6 @@
   [
    "ccure_platform.audit_log.export",
    "reporting.report_helpers"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceControl"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceFramework"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceRule"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceRuleControl"
-  ],
-  [
-   "core.benchmarks.selection",
-   "core.compliance_frameworks"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceControl"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceRule"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceRuleControl"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceTenantFramework"
   ],
   [
    "core.discovery.techniques.arp",

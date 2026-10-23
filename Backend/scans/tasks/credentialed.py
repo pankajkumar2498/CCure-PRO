@@ -434,7 +434,9 @@ def _apply_credentialed_enrichment(
     _org_id = getattr(scan_row, "org_id", None)
     _benchmark_checks: list = []
     if _org_id:
-        from core.benchmarks.selection import benchmark_checks_for_org
+        from core.compliance_catalogue.benchmark_selection import (
+            benchmark_checks_for_org,
+        )
 
         _benchmark_checks = benchmark_checks_for_org(
             db,
@@ -2413,7 +2415,9 @@ def run_credentialed_scan_task(
     benchmark_checks: list = []
     _scan_owner = platform_api.user(db, user_id)
     if _scan_owner is not None:
-        from core.benchmarks.selection import benchmark_checks_for_org
+        from core.compliance_catalogue.benchmark_selection import (
+            benchmark_checks_for_org,
+        )
 
         benchmark_checks = benchmark_checks_for_org(
             db,

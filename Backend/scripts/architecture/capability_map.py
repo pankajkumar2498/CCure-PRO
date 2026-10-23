@@ -263,6 +263,12 @@ PREFIXES: dict[str, str] = {
     "core.scheduling": "scheduling",
     "routers.scan_schedules": "scheduling",
     "db.models.scan_schedules": "scheduling",
+    # G4 (C4): the compliance catalogue's own code — the benchmark loader and
+    # selection moved here from core/benchmarks — and the two old paths, which
+    # are aliases of those modules.
+    "core.compliance_catalogue": "compliance",
+    "core.benchmarks.loader": "compliance",
+    "core.benchmarks.selection": "compliance",
     "core.compliance_evidence": "compliance",
     "core.compliance_sync": "compliance",
     "core.compliance_frameworks": "compliance",
@@ -791,10 +797,12 @@ CEILINGS = {
     # out of the top-level cycle; B8 (the orchestrator composes the engines'
     # enrichment) took the port inventory out of the 16. G1's C1 (the routers
     # dispatch by name) took the task hub out of both. G3's D-6 (findings and
-    # remediation one capability) made it 13: a merge, not a decoupling.
-    "largest_cycle": 13,
+    # remediation one capability) made it 13: a merge, not a decoupling. G4
+    # (C4) took configuration audit out: it imports nothing above it.
+    "largest_cycle": 12,
     # G2's model move (the credential vault's model out of the compliance
-    # file) broke the top-level cycle into 5, 2 and 2.
+    # file) broke the top-level cycle into 5, 2 and 2. G4 (C4) broke the
+    # compliance and configuration-audit pair: [5, 2].
     "largest_cycle_top_level": 5,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
@@ -808,8 +816,10 @@ CEILINGS = {
     # floor (now the check kernel's); the benchmark pack's import of the
     # compliance frameworks, for the framework-id prefix (now the pack's), and
     # the CCI crosswalk's of the compliance seeds (the STIG loader passes the
-    # NIST catalogue in).
-    "upward_edges": 28,
+    # NIST catalogue in). Then the benchmark loader and selection became
+    # compliance's catalogue code (core/compliance_catalogue): their nine
+    # imports of the compliance models and frameworks are internal.
+    "upward_edges": 19,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web
@@ -833,15 +843,18 @@ CEILINGS = {
     # reading compliance_credentials, and the vault scan_schedules. G3 (C3):
     # the asset syncer stopped naming vulnerability_definitions. D-6:
     # remediation's references to asset_vulnerabilities and assets became the
-    # findings capability's (internal, and one it already made).
-    "foreign_table_references": 66,
+    # findings capability's (internal, and one it already made). G4 (C4): the
+    # configuration audit's five, through the benchmark loader and selection,
+    # now compliance's own.
+    "foreign_table_references": 61,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
     # findings writer; then the credentialed sync's writes to
     # asset_vulnerabilities and vulnerability_definitions, and Audit's purge
-    # hook's to asset_vulnerabilities.
-    "foreign_table_writes": 9,
+    # hook's to asset_vulnerabilities. G4 (C4): the benchmark loader's four,
+    # to the compliance catalogue it now belongs to.
+    "foreign_table_writes": 5,
 }
 
 _BASELINE_KEYS = (

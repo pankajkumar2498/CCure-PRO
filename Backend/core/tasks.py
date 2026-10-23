@@ -47,17 +47,21 @@ from scans.tasks.common import (  # noqa: E402,F401
     _update_task_id,
     log,
 )
-from scans.tasks.credentialed_sync import (  # noqa: E402,F401
+
+# The credentialed audit's findings writes moved to the findings writer in G3.
+from core.findings.writer import (  # noqa: E402,F401
     _assessed_config_definition_ids,
+    _first_advisory,
+    _sync_credentialed_vulnerabilities,
+)
+from scans.tasks.credentialed_sync import (  # noqa: E402,F401
     _clean_text,
     _credentialed_sections_with_identity,
     _extract_credentialed_identity_names,
-    _first_advisory,
     _normalize_mac,
     _port_int,
     _sync_credentialed_asset_identity,
     _sync_credentialed_services,
-    _sync_credentialed_vulnerabilities,
 )
 from scans.tasks.credentialed import (  # noqa: E402,F401
     _apply_credentialed_enrichment,

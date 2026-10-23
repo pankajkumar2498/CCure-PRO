@@ -41,3 +41,12 @@ def test_the_writers_value_helpers_are_the_asset_syncers():
     writer, syncer = _live_definitions(WRITER), _live_definitions(SYNCER)
     for name in ("EMPTY_VALUES", "_has_value", "_clean", "_normalize_source"):
         assert writer[name] == syncer[name], name
+
+
+def test_the_writers_text_cleaner_is_the_credentialed_syncs():
+    """
+    ``_clean_text`` came with the credentialed audit's findings code and stays
+    in the credentialed sync for its identity code, for the same reason.
+    """
+    sync = _live_definitions(BACKEND_ROOT / "scans" / "tasks" / "credentialed_sync.py")
+    assert _live_definitions(WRITER)["_clean_text"] == sync["_clean_text"]

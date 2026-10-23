@@ -321,6 +321,8 @@ def test_the_facade_offers_every_name_the_hub_defined_as_the_same_object():
     assert HUB_NAMES <= offered, sorted(HUB_NAMES - offered)
     loaded = {m: importlib.import_module(m) for m in _task_modules()}
     loaded["scans.scan_creation"] = importlib.import_module("scans.scan_creation")
+    # G3 (C3): the credentialed audit's findings writes moved to the writer.
+    loaded["core.findings.writer"] = importlib.import_module("core.findings.writer")
     loaded["ccure_platform.identity.mail_tasks"] = importlib.import_module(
         "ccure_platform.identity.mail_tasks"
     )

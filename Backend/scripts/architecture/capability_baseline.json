@@ -354,15 +354,7 @@
   ],
   [
    "scans",
-   "asset_vulnerabilities"
-  ],
-  [
-   "scans",
    "assets"
-  ],
-  [
-   "scans",
-   "vulnerability_definitions"
   ],
   [
    "topology",

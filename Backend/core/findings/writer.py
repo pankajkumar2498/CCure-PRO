@@ -23,8 +23,12 @@ port scan or a credentialed pass observed, each host's catalogue rows and
 findings and the sweep of those the scan retired, the TLS reading, and the
 asset risk computed from open findings.
 
-The pipeline's code logs under ``scans.asset_syncer``, the name it always had,
-so its log lines read as they did.
+From the standalone credentialed audit (``scans.tasks.credentialed_sync``):
+its catalogue rows and findings, and the sweep of those it retired.
+
+Moved code logs under the name it always had, so its log lines read as they
+did: ``scans.asset_syncer`` for the pipeline's, ``ccure.tasks`` for the
+standalone audit's.
 """
 
 from __future__ import annotations
@@ -1498,3 +1502,363 @@ def upsert_tls_details(db: Session, asset_id: str, host: dict) -> None:
                 },
             )
             db.execute(tls_upsert)
+
+
+# ── The standalone credentialed audit ───────────────────────────────────────
+#
+# From ``scans.tasks.credentialed_sync`` (G3): the catalogue rows and findings a
+# credentialed audit reported, and the sweep of those it retired. Its code logs
+# under ``ccure.tasks``, the name the task hub's always had.
+
+log = logging.getLogger("ccure.tasks")
+
+
+# Shared with the pipeline's sweep (``_credentialed_assessment``), so the two
+# cannot disagree about which absent findings a credentialed audit really
+# retired.
+_assessed_config_definition_ids = assessed_check_ids
+
+
+def _clean_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _first_advisory(vuln: dict, key: str) -> str | None:
+    """The first vendor advisory's field, when the finding carries any."""
+    advisories = vuln.get("vendor_advisories") or []
+    if not isinstance(advisories, list):
+        return None
+    for entry in advisories:
+        if isinstance(entry, dict) and entry.get(key):
+            return str(entry[key])[:2000]
+    return None
+
+
+def _sync_credentialed_vulnerabilities(
+    db,
+    asset,
+    org_id: str,
+    scan_id: str,
+    cve_list: list[dict],
+) -> None:
+    from core.checks.definitions import (
+        DEFINITION_TYPE_CVE,
+        definition_type_for_id,
+    )
+
+    source_family = "credentialed_package"
+    for vuln in cve_list or []:
+        cve_id = _clean_text(vuln.get("cve_id") or vuln.get("cve") or vuln.get("id"))
+        if not cve_id:
+            continue
+
+        # What kind of catalogue row this identifier names. `cve_list` carries
+        # configuration and privilege findings alongside package CVEs — that is
+        # deliberate, and `_run_configuration_audit` documents it — so not every
+        # entry here is a CVE. This function assumed they all were: it wrote the
+        # identifier into `cve_id` and let `definition_type` take its 'cve'
+        # default.
+        #
+        # Two consequences, one loud and one silent. `cve_id` is varchar(30) and
+        # a minted id is longer — CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING is 37 —
+        # so the INSERT raised StringDataRightTruncation and **aborted the
+        # finding sync for the entire scan**, losing the package findings with
+        # it. Where the id did fit, the row inherited everything a CVE row
+        # means: KEV lookups, EPSS scores, CVSS bands, and an NVD link that
+        # resolves to nothing.
+        #
+        # Recovered from the identifier rather than trusted from the finding,
+        # exactly as `asset_syncer` does on the network path, because the
+        # finding is built by a plugin and the catalogue's CHECK constraint
+        # `ck_vuln_def_cve_id_matches_type` is what has to hold.
+        definition_type = definition_type_for_id(cve_id)
+        is_real_cve = definition_type == DEFINITION_TYPE_CVE
+
+        cvss = float(vuln.get("cvss_score", vuln.get("cvss", 0.0)) or 0.0)
+        # Derived from the score and stored in the one canonical (lower) case.
+        #
+        # This wrote `.title()` of whatever the matcher supplied, which is how
+        # "High" and "high" came to coexist in the same column — the split that
+        # made GROUP BY return two rows for one severity and cost the dashboard
+        # 100 of 146 findings. Deriving from the score also stops a feed's
+        # textual rating disagreeing with the vector it published.
+        from scans.cvss import canonical_severity, severity_from_score
+
+        severity = (
+            severity_from_score(cvss).lower()
+            if cvss
+            else canonical_severity(vuln.get("severity"))
+        )
+        description = _clean_text(vuln.get("description") or vuln.get("desc"))
+        package_name = _clean_text(vuln.get("package"))
+        installed_ver = _clean_text(vuln.get("installed_ver"))
+        fixed_ver = _clean_text(vuln.get("fixed_ver"))
+
+        proof = _clean_text(
+            f"Source_Family:credentialed_package\nPackage: {package_name} {installed_ver}".strip()
+        )
+        plugin_output = _clean_text(
+            f"{description}\nFixed version: {fixed_ver or 'N/A'}\nPriority: {vuln.get('priority_level') or 'N/A'} ({vuln.get('priority_score') or 0})"
+        )
+
+        # Get enriched details from local CVE database if available
+        cvss_vector = vuln.get("cvss_vector")
+        cwe_ids = []
+        references = []
+
+        try:
+            from core.cve_database import get_cve_database
+
+            cve_db = get_cve_database() if is_real_cve else None
+            if cve_db is not None and cve_db.db_available:
+                details = cve_db.get_cve_details(cve_id)
+                if details:
+                    description = details.get("description") or description
+                    cvss_vector = (
+                        details.get("cvss_vector")
+                        or details.get("cvss_v3_vector")
+                        or cvss_vector
+                    )
+                    cwe_ids = details.get("cwe_ids") or []
+
+                    raw_refs = details.get("references") or []
+                    clean_refs = []
+                    for ref in raw_refs:
+                        if isinstance(ref, str):
+                            clean_refs.append(ref)
+                        elif isinstance(ref, dict) and ref.get("url"):
+                            clean_refs.append(ref["url"])
+                    references = clean_refs
+        except Exception as e:
+            log.warning(
+                "Failed to lookup CVE details for %s during credentialed sync: %s",
+                cve_id,
+                e,
+            )
+
+        # 1. UPSERT CVE Definition
+        cve_insert = insert(VulnerabilityDefinition).values(
+            id=cve_id,
+            # NULL for anything that is not a published CVE. This is the column
+            # every join to the vulnerability feeds runs through, so a check row
+            # carrying a CVE-shaped string here is how a configuration weakness
+            # acquires an exploit record, a KEV due date and a CVSS band that
+            # belong to nothing.
+            cve_id=cve_id if is_real_cve else None,
+            definition_type=definition_type,
+            title=(
+                f"{cve_id} in {package_name}"
+                if (is_real_cve and package_name)
+                else _catalog_title(vuln, cve_id, description)
+            ),
+            description=description,
+            cvss_vector=cvss_vector,
+            cwe_ids=cwe_ids,
+            references=references,
+            severity=severity,
+            cvss_v3_score=cvss,
+            source="credentialed",
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+        db.execute(cve_insert.on_conflict_do_nothing(index_elements=["id"]))
+
+        # 2. UPSERT Finding
+        finding_id = _resolve_finding_id(db, org_id, asset.id, cve_id, source_family)
+        evidence_text = (
+            (
+                f"Source           : authenticated package query\n"
+                f"Package          : {package_name or 'unknown'}\n"
+                f"Installed version: {installed_ver or 'not reported'}\n"
+                f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
+                f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
+            )
+            if is_real_cve
+            # A configuration or privilege check has no package and no fixed
+            # version, so three of those lines would read 'unknown' or 'not
+            # reported', and it has no NVD record, so the reference would be
+            # a link to a page that does not exist. The check's own
+            # expected-versus-observed reading is the evidence here.
+            else (
+                "Source           : authenticated configuration check\n"
+                + (
+                    _clean_text(vuln.get("evidence"))
+                    or (
+                        f"Expected: {vuln.get('expected_state') or 'not stated'}\n"
+                        f"Observed: {vuln.get('observed_state') or 'not stated'}"
+                    )
+                )
+            )
+        )
+
+        fnd_insert = insert(AssetVulnerability).values(
+            id=finding_id,
+            org_id=org_id,
+            scan_id=scan_id,
+            asset_id=asset.id,
+            vuln_id=cve_id,
+            severity=severity,
+            cvss_score=cvss,
+            status="open",
+            source_family=source_family,
+            evidence_source="credentialed",
+            proof=proof,
+            plugin_output=plugin_output,
+            # An authenticated package match is the strongest evidence this
+            # product produces: the version came from the host's own package
+            # manager, not from a banner.
+            evidence=evidence_text,
+            confidence="Confirmed",
+            qod=97,
+            detection_method="credentialed_package",
+            detected_version=installed_ver or None,
+            cvss_vector=_clean_text(cvss_vector) or None,
+            component=(package_name or None),
+            component_version=(installed_ver or None),
+            component_fixed_version=(fixed_ver or None),
+            fix_state=fix_state_for(vuln),
+            in_kev=bool(vuln.get("in_kev")),
+            has_exploit=bool(vuln.get("has_exploit")),
+            # Exploitation provenance and the vendor's advisory, both joined on
+            # the CVE upstream. Stored so triage can separate a weaponised
+            # exploit from a proof of concept without re-querying the feeds.
+            exploit_sources=(list(vuln.get("exploit_sources") or []) or None),
+            verified_exploit=bool(vuln.get("verified_exploit")),
+            canary_confirmed=bool(vuln.get("canary_confirmed")),
+            ransomware_linked=bool(vuln.get("ransomware_linked")),
+            vendor_advisory_id=_first_advisory(vuln, "advisory_id"),
+            vendor_advisory_url=_first_advisory(vuln, "url"),
+            vendor_remediation=_clean_text(vuln.get("vendor_remediation")) or None,
+            first_scan_id=scan_id,
+            first_found_at=utcnow(),
+            last_found_at=utcnow(),
+        )
+
+        fnd_upsert = fnd_insert.on_conflict_do_update(
+            index_elements=["id", "org_id"],
+            set_={
+                "last_found_at": utcnow(),
+                "scan_id": scan_id,
+                "status": "open",
+                "severity": severity,
+                "cvss_score": cvss,
+                "source_family": source_family,
+                "evidence_source": "credentialed",
+                # Refreshed for the same reason the version fields below are.
+                # Evidence describes what *this* scan observed; a finding that
+                # stays open otherwise reports the reading from the day it was
+                # first seen. On a configuration check that is the whole
+                # content of the finding — "Observed: 0" survives a partial
+                # remediation to 8 — and the report then argues from a
+                # measurement the host has already moved past.
+                "evidence": func.coalesce(
+                    func.nullif(evidence_text, ""), AssetVulnerability.evidence
+                ),
+                "proof": func.coalesce(
+                    func.nullif(proof, ""), AssetVulnerability.proof
+                ),
+                "plugin_output": func.coalesce(
+                    func.nullif(plugin_output, ""), AssetVulnerability.plugin_output
+                ),
+                # What this scan observed, refreshed on every re-scan.
+                #
+                # These were previously written only on first insert, so a
+                # finding that stayed open kept the version from the day it was
+                # first seen: a host upgraded from Chrome 138 to 139 with the
+                # CVE still unfixed went on reporting 138 indefinitely, and the
+                # grouped row would have advised an upgrade already performed.
+                "component": (package_name or None),
+                "component_version": (installed_ver or None),
+                "component_fixed_version": (fixed_ver or None),
+                "fix_state": fix_state_for(vuln),
+                "detected_version": (installed_ver or None),
+                # Exploit corpora and vendor advisories change between scans:
+                # an exploit gets published, a vendor issues an advisory. A
+                # finding that keeps its first-seen provenance forever would
+                # under-report both.
+                "exploit_sources": (list(vuln.get("exploit_sources") or []) or None),
+                "verified_exploit": bool(vuln.get("verified_exploit")),
+                "canary_confirmed": bool(vuln.get("canary_confirmed")),
+                "ransomware_linked": bool(vuln.get("ransomware_linked")),
+                "vendor_advisory_id": _first_advisory(vuln, "advisory_id"),
+                "vendor_advisory_url": _first_advisory(vuln, "url"),
+                "vendor_remediation": _clean_text(vuln.get("vendor_remediation"))
+                or None,
+            },
+        )
+        db.execute(fnd_upsert)
+
+
+class CredentialedSweep(NamedTuple):
+    """What ``sweep_credentialed_findings`` found the audit assessed."""
+
+    #: The audit's configuration summary (``config_audit``).
+    config_summary: dict
+    #: The configuration checks that reached a verdict.
+    assessed_checks: set
+    #: Whether the package inventory was collected and matched.
+    packages_assessed: bool
+
+
+def sweep_credentialed_findings(
+    db: Session,
+    *,
+    asset_id: str,
+    scan_id: str,
+    cve_list: list[dict],
+    stored_report: dict,
+    record_change: RecordChange,
+) -> CredentialedSweep:
+    """
+    Mark fixed the open credentialed findings this audit no longer reports,
+    when it assessed them.
+
+    Moved unchanged from
+    ``scans.tasks.credentialed_sync._sync_credentialed_asset_identity`` (G3).
+    """
+    found_cve_ids = {
+        _clean_text(v.get("cve_id") or v.get("cve") or v.get("id"))
+        for v in (cve_list or [])
+    }
+    found_cve_ids = {cid for cid in found_cve_ids if cid}
+
+    current_open = (
+        db.query(AssetVulnerability)
+        .filter(
+            AssetVulnerability.asset_id == asset_id, AssetVulnerability.status == "open"
+        )
+        .all()
+    )
+
+    # Which configuration checks actually produced a verdict this run, and
+    # therefore which absent configuration findings are genuinely gone.
+    _config_summary = (stored_report or {}).get("config_audit") or {}
+    _assessed_checks = _assessed_config_definition_ids(_config_summary)
+    # And whether the package inventory was assessed at all. With no inventory,
+    # or a feed lookup that failed, cve_list carries no package CVEs, and the
+    # sweep below used to read that as every package finding remediated.
+    _packages_assessed = packages_assessed(stored_report)
+
+    from core.checks.definitions import DEFINITION_TYPE_CVE, definition_type_for_id
+
+    for f in current_open:
+        if _finding_family(_finding_source_from_record(f)) != "credentialed_package":
+            continue
+        if f.vuln_id in found_cve_ids:
+            continue
+        # A configuration or privilege finding is only fixed if its check ran
+        # and answered. Package findings keep the previous behaviour: the
+        # matcher runs over the whole installed inventory, so a CVE it does not
+        # report on a host it inventoried really is gone.
+        if definition_type_for_id(f.vuln_id) != DEFINITION_TYPE_CVE:
+            if f.vuln_id not in _assessed_checks:
+                # Not assessed is not fixed. Left open, and the scan's recorded
+                # assessment scope is what lets a comparison say so out loud
+                # rather than silently carrying it forward.
+                continue
+        elif not _packages_assessed:
+            continue
+        f.status = "fixed"
+        f.fixed_at = utcnow()
+        record_change(db, asset_id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed")
+    return CredentialedSweep(_config_summary, _assessed_checks, _packages_assessed)

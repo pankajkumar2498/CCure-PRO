@@ -824,8 +824,9 @@ CEILINGS = {
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
-    # findings writer.
-    "foreign_table_writes": 12,
+    # findings writer; then the credentialed sync's writes to
+    # asset_vulnerabilities and vulnerability_definitions.
+    "foreign_table_writes": 10,
 }
 
 _BASELINE_KEYS = (

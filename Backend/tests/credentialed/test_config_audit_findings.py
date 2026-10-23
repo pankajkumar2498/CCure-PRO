@@ -626,7 +626,7 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
     LONG_CHECK_ID = "CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING"
 
     def test_an_over_long_check_identifier_does_not_abort_the_sync(self, db_session):
-        from scans.tasks.credentialed_sync import _sync_credentialed_vulnerabilities
+        from core.findings.writer import _sync_credentialed_vulnerabilities
         from db.models.findings import AssetVulnerability
 
         org_id, asset, scan_id = self._fixture(db_session)
@@ -670,7 +670,7 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
         assert "CVE-2024-6387" in written
 
     def test_a_check_row_carries_no_cve_id_and_a_cve_row_still_does(self, db_session):
-        from scans.tasks.credentialed_sync import _sync_credentialed_vulnerabilities
+        from core.findings.writer import _sync_credentialed_vulnerabilities
         from db.models.findings import VulnerabilityDefinition
 
         org_id, asset, scan_id = self._fixture(db_session)
@@ -721,7 +721,7 @@ class TestTheCredentialedSyncFilesACheckAsACheck:
         "Package: unknown", "Fixed in: no fixed version published" and an NVD
         link for an identifier NVD has never heard of.
         """
-        from scans.tasks.credentialed_sync import _sync_credentialed_vulnerabilities
+        from core.findings.writer import _sync_credentialed_vulnerabilities
         from db.models.findings import AssetVulnerability
 
         org_id, asset, scan_id = self._fixture(db_session)

@@ -804,7 +804,9 @@ CEILINGS = {
     # scan_helpers, the persistence helpers, the policy binding) and the
     # assets and credentials routers' imports of the hub, and added one: the
     # credentialed router asks scans.scan_creation for its scan record.
-    "upward_edges": 31,
+    # G4 (C4): benchmark selection's import of scan policy, for the severity
+    # floor (now the check kernel's).
+    "upward_edges": 30,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web

@@ -51,8 +51,8 @@ from typing import List, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
+from core.checks.contract import severity_at_least
 from core.config_audit.spec import ConfigCheck, SpecError
-from core.scan_policy.spec import severity_at_least
 from db.models.compliance import (
     ComplianceControl,
     ComplianceRule,
@@ -177,7 +177,7 @@ def benchmark_checks_for_org(
             # Severity and tags are properties of the *check*, not of the rule
             # row, so both filters run after the parse rather than in the query.
             # An unrecognised severity clears every floor — see
-            # `core.scan_policy.spec.severity_at_least`: a check whose severity
+            # `core.checks.contract.severity_at_least`: a check whose severity
             # this build does not know has not been established to be below the
             # threshold, and dropping it would remove a check on the strength
             # of a string nobody defined.

@@ -790,10 +790,6 @@
   ],
   [
    "core.benchmarks.selection",
-   "core.scan_policy.spec"
-  ],
-  [
-   "core.benchmarks.selection",
    "db.models.compliance:ComplianceControl"
   ],
   [

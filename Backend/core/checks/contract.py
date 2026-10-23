@@ -52,7 +52,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.checks.cvss import CANONICAL_SEVERITIES, SEVERITY_RANK
 
@@ -62,8 +62,10 @@ __all__ = [
     "CheckResult",
     "CheckSpec",
     "Evidence",
+    "SEVERITY_ORDER",
     "normalize_severity",
     "roll_up_outcomes",
+    "severity_at_least",
 ]
 
 
@@ -159,6 +161,39 @@ def normalize_severity(value: Any) -> str:
     text = str(value or "").strip().lower()
     text = _RULE_SEVERITY_ALIASES.get(text, text)
     return text if text in CANONICAL_SEVERITIES else "unscored"
+
+
+#: Severity vocabulary, weakest first. This is ``ConfigCheck.severity``'s own
+#: vocabulary — read from the checks rather than restated — so a floor of
+#: "high" means exactly what the check rows mean by it.
+#:
+#: A scan policy sets the floor and benchmark selection applies it, so both
+#: read it from here (G4 moved it from ``core/scan_policy/spec.py``, which
+#: re-exports it): compliance's selection must not import scan policy.
+SEVERITY_ORDER: Tuple[str, ...] = ("info", "low", "medium", "high", "critical")
+
+
+def severity_at_least(severity: str, floor: Optional[str]) -> bool:
+    """
+    Whether *severity* clears *floor*.
+
+    An unrecognised severity **passes** every floor. That direction is
+    deliberate: a check whose severity this build does not recognise has not
+    been established to be below the threshold, and dropping it would remove a
+    check from a scan on the strength of a string nobody defined. The same
+    reading ``core.checks.normalize_severity`` gives ``unscored``.
+    """
+    if not floor:
+        return True
+    try:
+        floor_index = SEVERITY_ORDER.index(str(floor).strip().lower())
+    except ValueError:
+        return True
+    try:
+        value_index = SEVERITY_ORDER.index(str(severity).strip().lower())
+    except ValueError:
+        return True
+    return value_index >= floor_index
 
 
 # ─────────────────────────────────────────────────────────────────────────────

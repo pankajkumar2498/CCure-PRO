@@ -31,6 +31,29 @@ its phases; for each credentialed scan, its configuration verdicts as the
 export reads them (``reporting.exports.export_payload``). After the four, the
 organisation's assets, services and findings — once, because four scans of
 overlapping hosts share those rows and which scan touched a row last is timing.
+
+Then the rescans (``RESCANS``), one at a time, in a second organisation of
+their own, so each one's baseline is the rescan before it and nothing depends
+on the first four's timing. Before each, the harness asks live_scan.sh for the
+target state it needs (``request_target_state``: it prints ``RESCAN_MARKER``
+and the state, and reads ``ok <state>`` back on stdin); live_scan.sh changes
+the targets through ``targets.sh state``. The web target loses its ``.env``
+and ``.git`` and gets them back; the SSH target is hardened so its two failing
+configuration checks pass, and restored. Between them the rescans reach every
+classification the remediation path turns on: *fixed* (by the pipeline's
+credentialed pass and by the standalone audit, which also verifies), *reappeared*
+(the same two, the standalone audit reopening), and *not assessed* (an
+unauthenticated rescan of a host whose findings came from a credentialed one,
+and the web target's removed exposures: a network assessment whose plugin run
+is not complete never retires a finding, and some probes never report complete,
+``default_creds`` on a host with no Basic challenge among them). For each
+rescan: its row and phases,
+its comparison with its baseline and the remediation events it wrote (the
+standalone audit verifies; the pipeline does not, so for a pipeline rescan the
+verification is computed and rolled back), and the target's findings after
+it. A run in which the rescans did not reach every classification proves
+nothing about them and is refused (exit 6, after writing the result).
+
 The result is written to ``/out/<label>.json``; ``compare_live_scans.py``
 compares two.
 
@@ -46,8 +69,9 @@ run in which one did not (exit 5, after writing the result).
 Configuration comes from the environment, set by live_scan.sh from
 targets.env: CCURE_LIVE_TARGETS (comma-separated addresses), CCURE_LIVE_SWEEP
 (a range), CCURE_LIVE_EXCLUDE (the host's own bridge address, always excluded),
-CCURE_LIVE_SCANNER_ADDRESS (the scanner's address on the targets' network) and
-CCURE_LIVE_SSH_TARGET and CCURE_LIVE_PG_TARGET (the credentialed targets).
+CCURE_LIVE_SCANNER_ADDRESS (the scanner's address on the targets' network),
+CCURE_LIVE_SSH_TARGET and CCURE_LIVE_PG_TARGET (the credentialed targets) and
+CCURE_LIVE_WEB_TARGET (the web target the rescans change).
 
 Scapy's interface is set, not inferred. Discovery's raw ARP leaves by
 ``scapy.conf.iface``. On the worker's host network that is the interface of the
@@ -76,6 +100,10 @@ import uuid
 
 #: Exit status when a credentialed scan did not authenticate.
 NOT_AUTHENTICATED = 5
+#: Exit status when the rescans did not reach every classification.
+RESCANS_INCOMPLETE = 6
+#: What the harness prints, before a target state, to ask live_scan.sh for it.
+RESCAN_MARKER = "@@ccure-rescan-state@@"
 
 
 def _config() -> dict:
@@ -88,6 +116,7 @@ def _config() -> dict:
         "scanner": os.environ.get("CCURE_LIVE_SCANNER_ADDRESS", ""),
         "ssh_target": os.environ.get("CCURE_LIVE_SSH_TARGET", ""),
         "pg_target": os.environ.get("CCURE_LIVE_PG_TARGET", ""),
+        "web_target": os.environ.get("CCURE_LIVE_WEB_TARGET", ""),
     }
 
 
@@ -750,6 +779,256 @@ def authenticated(result: dict, cfg: dict) -> dict:
 CREDENTIALED_RUNS = ("credentialed", "host", "database")
 
 
+# ── Rescans ──────────────────────────────────────────────────────────────────
+
+#: (run, target state, kind, target) in order. "network" is an unauthenticated
+#: vulnerability audit, "pipeline" the same with the SSH credential (Phase 3.5),
+#: "standalone" the credentialed audit. Each one's baseline is the latest
+#: earlier rescan with the same pipeline mode over the same host
+#: (``previous_scan_for``): the network and pipeline rescans of the SSH target
+#: are both vulnerability audits.
+#:
+#: The pipeline and standalone sequences each run their whole course, fix and
+#: return, before the other starts. Each one's sweep retires the other's rows
+#: too (both are the credentialed family), and a fix made before the baseline
+#: started reads as unchanged, not as a regression, so interleaving them would
+#: leave one path with nothing to see reappear.
+RESCANS = (
+    ("web_baseline", "original", "network", "web_target"),
+    ("web_removed", "web_clean", "network", "web_target"),
+    ("web_restored", "original", "network", "web_target"),
+    ("ssh_pipeline_baseline", "original", "pipeline", "ssh_target"),
+    ("ssh_not_assessed", "original", "network", "ssh_target"),
+    ("ssh_pipeline_fixed", "ssh_hardened", "pipeline", "ssh_target"),
+    ("ssh_pipeline_reappeared", "original", "pipeline", "ssh_target"),
+    ("ssh_host_baseline", "original", "standalone", "ssh_target"),
+    ("ssh_host_fixed", "ssh_hardened", "standalone", "ssh_target"),
+    ("ssh_host_reappeared", "original", "standalone", "ssh_target"),
+)
+
+#: What each rescan must show, or the run proves nothing about that path:
+#: a comparison class with at least one finding in it, and for the standalone
+#: audit, which verifies, a remediation event.
+#:
+#: The web target's removed exposures are *not assessed*, not fixed: the
+#: pipeline retires a network finding only after a complete plugin run, and on
+#: these targets some probe always reports unsupported (measured on 595f068,
+#: 23 Oct 2026). Restored, they are therefore *still open*.
+RESCAN_EXPECTED = {
+    "web_removed": ("not_assessed", None),
+    "web_restored": ("still_open", None),
+    "ssh_not_assessed": ("not_assessed", None),
+    "ssh_pipeline_fixed": ("fixed", None),
+    "ssh_host_fixed": ("fixed", "verified"),
+    "ssh_pipeline_reappeared": ("reappeared", None),
+    "ssh_host_reappeared": ("reappeared", "reopened"),
+}
+
+
+def request_target_state(state: str, control) -> None:
+    """Ask live_scan.sh to put the targets in *state*, and wait until it has."""
+    print(f"{RESCAN_MARKER} {state}", flush=True)
+    answer = control.readline().strip() if control is not None else ""
+    if answer != f"ok {state}":
+        raise SystemExit(
+            f"refusing: the targets could not be put in state {state!r}"
+            f" (answer: {answer or 'none'})"
+        )
+
+
+def _finding_names(db, finding_ids) -> list[list]:
+    """Finding ids as (address, identifier, family): ids embed the organisation."""
+    from sqlalchemy import text
+
+    if not finding_ids:
+        return []
+    rows = db.execute(
+        text(
+            "SELECT host(a.ip_address), v.vuln_id, v.source_family"
+            " FROM asset_vulnerabilities v JOIN assets a ON a.id = v.asset_id"
+            " WHERE v.id = ANY(:ids)"
+        ),
+        {"ids": list(finding_ids)},
+    ).all()
+    return sorted([list(r) for r in rows])
+
+
+def comparison_view(scan_id: str, names: dict) -> dict:
+    """
+    The scan's comparison with its baseline, as the export and verification
+    compute it, reduced to what does not name this run: the baseline by run
+    name, the counts, and each finding by address, identifier, family and
+    class.
+    """
+    from core.findings import compare_scans
+    from core.findings.comparison import previous_scan_for
+    from db.base import SessionLocal
+    from db.models import Scan
+
+    db = SessionLocal()
+    try:
+        scan = db.query(Scan).filter(Scan.id == scan_id).one()
+        baseline = previous_scan_for(db, scan)
+        if baseline is None:
+            return {"baseline": None}
+        comparison = compare_scans(
+            db, current=scan, baseline=baseline, limit_findings=None
+        )
+        ips = dict(
+            _rows_of(db, "SELECT id, host(ip_address) FROM assets WHERE org_id = :o",
+                     o=scan.org_id)
+        )
+        return {
+            "baseline": names.get(str(baseline.id), "(not a rescan)"),
+            "comparable": comparison.comparable,
+            "reason": comparison.reason,
+            "counts": dict(comparison.counts),
+            "findings": sorted(
+                [ips.get(f.asset_id), f.vuln_id, f.source_family, f.classification]
+                for f in comparison.findings
+            ),
+        }
+    finally:
+        db.close()
+
+
+def _rows_of(db, sql, **params) -> list[tuple]:
+    from sqlalchemy import text
+
+    return [tuple(r) for r in db.execute(text(sql), params)]
+
+
+def remediation_events(scan_id: str) -> list[list]:
+    """The remediation events this scan wrote, by finding identifier."""
+    from db.base import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return sorted(
+            list(r)
+            for r in _rows_of(
+                db,
+                "SELECT host(a.ip_address), v.vuln_id, v.source_family, e.event_type,"
+                " e.from_state, e.to_state FROM finding_remediation_events e"
+                " JOIN asset_vulnerabilities v ON v.id = e.finding_id AND v.org_id = e.org_id"
+                " JOIN assets a ON a.id = v.asset_id WHERE e.scan_id = :s",
+                s=scan_id,
+            )
+        )
+    finally:
+        db.close()
+
+
+def verification_preview(scan_id: str) -> dict:
+    """
+    What remediation verification would decide for a pipeline scan, which does
+    not verify: computed with ``verify_scan`` and rolled back.
+    """
+    from core.remediation import verify_scan
+    from db.base import SessionLocal
+    from db.models import Scan
+
+    db = SessionLocal()
+    try:
+        scan = db.query(Scan).filter(Scan.id == scan_id).one()
+        outcome = verify_scan(db, scan).as_dict()
+        return {
+            "comparison_usable": outcome["comparison_usable"],
+            "reason": outcome["reason"],
+            "verified": _finding_names(db, outcome["verified"]),
+            "reopened": _finding_names(db, outcome["reopened"]),
+            "withheld": len(outcome["withheld"]),
+        }
+    finally:
+        db.rollback()
+        db.close()
+
+
+def target_findings(org_id: str, ip: str) -> list[list]:
+    """Every finding held against *ip*: identifier, family, status, remediation state."""
+    from db.base import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return sorted(
+            list(r)
+            for r in _rows_of(
+                db,
+                "SELECT v.vuln_id, v.source_family, v.status, v.remediation_state"
+                " FROM asset_vulnerabilities v JOIN assets a ON a.id = v.asset_id"
+                " WHERE v.org_id = :o AND host(a.ip_address) = :ip",
+                o=org_id,
+                ip=ip,
+            )
+        )
+    finally:
+        db.close()
+
+
+def run_rescans(
+    org_id: str, user_id: str, credential_id: str, cfg: dict, control
+) -> dict:
+    """Each of RESCANS in turn, alone, in its own target state."""
+    results: dict = {}
+    names: dict = {}
+    state = None
+    for run, wanted, kind, target_key in RESCANS:
+        if wanted != state:
+            request_target_state(wanted, control)
+            state = wanted
+        target = cfg[target_key]
+        if kind == "standalone":
+            scan_id, kwargs, task = dispatch_credentialed(
+                org_id, user_id, credential_id, target
+            )
+        else:
+            options = None
+            if kind == "pipeline":
+                options = {
+                    "credentials": [
+                        {"credential_id": credential_id, "targets": [target]}
+                    ]
+                }
+            scan_id, kwargs, task = dispatch(
+                org_id, user_id, [target], "vulnerability_audit", cfg["exclude"],
+                options=options,
+            )
+        names[scan_id] = run
+        t0 = time.monotonic()
+        try:
+            outcome, error = task.delay(**kwargs).get(disable_sync_subtasks=False), None
+        except Exception as exc:  # noqa: BLE001 - recorded in the result
+            outcome, error = None, f"{type(exc).__name__}: {exc}"
+        record = {
+            "kind": kind,
+            "target_state": wanted,
+            "task_result": _task_result(outcome, error),
+            "elapsed_s": round(time.monotonic() - t0, 1),
+            **scan_record(scan_id),
+            "comparison": comparison_view(scan_id, names),
+            "remediation_events": remediation_events(scan_id),
+            "target_findings": target_findings(org_id, target),
+        }
+        if kind != "standalone":
+            record["verification_preview"] = verification_preview(scan_id)
+        results[run] = record
+    return results
+
+
+def rescan_coverage(rescans: dict) -> dict:
+    """Whether each rescan reached what RESCAN_EXPECTED says it must."""
+    flags = {}
+    for run, (classification, event) in RESCAN_EXPECTED.items():
+        record = rescans.get(run) or {}
+        counts = (record.get("comparison") or {}).get("counts") or {}
+        flags[f"{run}_{classification}"] = (counts.get(classification) or 0) > 0
+        if event:
+            flags[f"{run}_{event}"] = any(
+                row[3] == event for row in record.get("remediation_events") or []
+            )
+    return flags
+
+
 def main(label: str, credentials_stream=None) -> dict:
     cfg = _config()
     if not cfg["targets"] or not cfg["sweep"] or not cfg["exclude"]:
@@ -758,13 +1037,18 @@ def main(label: str, credentials_stream=None) -> dict:
         )
     if cfg["exclude"] in cfg["targets"]:
         raise SystemExit("refusing: the excluded host address is in the target list")
-    if not cfg["ssh_target"] or not cfg["pg_target"]:
-        raise SystemExit("CCURE_LIVE_SSH_TARGET and CCURE_LIVE_PG_TARGET must be set")
+    if not cfg["ssh_target"] or not cfg["pg_target"] or not cfg["web_target"]:
+        raise SystemExit(
+            "CCURE_LIVE_SSH_TARGET, CCURE_LIVE_PG_TARGET and CCURE_LIVE_WEB_TARGET"
+            " must be set"
+        )
     creds = read_credentials(credentials_stream)
     interface = pin_scapy_interface(cfg["scanner"])
 
     org_id, user_id = make_identity(label)
     credential_ids = store_credentials(org_id, user_id, creds)
+    rescan_org, rescan_user = make_identity(f"{label} rescans")
+    rescan_credentials = store_credentials(rescan_org, rescan_user, creds)
     del creds  # only the ids from here on
     recorder = FrameRecorder()
     result = {"label": label, "config": cfg, "interface": interface}
@@ -857,6 +1141,10 @@ def main(label: str, credentials_stream=None) -> dict:
     }
     recorder.close()
     result["authenticated"] = authenticated(result, cfg)
+    result["rescans"] = run_rescans(
+        rescan_org, rescan_user, rescan_credentials["ssh"], cfg, credentials_stream
+    )
+    result["rescan_coverage"] = rescan_coverage(result["rescans"])
     return result
 
 
@@ -873,3 +1161,10 @@ if __name__ == "__main__":
             f"nothing about credentialed code: {', '.join(missing)}"
         )
         sys.exit(NOT_AUTHENTICATED)
+    unreached = sorted(k for k, ok in result.get("rescan_coverage", {}).items() if not ok)
+    if unreached:
+        print(
+            "refusing: the rescans did not reach every classification, so this run "
+            f"proves nothing about them: {', '.join(unreached)}"
+        )
+        sys.exit(RESCANS_INCOMPLETE)

@@ -35,6 +35,12 @@ frame, a frame that goes backwards, and every stored row are compared exactly.
 Every tolerated difference is still printed. ``--strict`` compares everything
 exactly, as before B3.
 
+The rescans (G3) run one at a time, so nothing in them is timing: for each,
+its row, phases and task result, its comparison with its baseline, the
+remediation events it wrote, the verification a pipeline rescan would make,
+and the target's findings after it are compared exactly, and so is whether
+the rescans reached every classification. Their frames are not recorded.
+
 Exit 0 when nothing differs or only tolerated differences remain, 1 when
 anything else differs (each difference is named), 2 on bad input.
 """
@@ -55,6 +61,17 @@ CONCURRENT_TABLES = ("assets", "services", "findings")
 #: Frame fields that are wall-clock time: the harness's arrival time, and the
 #: send time the credentialed task stamps on its progress frames.
 FRAME_TIME_KEYS = frozenset({"t", "timestamp"})
+
+#: What each rescan carries, compared exactly (the row and task result too).
+RESCAN_FIELDS = (
+    "kind",
+    "target_state",
+    "phases",
+    "comparison",
+    "remediation_events",
+    "verification_preview",
+    "target_findings",
+)
 
 #: The frame POST /scans/{id}/stop publishes (live_scan_harness.stop_like_the_route,
 #: pinned against it by tests/repo/test_live_scan_tooling.py), as frame_view records it.
@@ -233,7 +250,42 @@ def classify(
         differences.append(
             _line("authenticated", "", before.get("authenticated"), after.get("authenticated"))
         )
+    differences.extend(_rescan_differences(before, after))
     return differences, tolerated
+
+
+def _rescan_differences(before: dict, after: dict) -> list[str]:
+    old, new = before.get("rescans"), after.get("rescans")
+    if old is None and new is None:
+        return []  # neither recorded them: a result from before G3
+    if old is None or new is None:
+        return [f"rescans: missing from {'before' if old is None else 'after'}"]
+    differences = []
+    for run in sorted(set(old) | set(new)):
+        a, b = old.get(run), new.get(run)
+        if a is None or b is None:
+            differences.append(
+                f"rescan {run}: missing from {'before' if a is None else 'after'}"
+            )
+            continue
+        pairs = [(name, a.get(name), b.get(name)) for name in RESCAN_FIELDS]
+        pairs += [
+            ("scan", _scan(a.get("scan") or {}), _scan(b.get("scan") or {})),
+            ("task_result", a.get("task_result"), b.get("task_result")),
+        ]
+        for name, x, y in pairs:
+            if x != y:
+                differences.append(_line(f"rescan {run}", name, x, y))
+    if before.get("rescan_coverage") != after.get("rescan_coverage"):
+        differences.append(
+            _line(
+                "rescan_coverage",
+                "",
+                before.get("rescan_coverage"),
+                after.get("rescan_coverage"),
+            )
+        )
+    return differences
 
 
 def compare(before: dict, after: dict, strict: bool = False) -> list[str]:
@@ -268,6 +320,23 @@ def summary(result: dict) -> list[str]:
         "authenticated: "
         + (", ".join(f"{k} {v}" for k, v in sorted(auth.items())) or "not recorded")
     )
+    for run, r in (result.get("rescans") or {}).items():
+        comparison = r.get("comparison") or {}
+        counts = {k: v for k, v in sorted((comparison.get("counts") or {}).items()) if v}
+        events = {}
+        for row in r.get("remediation_events") or []:
+            events[row[3]] = events.get(row[3], 0) + 1
+        lines.append(
+            f"rescan {run}: status {(r.get('scan') or {}).get('status')},"
+            f" baseline {comparison.get('baseline')}, {counts or 'no changes'},"
+            f" events {events or 'none'}, {r.get('elapsed_s')} s"
+        )
+    coverage = result.get("rescan_coverage")
+    if coverage is not None:
+        missing = sorted(k for k, ok in coverage.items() if not ok)
+        lines.append(
+            "rescan coverage: " + ("complete" if not missing else f"missing {missing}")
+        )
     return lines
 
 

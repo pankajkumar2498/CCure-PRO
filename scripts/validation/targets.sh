@@ -3,6 +3,8 @@
 #
 #   scripts/validation/targets.sh up       # create the network and start the targets
 #   scripts/validation/targets.sh status   # show them and probe each from inside the network
+#   scripts/validation/targets.sh state <original|web_clean|ssh_hardened>
+#                                          # put the targets in a rescan's state
 #   scripts/validation/targets.sh down     # remove the targets and the network
 #
 # Everything is defined in targets.env beside this script. The network is
@@ -22,6 +24,19 @@
 # The audit accounts (SSH_AUDIT_USER, PG_AUDIT_ROLE) cannot log in outside a
 # run: live_scan.sh gives them a throwaway password for one run and revokes it.
 # `status` shows their state, never a secret.
+#
+# `state` is what the harness's rescans ask for, through live_scan.sh, so a
+# finding can go away and come back (live_scan_harness.RESCANS):
+#   original      the web target serves its .env and .git/config; the SSH
+#                 target is as its image built it;
+#   web_clean     the web target's .env and .git are removed;
+#   ssh_hardened  the SSH target's PASS_MAX_DAYS is 90 and
+#                 pam_extrausers_chkpwd loses its SGID bit, so the two
+#                 configuration checks that fail on it pass.
+# Each state is applied and confirmed inside the target, and the exit status
+# is the confirmation. The SSH target keeps a copy of the image's own
+# login.defs and SGID mode the first time it is asked, so `original` restores
+# exactly them. `up` ends in `original`, and live_scan.sh restores it on exit.
 # docs/ci/LIVE_SCAN_VALIDATION.md has the whole procedure.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -76,21 +91,76 @@ up() {
   fi
   start "$SSH_CONTAINER" "$SSH_TARGET" "$SSH_MAC" "$SSH_IMAGE_TAG"
   start "$WEB_CONTAINER" "$WEB_TARGET" "$WEB_MAC" "$WEB_IMAGE"
-  # The exposure the web checks and Nuclei must find: a dotenv file and a git
-  # config in the document root. Dummy values, written into the container so
-  # nothing named .env or .git is ever committed.
-  docker exec "$WEB_CONTAINER" sh -c '
-    d=/usr/share/nginx/html
-    printf "APP_ENV=validation\nAPP_KEY=base64:dmFsaWRhdGlvbi1vbmx5LW5vdC1hLWtleQ==\nDB_HOST=127.0.0.1\nDB_PASSWORD=validation-only-not-a-secret\n" > $d/.env
-    mkdir -p $d/.git
-    printf "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n[remote \"origin\"]\n\turl = https://example.invalid/validation/target.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n" > $d/.git/config
-    printf "<html><body>ccure validation target</body></html>\n" > $d/index.html'
   start "$REDIS_CONTAINER" "$REDIS_TARGET" "$REDIS_MAC" "$REDIS_IMAGE"
   # Random per start; nothing logs in with it, it only lets the server run.
   start "$PG_CONTAINER" "$PG_TARGET" "$PG_MAC" "$PG_IMAGE" \
     -e POSTGRES_PASSWORD="$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   sleep 3
+  set_state original
   status
+}
+
+# The exposure the web checks and Nuclei must find: a dotenv file and a git
+# config in the document root. Dummy values, written into the container so
+# nothing named .env or .git is ever committed.
+web_exposed() {
+  docker exec "$WEB_CONTAINER" sh -c '
+    d=/usr/share/nginx/html
+    printf "APP_ENV=validation\nAPP_KEY=base64:dmFsaWRhdGlvbi1vbmx5LW5vdC1hLWtleQ==\nDB_HOST=127.0.0.1\nDB_PASSWORD=validation-only-not-a-secret\n" > $d/.env
+    mkdir -p $d/.git
+    printf "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n[remote \"origin\"]\n\turl = https://example.invalid/validation/target.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n" > $d/.git/config
+    printf "<html><body>ccure validation target</body></html>\n" > $d/index.html
+    test -s $d/.env && test -s $d/.git/config'
+}
+
+web_clean() {
+  docker exec "$WEB_CONTAINER" sh -c '
+    d=/usr/share/nginx/html
+    rm -rf $d/.env $d/.git
+    test ! -e $d/.env && test ! -e $d/.git'
+}
+
+# original | hardened. The image's own login.defs and SGID mode are kept the
+# first time, whatever is asked, so `original` restores exactly them.
+ssh_config() {
+  docker exec -i "$SSH_CONTAINER" sh -s "$1" <<'SH'
+set -e
+keep=/var/lib/ccure-validation
+chkpwd=/usr/sbin/pam_extrausers_chkpwd
+mkdir -p "$keep"
+[ -f "$keep/login.defs" ] || cp -p /etc/login.defs "$keep/login.defs"
+[ -f "$keep/chkpwd.mode" ] || stat -c %a "$chkpwd" >"$keep/chkpwd.mode"
+case "$1" in
+  original)
+    cp -p "$keep/login.defs" /etc/login.defs
+    chmod "$(cat "$keep/chkpwd.mode")" "$chkpwd"
+    cmp -s "$keep/login.defs" /etc/login.defs
+    [ "$(stat -c %a "$chkpwd")" = "$(cat "$keep/chkpwd.mode")" ]
+    ;;
+  hardened)
+    sed -i 's/^PASS_MAX_DAYS[[:space:]].*/PASS_MAX_DAYS\t90/' /etc/login.defs
+    chmod g-s "$chkpwd"
+    grep -q '^PASS_MAX_DAYS[[:space:]]*90$' /etc/login.defs
+    [ ! -g "$chkpwd" ]
+    ;;
+  *) exit 2 ;;
+esac
+SH
+}
+
+set_state() {
+  local web ssh
+  case "${1:-}" in
+    original) web=web_exposed ssh=original ;;
+    web_clean) web=web_clean ssh=original ;;
+    ssh_hardened) web=web_exposed ssh=hardened ;;
+    *) echo "unknown state: ${1:-}" >&2; return 2 ;;
+  esac
+  if ! "$web" || ! ssh_config "$ssh"; then
+    echo "could not put the targets in state $1" >&2
+    return 1
+  fi
+  echo "targets in state $1"
 }
 
 status() {
@@ -139,6 +209,7 @@ down() {
 case "${1:-}" in
   up) up ;;
   status) status ;;
+  state) shift; set_state "${1:-}" ;;
   down) shift; down "${1:-}" ;;
-  *) echo "usage: $0 up|status|down [--images]" >&2; exit 2 ;;
+  *) echo "usage: $0 up|status|state <name>|down [--images]" >&2; exit 2 ;;
 esac

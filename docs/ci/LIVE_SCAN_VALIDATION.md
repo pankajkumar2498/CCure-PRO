@@ -10,14 +10,16 @@ live check for B2, B3, C2, C3 and C6
 is recorded in [the refactoring log](../architecture/MODULAR_REFACTORING_LOG.md)
 §6, under B2. Since T0 (22 Oct 2026) it also runs credentialed scans
 concurrently with the unauthenticated one, with throwaway credentials, as §11
-asks.
+asks. Since G3 (23 Oct 2026) it ends with ten rescans, one at a time, changing
+the targets between them, so that findings are fixed, reappear and go
+unassessed on the scans' own terms ("The rescans", below).
 
 The tooling is in `scripts/validation/`. It needs Docker and the backend image,
 and nothing else.
 
 ## The targets
 
-`scripts/validation/targets.sh up|status|down` manages disposable containers on
+`scripts/validation/targets.sh up|status|state|down` manages disposable containers on
 an internal Docker network. `scripts/validation/targets.env` defines them in one
 place:
 
@@ -74,6 +76,22 @@ place:
   against the same targets, with no `down` between them (see "Known variation").
   `down --images` changes more: the next `up` rebuilds the SSH image.
 
+**Target states** (`targets.sh state <name>`, used by the rescans):
+
+| State          | Web target                      | SSH target                                                                                             |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `original`     | serves `.env` and `.git/config` | as its image built it                                                                                  |
+| `web_clean`    | `.env` and `.git` removed       | as its image built it                                                                                  |
+| `ssh_hardened` | serves `.env` and `.git/config` | `PASS_MAX_DAYS 90`, and `pam_extrausers_chkpwd` without its SGID bit: its two failing checks then pass |
+
+- **Applied and confirmed inside the target.** Each state is checked where it
+  is applied, and the command's exit status is the confirmation.
+- **Restored exactly.** The SSH target keeps a copy of the image's own
+  `login.defs` and SGID mode the first time it is asked, so `original` puts
+  back exactly them.
+- **Original by default.** `up` ends in `original`, and `live_scan.sh` restores
+  it on every exit; a restoration it cannot confirm is exit 7.
+
 `tests/repo/test_live_scan_tooling.py` holds the isolation properties in code:
 
 - an internal, private subnet that overlaps none of the installation's networks;
@@ -110,7 +128,10 @@ scripts/validation/targets.sh down                    # when finished
 - **4** when the credentials' revocation could not be confirmed (a run that had
   already failed keeps its own code; the revocation's state is printed either
   way);
-- **5** when a credentialed scan did not authenticate.
+- **5** when a credentialed scan did not authenticate;
+- **6** when the rescans did not reach every classification they must show;
+- **7** when the targets could not be confirmed back in their original state
+  (a run that had already failed keeps its own code).
 
 Only exit 0 produces a result worth comparing.
 
@@ -215,6 +236,56 @@ the four it reads the organisation's assets, services and findings once, as
 wrote a row last is timing. It writes `<out-dir>/<label>.json` and
 `<label>.log`.
 
+**Then the rescans** (since G3). They run one at a time, in a second
+organisation of their own. So each one's baseline is the rescan before it of the
+same pipeline mode over the same host, and nothing depends on the first four's
+timing.
+
+- **The state each one needs.** Before a rescan the harness prints
+  `@@ccure-rescan-state@@ <state>` and waits.
+- **Who changes the targets.** `live_scan.sh`, watching the log, puts the
+  targets in that state through `targets.sh state`.
+- **The answer.** `live_scan.sh` answers `ok <state>` (or `failed <state>`) on
+  the harness's stdin, after the credentials line. Nothing else is written
+  there, and what `targets.sh` prints goes to the run's own output.
+
+| Rescan                    | Kind                    | Target state   | Must show                              |
+| ------------------------- | ----------------------- | -------------- | -------------------------------------- |
+| `web_baseline`            | unauthenticated audit   | `original`     | (the baseline)                         |
+| `web_removed`             | unauthenticated audit   | `web_clean`    | not assessed                           |
+| `web_restored`            | unauthenticated audit   | `original`     | still open                             |
+| `ssh_pipeline_baseline`   | audit with credential   | `original`     | (the baseline)                         |
+| `ssh_not_assessed`        | unauthenticated audit   | `original`     | not assessed                           |
+| `ssh_pipeline_fixed`      | audit with credential   | `ssh_hardened` | fixed                                  |
+| `ssh_pipeline_reappeared` | audit with credential   | `original`     | reappeared                             |
+| `ssh_host_baseline`       | standalone credentialed | `original`     | (the baseline)                         |
+| `ssh_host_fixed`          | standalone credentialed | `ssh_hardened` | fixed, and verification verifying      |
+| `ssh_host_reappeared`     | standalone credentialed | `original`     | reappeared, and verification reopening |
+
+**Why the two sequences run apart.** The pipeline's and the standalone audit's
+credentialed sweeps each retire the other's rows. A fix made before a baseline
+started reads as unchanged, not as a regression. So the pipeline's sequence
+runs its whole course before the standalone audit's starts.
+
+**Why the web target's removed exposures are not assessed, not fixed.** The
+pipeline retires a network finding only after a complete plugin run. On these
+targets some probe always reports unsupported, so absence there is not
+assessed, and the restored exposures are still open. Measured on `595f068`,
+23 Oct 2026. Every stored audit of a real host shows such outcomes too.
+
+**What each rescan records:**
+
+- its row, phases and task result;
+- its comparison with its baseline: the baseline by rescan name, the counts and
+  each finding by address, identifier, family and class;
+- the remediation events it wrote (only the standalone audit verifies);
+- for a pipeline rescan, which does not verify, the verification
+  `verify_scan` would make, computed and rolled back;
+- the target's findings after it, with status and remediation state.
+
+**A rescan that does not show what the table says fails the run** (exit 6,
+after the result is written), and the result's `rescan_coverage` says which.
+
 **A credentialed scan that did not authenticate fails the run** (exit 5, after
 the result is written). A run that never logged in proves nothing about
 credentialed code. The result's `authenticated` record says which check failed:
@@ -224,7 +295,9 @@ credentialed code. The result's `authenticated` record says which check failed:
 
 **The comparison** checks each run's scan row, phases, task result and every
 progress frame in order, each credentialed scan's verdicts, the concurrent
-state, the cancel run's own state and the `authenticated` record. It excludes
+state, the cancel run's own state and the `authenticated` record. For each
+rescan, which runs alone, it checks everything the rescan records exactly, and
+`rescan_coverage` too; the rescans' frames are not recorded. It excludes
 wall-clock values: the frames' arrival time and the `timestamp` the credentialed
 task stamps on its frames, elapsed times and durations. It exits 1 and names each
 difference.

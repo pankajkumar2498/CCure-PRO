@@ -30,7 +30,13 @@ drift silently:
   the credentialed scans with the credentialed route's own arguments, and
   refuses a run whose credentialed scans did not authenticate;
 * the comparison reads the credentialed runs' verdicts and ignores the send
-  time their frames carry.
+  time their frames carry;
+* the rescans (G3) ask for each target state by a marker live_scan.sh
+  answers, on the harness's stdin and with nothing else written there; every
+  state they ask for is one ``targets.sh state`` knows; ``up`` and every exit
+  leave the targets in the original state; a run whose rescans did not reach
+  every classification is refused; and the comparison reads the rescans
+  exactly.
 """
 
 import importlib.util
@@ -412,6 +418,7 @@ def test_the_harness_refuses_before_anything_when_the_interface_is_unknown(
     monkeypatch.setenv("CCURE_LIVE_SCANNER_ADDRESS", scanner)
     monkeypatch.setenv("CCURE_LIVE_SSH_TARGET", "172.30.250.10")
     monkeypatch.setenv("CCURE_LIVE_PG_TARGET", "172.30.250.13")
+    monkeypatch.setenv("CCURE_LIVE_WEB_TARGET", "172.30.250.11")
 
     def created(*_args):
         raise AssertionError("an identity was created before the interface was known")
@@ -1093,4 +1100,250 @@ def test_the_comparison_reads_the_credentialed_runs_and_ignores_their_send_times
     assert any(
         line.startswith("database: missing")
         for line in compare.compare(before, one_sided)
+    )
+
+
+# ── The rescans (G3) ─────────────────────────────────────────────────────────
+
+
+def test_the_rescan_marker_is_the_one_live_scan_sh_answers():
+    harness = _load("live_scan_harness")
+    assert f'RESCAN_MARKER="{harness.RESCAN_MARKER}"' in _live()
+
+
+def test_every_rescan_state_is_one_targets_sh_knows():
+    harness = _load("live_scan_harness")
+    targets = (VALIDATION / "targets.sh").read_text(encoding="utf-8")
+    body = targets[targets.index("set_state() {") : targets.index("status() {")]
+    known = set(re.findall(r"^\s+(\w+)\) web=", body, re.MULTILINE))
+    assert known == {"original", "web_clean", "ssh_hardened"}
+    asked = {state for _run, state, _kind, _target in harness.RESCANS}
+    assert asked <= known
+    # The harness's expectations name only rescans it runs.
+    assert set(harness.RESCAN_EXPECTED) <= {r[0] for r in harness.RESCANS}
+
+
+def test_the_rescans_reach_each_classification_on_each_path():
+    """
+    What the sequence is built to show, checked against its own order: each
+    expectation's baseline is the rescan it says it is.
+    """
+    harness = _load("live_scan_harness")
+    order = [run for run, *_ in harness.RESCANS]
+    kinds = {run: kind for run, _state, kind, _t in harness.RESCANS}
+    states = {run: state for run, state, _kind, _t in harness.RESCANS}
+    hosts = {run: target for run, _s, _k, target in harness.RESCANS}
+
+    def baseline(run):
+        mode = "credentialed" if kinds[run] == "standalone" else "vulnerability_audit"
+        earlier = order[: order.index(run)]
+        for other in reversed(earlier):
+            other_mode = (
+                "credentialed"
+                if kinds[other] == "standalone"
+                else "vulnerability_audit"
+            )
+            if other_mode == mode and hosts[other] == hosts[run]:
+                return other
+        return None
+
+    assert baseline("web_removed") == "web_baseline"
+    assert states["web_removed"] == "web_clean" != states["web_baseline"]
+    assert baseline("web_restored") == "web_removed"
+    assert baseline("ssh_not_assessed") == "ssh_pipeline_baseline"
+    assert kinds["ssh_not_assessed"] == "network"
+    assert kinds["ssh_pipeline_baseline"] == "pipeline"
+    for path in ("pipeline", "host"):
+        fixed, back = f"ssh_{path}_fixed", f"ssh_{path}_reappeared"
+        assert states[fixed] == "ssh_hardened" and states[back] == "original"
+        assert baseline(back) == fixed
+    # Each path runs its whole course before the other starts.
+    assert order.index("ssh_pipeline_reappeared") < order.index("ssh_host_baseline")
+
+
+def test_the_harness_waits_for_each_state_and_refuses_an_unconfirmed_one(capsys):
+    harness = _load("live_scan_harness")
+    harness.request_target_state("web_clean", io.StringIO("ok web_clean\n"))
+    assert capsys.readouterr().out == f"{harness.RESCAN_MARKER} web_clean\n"
+    for answer in ("failed web_clean\n", "ok original\n", ""):
+        with pytest.raises(SystemExit, match="could not be put in state 'web_clean'"):
+            harness.request_target_state("web_clean", io.StringIO(answer))
+
+
+def test_rescan_coverage_needs_every_classification_and_event():
+    harness = _load("live_scan_harness")
+    rescans = {
+        run: {
+            "comparison": {"counts": {classification: 2}},
+            "remediation_events": (
+                [["172.30.250.10", "X", "f", event, None, None]] if event else []
+            ),
+        }
+        for run, (classification, event) in harness.RESCAN_EXPECTED.items()
+    }
+    assert all(harness.rescan_coverage(rescans).values())
+    rescans["ssh_pipeline_reappeared"]["comparison"]["counts"] = {
+        "reappeared": 0,
+        "new": 3,
+    }
+    rescans["ssh_host_reappeared"]["remediation_events"] = []
+    flags = harness.rescan_coverage(rescans)
+    assert sorted(k for k, ok in flags.items() if not ok) == [
+        "ssh_host_reappeared_reopened",
+        "ssh_pipeline_reappeared_reappeared",
+    ]
+    # Every classification the remediation path turns on is expected somewhere.
+    expected = {c for c, _event in harness.RESCAN_EXPECTED.values()}
+    assert {"fixed", "reappeared", "not_assessed"} <= expected
+
+
+#: A docker that reports the scanner running for a few calls, then exited.
+_ANSWER_DOCKER = r"""#!/usr/bin/env python3
+import os, sys
+path = os.environ["CALLS"]
+n = int(open(path).read() or 0) + 1
+open(path, "w").write(str(n))
+print("running" if n <= int(os.environ["RUNNING_FOR"]) else "exited")
+"""
+
+#: targets.sh, as the answer loop calls it: chatty on stdout, failing on "broken".
+_ANSWER_TARGETS = """#!/bin/sh
+echo "targets.sh says something about $2"
+[ "$2" != broken ]
+"""
+
+
+def test_the_answer_loop_writes_only_answers_to_the_harness_stdin(tmp_path):
+    live = _live()
+    function = live[
+        live.index("answer_rescan_requests() {") : live.index("cleanup() {")
+    ]
+    bin_dir, here, out = tmp_path / "bin", tmp_path / "here", tmp_path / "out"
+    for d in (bin_dir, here, out):
+        d.mkdir()
+    (bin_dir / "docker").write_text(_ANSWER_DOCKER)
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    (here / "targets.sh").write_text(_ANSWER_TARGETS)
+    for f in (bin_dir / "docker", bin_dir / "sleep", here / "targets.sh"):
+        f.chmod(0o755)
+    marker = _load("live_scan_harness").RESCAN_MARKER
+    (out / "x.log").write_text(
+        f"harness output\n{marker} web_clean\nmore\n{marker} broken\n"
+        f"{marker} original\n"
+    )
+    (tmp_path / "calls").write_text("")
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            "\n".join(
+                [
+                    "set -uo pipefail",
+                    f'RESCAN_MARKER="{marker}"; OUT="{out}"; LABEL=x; RUN=r; HERE="{here}"',
+                    function,
+                    "answer_rescan_requests",
+                ]
+            ),
+        ],
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "CALLS": str(tmp_path / "calls"),
+            "RUNNING_FOR": "10",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    # Each request answered once, in order, and nothing else on stdout.
+    assert done.stdout == "ok web_clean\nfailed broken\nok original\n"
+    assert "targets.sh says something about web_clean" in done.stderr
+
+
+def test_up_ends_in_the_original_state_and_every_exit_restores_it(tmp_path):
+    env = _targets_env()
+    calls, out, _ = _run_up(tmp_path, _defined())
+    assert ["exec", "-i", env["SSH_CONTAINER"], "sh", "-s", "original"] in calls
+    assert "targets in state original" in out
+    live = _live()
+    cleanup = live[live.index("cleanup() {") : live.index("trap cleanup EXIT")]
+    assert '"$HERE/targets.sh" state original' in cleanup
+    assert "exit 7" in cleanup
+
+
+def test_the_harness_exits_6_when_the_rescans_fall_short(tmp_path):
+    import ast
+
+    harness = _load("live_scan_harness")
+    tree = ast.parse((VALIDATION / "live_scan_harness.py").read_text(encoding="utf-8"))
+    block = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test)
+    )
+    code = compile(
+        ast.Module(body=block.body, type_ignores=[]), "harness __main__", "exec"
+    )
+    written = tmp_path / "x.json"
+    namespace = {
+        "sys": types.SimpleNamespace(argv=["harness", "x"], stdin=None, exit=sys.exit),
+        "json": json,
+        "main": lambda label, stream: {
+            "authenticated": {"ssh_host_marked_success": True},
+            "rescan_coverage": {
+                "ssh_host_fixed_fixed": True,
+                "ssh_host_reappeared_reappeared": False,
+            },
+        },
+        "open": lambda path, *a, **k: open(written, *a, **k),
+        "NOT_AUTHENTICATED": harness.NOT_AUTHENTICATED,
+        "RESCANS_INCOMPLETE": harness.RESCANS_INCOMPLETE,
+    }
+    with pytest.raises(SystemExit) as refused:
+        exec(code, namespace)
+    assert refused.value.code == harness.RESCANS_INCOMPLETE == 6
+    assert json.loads(written.read_text())["rescan_coverage"]["ssh_host_fixed_fixed"]
+
+
+def _with_rescans(classification="fixed", elapsed=60.0):
+    result = _with_credentialed()
+    result["rescans"] = {
+        "ssh_host_fixed": {
+            "kind": "standalone",
+            "target_state": "ssh_hardened",
+            "scan": {"status": "complete", "duration_seconds": elapsed},
+            "phases": [{"phase_order": 1, "status": "complete"}],
+            "task_result": {"success": True},
+            "elapsed_s": elapsed,
+            "comparison": {
+                "baseline": "ssh_host_baseline",
+                "counts": {classification: 1},
+                "findings": [
+                    ["172.30.250.10", "X", "credentialed_package", classification]
+                ],
+            },
+            "remediation_events": [],
+            "verification_preview": {"verified": [], "reopened": []},
+            "target_findings": [["X", "credentialed_package", "fixed", None]],
+        }
+    }
+    result["rescan_coverage"] = {"ssh_host_fixed_fixed": classification == "fixed"}
+    return result
+
+
+def test_the_comparison_reads_the_rescans_exactly_and_ignores_their_time():
+    compare = _load("compare_live_scans")
+    before = _with_rescans()
+    assert compare.compare(before, _with_rescans(elapsed=95.0)) == []
+    changed = compare.compare(before, _with_rescans(classification="not_assessed"))
+    assert any(line.startswith("rescan ssh_host_fixed comparison:") for line in changed)
+    assert any(line.startswith("rescan_coverage") for line in changed)
+    one_sided = _with_rescans()
+    del one_sided["rescans"]
+    assert compare.compare(before, one_sided) == ["rescans: missing from after"]
+    # Results from before G3 carry no rescans and still compare.
+    old = _with_credentialed()
+    assert compare.compare(old, _with_credentialed()) == []
+    assert any(
+        line.startswith("rescan ssh_host_fixed:") for line in compare.summary(before)
     )

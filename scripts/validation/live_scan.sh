@@ -39,6 +39,17 @@
 #   * revoked on exit, however the run ends: the account's password set back to
 #     "!" and the role to NOLOGIN with no password. Revocation that cannot be
 #     confirmed fails the run (exit 4).
+#
+# The rescans change the targets, and only through targets.sh `state`: the
+# harness prints "$RESCAN_MARKER <state>" and waits; this script puts the
+# targets in that state and answers "ok <state>" (or "failed <state>") on the
+# harness's stdin, after the credentials line. Nothing else is ever written
+# there. On exit, however the run ends, the targets go back to `original`;
+# a restoration that cannot be confirmed fails the run (exit 7).
+#
+# Exit status: the harness's (0; 5 a credentialed scan did not authenticate;
+# 6 the rescans did not reach every classification), or 3 a credential leaked,
+# 4 revocation not confirmed, 7 the targets not restored.
 # docs/ci/LIVE_SCAN_VALIDATION.md has the whole procedure.
 set -euo pipefail
 if [ "$#" -ne 3 ]; then
@@ -58,6 +69,8 @@ RUN="ccure-live-$LABEL-$$"
 INFRA="$RUN-infra"
 WORK=$(mktemp -d)
 random_hex() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+# What the harness prints to ask for a target state (live_scan_harness.RESCAN_MARKER).
+RESCAN_MARKER="@@ccure-rescan-state@@"
 
 if ! docker network inspect "$VALIDATION_NETWORK" >/dev/null 2>&1; then
   echo "no validation targets; run scripts/validation/targets.sh up first" >&2
@@ -134,8 +147,32 @@ leak_check() {
     "configuration, or anywhere in a dump of the throwaway database"
 }
 
+# Answer the harness's requests for a target state, one line each, until its
+# container has exited. Only "ok <state>" or "failed <state>" goes to stdout,
+# which is the harness's stdin; what targets.sh says goes to stderr.
+answer_rescan_requests() {
+  local answered=0 request state status
+  while :; do
+    status=$(docker container inspect -f '{{.State.Status}}' "$RUN-scan" 2>/dev/null) || status=gone
+    case "$status" in created | running) ;; *) return 0 ;; esac
+    request=$(grep -a "^$RESCAN_MARKER " "$OUT/$LABEL.log" 2>/dev/null | sed -n "$((answered + 1))p")
+    if [ -z "$request" ]; then
+      sleep 2
+      continue
+    fi
+    state=${request#"$RESCAN_MARKER "}
+    if "$HERE/targets.sh" state "$state" >&2; then
+      printf 'ok %s\n' "$state"
+    else
+      printf 'failed %s\n' "$state"
+    fi
+    answered=$((answered + 1))
+  done
+}
+
 cleanup() {
-  local status=$? revoked=0
+  local status=$? revoked=0 restored=0
+  "$HERE/targets.sh" state original >&2 || restored=1
   revoke_credentials || revoked=1
   docker rm -f "$RUN-scan" "$RUN-pg" "$RUN-redis" >/dev/null 2>&1 || true
   docker network rm "$INFRA" >/dev/null 2>&1 || true
@@ -143,6 +180,10 @@ cleanup() {
     -rf /w/repo >/dev/null 2>&1 || true
   rm -rf "$WORK"
   if [ "$revoked" -ne 0 ] && [ "$status" -eq 0 ]; then exit 4; fi
+  if [ "$restored" -ne 0 ] && [ "$status" -eq 0 ]; then
+    echo "TARGETS NOT RESTORED: run '$HERE/targets.sh state original' or 'targets.sh down'" >&2
+    exit 7
+  fi
 }
 trap cleanup EXIT
 
@@ -179,6 +220,7 @@ ENVS=(
   -e CCURE_LIVE_EXCLUDE="$VALIDATION_HOST_ADDRESS"
   -e CCURE_LIVE_SCANNER_ADDRESS="$VALIDATION_SCANNER_ADDRESS"
   -e CCURE_LIVE_SSH_TARGET="$SSH_TARGET" -e CCURE_LIVE_PG_TARGET="$PG_TARGET"
+  -e CCURE_LIVE_WEB_TARGET="$WEB_TARGET"
 )
 
 echo "bootstrapping the schema and catalogue"
@@ -192,16 +234,19 @@ echo "granting throwaway credentials to $SSH_AUDIT_USER on $SSH_TARGET and $PG_A
 grant_credentials
 
 echo "scanning $TARGETS unauthenticated, $SSH_TARGET and $PG_TARGET credentialed, all at once;" \
-  "then stopping a sweep of $VALIDATION_SUBNET"
+  "then stopping a sweep of $VALIDATION_SUBNET; then rescanning $WEB_TARGET and $SSH_TARGET," \
+  "one at a time, as the harness changes them"
 docker create --name "$RUN-scan" --init -i --user 0 --cap-add NET_RAW --cap-add NET_ADMIN \
   --network "$VALIDATION_NETWORK" --ip "$VALIDATION_SCANNER_ADDRESS" "${ENVS[@]}" \
   -v "$WORK/repo:/repo" -v "$HERE:/validation:ro" -v "$OUT:/out" \
   -w /repo/Backend --entrypoint python "$IMAGE" /validation/live_scan_harness.py "$LABEL" >/dev/null
 docker network connect "$INFRA" "$RUN-scan"
 set +e
-printf '{"ssh": {"username": "%s", "password": "%s"}, "database": {"username": "%s", "password": "%s", "database": "postgres"}}\n' \
-  "$SSH_AUDIT_USER" "$SSH_PW" "$PG_AUDIT_ROLE" "$DB_PW" \
-  | docker start -a -i "$RUN-scan" >"$OUT/$LABEL.log" 2>&1
+{
+  printf '{"ssh": {"username": "%s", "password": "%s"}, "database": {"username": "%s", "password": "%s", "database": "postgres"}}\n' \
+    "$SSH_AUDIT_USER" "$SSH_PW" "$PG_AUDIT_ROLE" "$DB_PW"
+  answer_rescan_requests
+} | docker start -a -i "$RUN-scan" >"$OUT/$LABEL.log" 2>&1
 status=$?
 leak_check
 leaked=$?

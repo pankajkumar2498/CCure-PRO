@@ -66,7 +66,7 @@ const MAPPED = [
   "Vulnerability Audit",
   "Web Application Scanning",
   "Policy Compliance Scanning",
-  "Credential Validation",
+  "Host Security Assessment (Authenticated)",
 ];
 const UNMAPPED = [
   "Network Based Scanning",
@@ -84,7 +84,7 @@ const UNMAPPED = [
    is itself a baseline fact (recorded in the inventory), and the helper must
    find the card as it is, not as it should be. */
 const card = (title, root = screen) =>
-  root.getByRole("button", { name: new RegExp("\\b" + title + "\\b") });
+  root.getByRole("button", { name: (name) => name.includes(title) });
 
 const allCards = () => screen.queryAllByRole("button");
 
@@ -179,7 +179,7 @@ describe("Dashboard — pipeline-mode selection", () => {
   it.each([
     ["Web Application Scanning", "/web-scans/dashboard"],
     ["Policy Compliance Scanning", "/compliance"],
-    ["Credential Validation", "/scan/credentialed"],
+    ["Host Security Assessment (Authenticated)", "/scan/credentialed"],
   ])(
     "%s navigates straight to %s and leaves the scan context alone",
     async (title, route) => {
@@ -207,7 +207,7 @@ describe("Dashboard — pipeline-mode selection", () => {
     const user = userEvent.setup();
     render(<Dashboard />);
     await user.click(card("Basic Network Scan"));
-    await user.click(card("Credential Validation"));
+    await user.click(card("Host Security Assessment (Authenticated)"));
     expect(axiosInstance.get).not.toHaveBeenCalled();
     expect(axiosInstance.post).not.toHaveBeenCalled();
     expect(axiosInstance.patch).not.toHaveBeenCalled();

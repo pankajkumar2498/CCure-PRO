@@ -267,8 +267,8 @@ const TEMPLATES = [
   },
   {
     id: "cred",
-    title: "Credential Validation",
-    desc: "Scanning Hosts with Credentials.",
+    title: "Host Security Assessment (Authenticated)",
+    desc: "Assess host vulnerabilities, security configurations, and system hardening through authenticated access.",
     Icon: IcoLock,
     tone: "warning",
     mapped: true,
@@ -359,7 +359,7 @@ export default function Dashboard() {
    * handleCard — the single routing handler for all scan cards.
    *
    * Logic:
-   *  1. Cards with `directRoute` (e.g. Credential Validation) navigate directly.
+   *  1. Cards with `directRoute` (e.g. Host Security Assessment) navigate directly.
    *  2. Cards with `pipelineMode` use the SCAN_PIPELINES config:
    *     - Sets pipelineMode in context so downstream phases know the pipeline.
    *     - Resets scan state (all three modes always start fresh via /scan).

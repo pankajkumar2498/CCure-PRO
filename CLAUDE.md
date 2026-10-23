@@ -281,7 +281,8 @@ line while that happens, and it is a **ratchet in both directions**:
   names the owning module (`platform`, `audit`, later `policy_pro`/`rank`/`ir`)
   of every table. **A new table needs an entry in the same change.**
 
-**Scan tasks and stored credentials (Phase C, G1–G2, 22 Oct 2026).** Record:
+**Scan tasks, stored credentials and the findings writer (Phase C, G1–G3,
+22–23 Oct 2026).** Record:
 `docs/architecture/MODULAR_REFACTORING_LOG.md` §6.
 
 - **The scan tasks live in `scans/tasks/`**, one module per area: `phases`,
@@ -313,6 +314,23 @@ line while that happens, and it is a **ratchet in both directions**:
     leaves without a credential (scheduling registers its own).
 
   `tests/repo/test_credential_vault_boundary.py` enforces this.
+- **Only the findings writer writes the findings tables** (G3).
+  `core/findings/writer.py` writes `services`, `tls_details`,
+  `vulnerability_definitions` and `asset_vulnerabilities` for the asset syncer,
+  the credentialed sync and Audit's purge hook, and holds both fixed-sweeps.
+  - **The callers keep the asset and the scan.** A reopened or retired finding
+    reaches the asset's change log through the `record_change` callback the
+    caller passes, and the caller records the scan's assessment scope from what
+    the writer returns. The writer imports no asset or scan model.
+  - **A new write to a findings table goes in the writer.**
+    `tests/repo/test_findings_writer.py` refuses one anywhere else, as an ORM
+    write or in SQL. `scans.nvd_sync`, the NVD feed's catalogue load, is the
+    one recorded SQL exception.
+  - **Where to patch:** the moved code in `core.findings.writer`.
+    `scans.asset_syncer._enrich_findings_with_intel` stayed, and is still
+    patched there.
+- **Findings and remediation are one capability** (D-6) in
+  `scripts/architecture/capability_map.py` and `table_ownership.yaml`.
 
 Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
@@ -330,6 +348,10 @@ prints the graph; `--violations` lists every rule-breaking edge.
   and compares what they stored (`docs/ci/LIVE_SCAN_VALIDATION.md`). These are
   the VM's standing scan targets: the target containers named in the "Test
   targets" sections below date from the Windows host and do not exist here.
+- `Backend/scripts/verification/findings_golden/` replays a restored dump's
+  stored scan payloads through the findings write paths with a commit's code,
+  on a throwaway copy, and compares the rows, exports, comparisons and
+  verification outcomes byte for byte (G3).
 - GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
   only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
   runs where.
@@ -3354,7 +3376,8 @@ is one table (`scan_policies`) and one nullable column
 Who owns a finding, when it is due, and whether it was _really_ fixed. GAP-14;
 tracker §9Q. **No parallel finding engine and no parallel lifecycle** — it
 operates on the `AssetVulnerability` rows the scan pipeline already writes and
-consumes GAP-13's comparison for its verdicts.
+consumes GAP-13's comparison for its verdicts. Since G3 it is part of the
+findings capability (D-6).
 
 - **`remediation_state` is a second column, not more `status` values.**
   `status` (open/fixed/accepted) answers a _detection_ question — is this
@@ -4278,8 +4301,8 @@ open_ports: … return`. A host serving 443 and 8443 was assessed on 443 alone.
   server would also accept is invisible to it. Measured on a deliberately weak
   listener: negotiated `ECDHE-RSA-AES256-GCM-SHA384` while the deep engine
   found three weak suites across TLS 1.0, 1.1 and 1.2. The socket probe is kept
-  because it is fast and produces the `TLSInfo` shape `asset_syncer` and
-  `core/risk.py` already read.
+  because it is fast and produces the `TLSInfo` shape the findings writer
+  (`upsert_tls_details`) and `core/risk.py` already read.
 
 - **Deep assessment is bounded.** It enumerates cipher suites across six
   protocol versions, so it costs many handshakes per endpoint where the socket
@@ -4301,7 +4324,7 @@ open_ports: … return`. A host serving 443 and 8443 was assessed on 443 alone.
   port in the table and refuses any duplicate key in the map.
 
   **A STARTTLS endpoint never becomes `tls_info`.** That key means the first
-  _implicit_-TLS endpoint that answered; `asset_syncer` and `core/risk.py` read
+  _implicit_-TLS endpoint that answered; the findings writer and `core/risk.py` read
   it, and a mail server's certificate appearing there would rewrite an asset's
   TLS identity with something no browser negotiates. They go to
   `tls_endpoints` with a `starttls` marker, and one budget covers both kinds.

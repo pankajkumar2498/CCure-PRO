@@ -368,6 +368,25 @@ No credentialed scan matches a CVE here: package matching needs the
 vulnerability feed, which the throwaway database does not have, and it reports
 that as not assessed.
 
+The rescans, measured on 23 Oct 2026 on `595f068` and `49d09b5` with the same
+image, identical on both:
+
+| Rescan                    | Baseline                | Comparison                                 | Remediation events |
+| ------------------------- | ----------------------- | ------------------------------------------ | ------------------ |
+| `web_baseline`            | none                    | none                                       | none               |
+| `web_removed`             | `web_baseline`          | 3 not assessed, 3 still open               | none               |
+| `web_restored`            | `web_removed`           | 6 still open                               | none               |
+| `ssh_pipeline_baseline`   | none                    | none                                       | none               |
+| `ssh_not_assessed`        | `ssh_pipeline_baseline` | 3 not assessed                             | none               |
+| `ssh_pipeline_fixed`      | `ssh_not_assessed`      | 2 fixed, 1 still open                      | none               |
+| `ssh_pipeline_reappeared` | `ssh_pipeline_fixed`    | 2 reappeared, 1 still open                 | none               |
+| `ssh_host_baseline`       | none                    | none                                       | none               |
+| `ssh_host_fixed`          | `ssh_host_baseline`     | 4 fixed, 1 not assessed, 1 still open      | 4 verified         |
+| `ssh_host_reappeared`     | `ssh_host_fixed`        | 2 reappeared, 1 not assessed, 1 still open | 2 reopened         |
+
+The seven audits take 6.5 to 7.5 minutes each and the three standalone audits
+about 7 seconds, so a whole run takes about 56 minutes.
+
 These figures depend on the image's tools and templates. A comparison is between
 two commits run on the same image and the same targets, not against this list.
 

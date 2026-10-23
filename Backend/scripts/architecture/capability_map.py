@@ -834,7 +834,9 @@ CEILINGS = {
     # findings capability (its models, comparison, fix state and credentialed
     # scope) became one, of the findings writer. D-6 made remediation's six
     # edges into findings, and findings' one into remediation, internal.
-    "lateral_edges": 44,
+    # G4 (C4): scan-policy validation's six imports of the compliance models
+    # and frameworks became one, of compliance's catalogue reads.
+    "lateral_edges": 39,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
@@ -845,8 +847,9 @@ CEILINGS = {
     # remediation's references to asset_vulnerabilities and assets became the
     # findings capability's (internal, and one it already made). G4 (C4): the
     # configuration audit's five, through the benchmark loader and selection,
-    # now compliance's own.
-    "foreign_table_references": 61,
+    # now compliance's own; scan policy's five, through validation, asked of
+    # compliance's catalogue reads.
+    "foreign_table_references": 56,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the

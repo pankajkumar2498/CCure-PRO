@@ -214,26 +214,6 @@
   ],
   [
    "scan_policy",
-   "compliance_controls"
-  ],
-  [
-   "scan_policy",
-   "compliance_frameworks"
-  ],
-  [
-   "scan_policy",
-   "compliance_rule_controls"
-  ],
-  [
-   "scan_policy",
-   "compliance_rules"
-  ],
-  [
-   "scan_policy",
-   "compliance_tenant_frameworks"
-  ],
-  [
-   "scan_policy",
    "scan_schedules"
   ],
   [
@@ -366,27 +346,7 @@
   ],
   [
    "core.scan_policy.validation",
-   "core.compliance_frameworks"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceControl"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceFramework"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceRule"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceRuleControl"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceTenantFramework"
+   "core.compliance_catalogue.reads"
   ],
   [
    "core.scheduling.credential_references",

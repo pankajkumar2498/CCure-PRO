@@ -11,6 +11,8 @@ Module map
                          (from ``core/benchmarks/loader.py``, still an alias)
 ``benchmark_selection``  which benchmark checks apply to a scan, read from it
                          (from ``core/benchmarks/selection.py``, still an alias)
+``reads``                what another capability may ask of it: scan-policy
+                         validation's questions about frameworks and rules
 
 The package imports nothing, so a module here loads only what it needs.
 """

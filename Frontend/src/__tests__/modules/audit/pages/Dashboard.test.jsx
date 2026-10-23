@@ -12,7 +12,7 @@
  *   * pipeline cards   → `resetScan()` THEN `setPipelineMode(mode)` on
  *                        ScanContext, then `navigate("/scan/new")`
  *   * direct-route cards → `navigate(route)` and nothing on the context
- *   * unmapped cards   → disabled; nothing happens
+ *   * unmapped cards   → hidden from the grid and search results
  *
  * `resetScan` before `setPipelineMode` is load-bearing: reset clears the mode
  * back to "basic", so the other order would start every pipeline as basic.
@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import Dashboard from "@audit/pages/Dashboard";
@@ -58,8 +58,8 @@ vi.mock("@audit/context/ScanContext", () => ({
   useScan: () => ({ resetScan, setPipelineMode }),
 }));
 
-/* The thirteen templates as the page defines them. Titles are the accessible
-   names of the card buttons (the button text starts with the title). */
+/* All thirteen definitions remain; only the six mapped templates are shown.
+   A visible card's accessible name starts with its title. */
 const MAPPED = [
   "Basic Network Scan",
   "Asset Discovery",
@@ -78,11 +78,7 @@ const UNMAPPED = [
   "Offline Configuration Scan",
 ];
 
-/* Unanchored on purpose. A disabled card's accessible name is
-   "Soon <title> <desc>" and the beta card's is "Beta Soon <title> <desc>" —
-   the badge is rendered BEFORE the title, so it leads the name. That ordering
-   is itself a baseline fact (recorded in the inventory), and the helper must
-   find the card as it is, not as it should be. */
+/* Match titles literally within accessible names, including parentheses. */
 const card = (title, root = screen) =>
   root.getByRole("button", { name: (name) => name.includes(title) });
 
@@ -105,9 +101,10 @@ describe("Dashboard — template grid", () => {
     );
   });
 
-  it("renders all thirteen templates as buttons", () => {
+  it("renders only the six available templates as buttons", () => {
     render(<Dashboard />);
-    for (const t of [...MAPPED, ...UNMAPPED]) {
+    expect(allCards()).toHaveLength(MAPPED.length);
+    for (const t of MAPPED) {
       expect(card(t)).toBeInTheDocument();
     }
   });
@@ -115,28 +112,22 @@ describe("Dashboard — template grid", () => {
   it("enables exactly the six mapped templates", () => {
     render(<Dashboard />);
     for (const t of MAPPED) expect(card(t)).toBeEnabled();
-    for (const t of UNMAPPED) expect(card(t)).toBeDisabled();
+    expect(
+      screen.queryAllByRole("button").filter((b) => b.disabled),
+    ).toHaveLength(0);
   });
 
-  it("marks unmapped templates 'Soon' and explains why via title", () => {
+  it("omits all upcoming templates from the rendered page", () => {
     render(<Dashboard />);
     for (const t of UNMAPPED) {
-      const b = card(t);
-      expect(b).toHaveAttribute("title", "Coming soon");
-      expect(within(b).getByText("Soon")).toBeInTheDocument();
-    }
-    for (const t of MAPPED) {
-      expect(card(t)).not.toHaveAttribute("title");
-      expect(within(card(t)).queryByText("Soon")).not.toBeInTheDocument();
+      expect(screen.queryByText(t)).not.toBeInTheDocument();
     }
   });
 
-  it("flags Agent Based Monitoring as Beta and nothing else", () => {
+  it("shows no upcoming-template badges", () => {
     render(<Dashboard />);
-    expect(
-      within(card("Agent Based Monitoring")).getByText("Beta"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("Beta")).toHaveLength(1);
+    expect(screen.queryByText("Soon")).not.toBeInTheDocument();
+    expect(screen.queryByText("Beta")).not.toBeInTheDocument();
   });
 
   it("issues no request on mount", () => {
@@ -194,10 +185,14 @@ describe("Dashboard — pipeline-mode selection", () => {
     },
   );
 
-  it("does nothing for an unmapped template", async () => {
+  it.each(UNMAPPED)("keeps %s hidden when searched for", async (title) => {
     const user = userEvent.setup();
     render(<Dashboard />);
-    await user.click(card("Malware Scan"));
+    await user.type(screen.getByLabelText(/search templates/i), title);
+    expect(allCards()).toHaveLength(0);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      `No templates match "${title}"`,
+    );
     expect(navigate).not.toHaveBeenCalled();
     expect(resetScan).not.toHaveBeenCalled();
     expect(setPipelineMode).not.toHaveBeenCalled();
@@ -220,12 +215,9 @@ describe("Dashboard — search", () => {
   it("filters by title, case-insensitively", async () => {
     const user = userEvent.setup();
     render(<Dashboard />);
-    await user.type(
-      screen.getByPlaceholderText("Search templates…"),
-      "MALWARE",
-    );
+    await user.type(screen.getByPlaceholderText("Search templates…"), "ASSET");
     expect(allCards()).toHaveLength(1);
-    expect(card("Malware Scan")).toBeInTheDocument();
+    expect(card("Asset Discovery")).toBeInTheDocument();
   });
 
   it("filters by description too", async () => {
@@ -233,9 +225,11 @@ describe("Dashboard — search", () => {
     render(<Dashboard />);
     await user.type(
       screen.getByPlaceholderText("Search templates…"),
-      "connectivity",
+      "authentication",
     );
-    expect(card("Malware Scan")).toBeInTheDocument();
+    expect(
+      card("Host Security Assessment (Authenticated)"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Basic Network Scan/ }),
     ).not.toBeInTheDocument();

@@ -359,11 +359,14 @@ export default function Dashboard() {
   const { setPipelineMode, resetScan } = useScan();
   const [search, setSearch] = useState("");
 
+  // Keep upcoming template definitions for future implementation, but only
+  // expose templates with a working route in the grid and search results.
   const filtered = TEMPLATES.filter(
     (t) =>
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.subtitle?.toLowerCase().includes(search.toLowerCase()) ||
-      t.desc.toLowerCase().includes(search.toLowerCase()),
+      t.mapped &&
+      (t.title.toLowerCase().includes(search.toLowerCase()) ||
+        t.subtitle?.toLowerCase().includes(search.toLowerCase()) ||
+        t.desc.toLowerCase().includes(search.toLowerCase())),
   );
 
   /**

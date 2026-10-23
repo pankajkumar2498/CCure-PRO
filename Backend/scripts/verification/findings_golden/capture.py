@@ -29,12 +29,15 @@ Both replay modes run, at each event's own time:
 * after a vulnerability audit, the comparison against its baseline and
   ``verify_scan``;
 * for every host of a vulnerability audit that carried a credentialed report,
-  a synthetic standalone credentialed scan: ``_sync_credentialed_asset_identity``
+  synthetic standalone credentialed scans: ``_sync_credentialed_asset_identity``
   with the host's credentialed findings, then the SLA, the comparison and
   ``verify_from_comparison``, as the standalone task runs them. Synthetic: the
   stored data holds no standalone credentialed scan, so the inputs are built
   from the pipeline's host record. It exercises that write path with real
-  shapes; the live harness covers the task itself.
+  shapes; the live harness covers the task itself. Three of them per host:
+  every credentialed finding; then four in five, chosen by identifier, so the
+  sweep retires the rest; then every finding again, so those reappear and
+  verification reopens them.
 
 Captured, after the replay, with the clock frozen:
 
@@ -78,6 +81,11 @@ ORG = "org_development"
 DB_PREFIX = "findings_golden_"
 SYNTHETIC_OFFSET = _dt_module.timedelta(seconds=60)
 SYNTHETIC_DURATION = _dt_module.timedelta(seconds=30)
+SYNTHETIC_STEP = _dt_module.timedelta(seconds=90)
+#: The synthetic standalone scans of one host, in order: every credentialed
+#: finding; a deterministic subset, so the sweep retires the rest; every
+#: finding again, so the retired ones reappear and verification reopens them.
+SYNTHETIC_STEPS = ("", "p", "b")
 
 # ── Deterministic clock and identifiers ─────────────────────────────────────
 
@@ -256,6 +264,15 @@ FULL_TABLES = (
     "scans",
 )
 
+#: Columns left out of a table's rows because PostgreSQL, not the code,
+#: decides them. A sweep logs each finding it retires to asset_change_log,
+#: iterating a query with no ORDER BY and stamping every row with the same
+#: time; which row the sequence numbers first is the order the rows come back
+#: in, and that varies between runs of the same code (measured: two captures
+#: of 595f068 paired 738 ids with different findings, every other column
+#: equal). The rows themselves are still compared, in full.
+ARBITRARY_COLUMNS = {("public", "asset_change_log"): ("id",)}
+
 
 def at(when) -> None:
     CLOCK.now = when.astimezone(_UTC)
@@ -299,9 +316,17 @@ def _phase_events(db):
                 if isinstance(host, dict) and isinstance(
                     host.get("credentialed_report"), dict
                 ):
-                    events.append(
-                        (scan.completed_at + SYNTHETIC_OFFSET, 2, scan.id, index)
-                    )
+                    for step in range(len(SYNTHETIC_STEPS)):
+                        events.append(
+                            (
+                                scan.completed_at
+                                + SYNTHETIC_OFFSET
+                                + step * SYNTHETIC_STEP,
+                                2 + step,
+                                scan.id,
+                                index,
+                            )
+                        )
     events.sort(key=lambda e: (e[0], e[1], e[2], e[3]))
     return events
 
@@ -330,10 +355,10 @@ def _comparison_dict(db, scan):
     return {"baseline": baseline.id, "comparison": comparison.as_dict()}
 
 
-def _synthetic_scan(db, source, index: int, host: dict):
+def _synthetic_scan(db, source, index: int, host: dict, step: int = 0):
     """A standalone credentialed scan row for one host of a vulnerability audit."""
-    started = source.completed_at + SYNTHETIC_OFFSET
-    scan_id = f"{source.id}_golden_c{index}"
+    started = source.completed_at + SYNTHETIC_OFFSET + step * SYNTHETIC_STEP
+    scan_id = f"{source.id}_golden_c{index}{SYNTHETIC_STEPS[step]}"
     existing = db.query(Scan).filter(Scan.id == scan_id).first()
     if existing is not None:
         return existing
@@ -347,7 +372,10 @@ def _synthetic_scan(db, source, index: int, host: dict):
         org_id=source.org_id,
         created_by=source.created_by,
         scan_no=int(max_no) + 1,
-        scan_name=f"golden standalone credentialed {source.scan_no}/{index}",
+        scan_name=(
+            f"golden standalone credentialed {source.scan_no}/{index}"
+            f"{SYNTHETIC_STEPS[step]}"
+        ),
         target_hosts=[ip],
         target_str=ip,
         scan_type="credentialed",
@@ -377,7 +405,13 @@ def _synthetic_scan(db, source, index: int, host: dict):
     return scan
 
 
-def _standalone_inputs(host: dict):
+def _retained(finding: dict) -> bool:
+    """The partial step keeps four findings in five, chosen by identifier."""
+    identifier = str(finding.get("cve_id") or finding.get("cve") or finding.get("id"))
+    return hashlib.sha256(identifier.encode()).digest()[0] % 5 != 0
+
+
+def _standalone_inputs(host: dict, partial: bool = False):
     report = host.get("credentialed_report") or {}
     system_data = dict(report.get("system_info") or {})
     detected_os = str(report.get("detected_os") or "").lower() or "linux"
@@ -385,7 +419,9 @@ def _standalone_inputs(host: dict):
     cves = [
         v
         for v in (host.get("cves") or [])
-        if isinstance(v, dict) and is_credentialed_finding(v)
+        if isinstance(v, dict)
+        and is_credentialed_finding(v)
+        and (not partial or _retained(v))
     ]
     stored_report = {
         "target": str(host.get("ip_address") or host.get("ip") or ""),
@@ -402,13 +438,15 @@ def _standalone_inputs(host: dict):
     return stored_report, system_data, detected_os
 
 
-def _run_standalone(db, source, index: int, host: dict) -> dict:
+def _run_standalone(db, source, index: int, host: dict, step: int = 0) -> dict:
     """The standalone credentialed task's sync, SLA, comparison and verification."""
-    record = {"source_scan": source.id, "host_index": index}
-    scan = _synthetic_scan(db, source, index, host)
+    record = {"source_scan": source.id, "host_index": index, "step": step}
+    scan = _synthetic_scan(db, source, index, host, step)
     db.commit()
     record["scan"] = scan.id
-    stored_report, system_data, os_type = _standalone_inputs(copy.deepcopy(host))
+    stored_report, system_data, os_type = _standalone_inputs(
+        copy.deepcopy(host), partial=SYNTHETIC_STEPS[step] == "p"
+    )
     record["credentialed_findings_in"] = len(stored_report["cves"])
     at(scan.started_at + _dt_module.timedelta(seconds=15))
     sync = getattr(credentialed_sync, "_sync_credentialed_asset_identity")
@@ -485,7 +523,9 @@ def replay(db, out: Path, *, from_empty: bool) -> dict:
             else:
                 hosts = _stored_hosts(db, scan_id, 3)
                 entry["step"] = "standalone_credentialed"
-                entry.update(_run_standalone(db, scan, order, hosts[order]))
+                entry.update(
+                    _run_standalone(db, scan, order, hosts[order], step=kind - 2)
+                )
         except Exception as exc:  # recorded, compared, never hidden
             db.rollback()
             entry["error"] = short_error(exc)
@@ -521,9 +561,15 @@ def capture_tables(db, out: Path) -> dict:
         handle = (full_dir / f"{table}.txt").open("w") if keep else None
         with raw.cursor(name=f"dump_{schema}_{table}") as cursor:
             cursor.itersize = 5000
-            cursor.execute(
-                f"select t::text from {qualified} t order by 1"
-            )  # nosec B608 - catalogue names
+            dropped = ARBITRARY_COLUMNS.get((schema, table))
+            row_text = (
+                "(to_jsonb(t) - " + " - ".join(f"'{c}'" for c in dropped) + ")::text"
+                if dropped
+                else "t::text"
+            )
+            # Names from the catalogue, not from input.
+            query = f"select {row_text} from {qualified} t order by 1"  # nosec B608
+            cursor.execute(query)
             for (row,) in cursor:
                 digest.update(row.encode("utf-8"))
                 digest.update(b"\n")

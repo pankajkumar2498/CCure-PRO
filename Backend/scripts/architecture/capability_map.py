@@ -825,8 +825,9 @@ CEILINGS = {
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
     # findings writer; then the credentialed sync's writes to
-    # asset_vulnerabilities and vulnerability_definitions.
-    "foreign_table_writes": 10,
+    # asset_vulnerabilities and vulnerability_definitions, and Audit's purge
+    # hook's to asset_vulnerabilities.
+    "foreign_table_writes": 9,
 }
 
 _BASELINE_KEYS = (

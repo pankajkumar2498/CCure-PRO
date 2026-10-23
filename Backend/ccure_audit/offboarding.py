@@ -11,6 +11,9 @@ The web scans are the web capability's table, so their creator is cleared by
 ``core/web/offboarding.py``. Until B8 the ORM did it through a back-reference
 on the platform's ``User`` (that module says why it is needed).
 
+The findings are the findings capability's table, so their acceptor is cleared
+by ``core.findings.writer.detach_user_from_findings`` (G3).
+
 Moved out of ``admin_users.purge_user``, where the platform's route was
 updating Audit's tables directly. The statements are the same ones, run on the
 same session and in the same transaction, before the user row is deleted.
@@ -22,7 +25,8 @@ from __future__ import annotations
 
 from ccure_platform.api import register_user_purge_hook
 from core.web.offboarding import detach_user_from_web_scans
-from db.models import AssetNote, AssetTag, AssetVulnerability, Scan
+from core.findings.writer import detach_user_from_findings
+from db.models import AssetNote, AssetTag, Scan
 from sqlalchemy.orm import Session
 
 
@@ -36,9 +40,7 @@ def detach_user_from_audit_data(db: Session, user_id: str) -> None:
     db.query(Scan).filter(Scan.created_by == user_id).update(
         {Scan.created_by: None}, synchronize_session=False
     )
-    db.query(AssetVulnerability).filter(
-        AssetVulnerability.accepted_by == user_id
-    ).update({AssetVulnerability.accepted_by: None}, synchronize_session=False)
+    detach_user_from_findings(db, user_id)
     detach_user_from_web_scans(db, user_id)
 
 

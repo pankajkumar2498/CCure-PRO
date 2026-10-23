@@ -26,6 +26,9 @@ asset risk computed from open findings.
 From the standalone credentialed audit (``scans.tasks.credentialed_sync``):
 its catalogue rows and findings, and the sweep of those it retired.
 
+From Audit's purge hook (``ccure_audit.offboarding``): clearing a purged account
+from the findings whose risk it accepted.
+
 Moved code logs under the name it always had, so its log lines read as they
 did: ``scans.asset_syncer`` for the pipeline's, ``ccure.tasks`` for the
 standalone audit's.
@@ -1862,3 +1865,20 @@ def sweep_credentialed_findings(
         f.fixed_at = utcnow()
         record_change(db, asset_id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed")
     return CredentialedSweep(_config_summary, _assessed_checks, _packages_assessed)
+
+
+# ── Audit's purge hook ───────────────────────────────────────────────────────
+
+
+def detach_user_from_findings(db: Session, user_id: str) -> None:
+    """
+    Clear a purged account from the findings whose risk it accepted.
+
+    Moved unchanged from ``ccure_audit.offboarding.detach_user_from_audit_data``
+    (G3), which calls it where the statement was: on the same session, in the
+    same transaction, before the user row is deleted. The finding stays; only
+    the pointer to the removed account goes.
+    """
+    db.query(AssetVulnerability).filter(
+        AssetVulnerability.accepted_by == user_id
+    ).update({AssetVulnerability.accepted_by: None}, synchronize_session=False)

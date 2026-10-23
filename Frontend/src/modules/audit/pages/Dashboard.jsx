@@ -267,8 +267,9 @@ const TEMPLATES = [
   },
   {
     id: "cred",
-    title: "Host Security Assessment (Authenticated)",
-    desc: "Assess host vulnerabilities, security configurations, and system hardening through authenticated access.",
+    title: "Host Security Assessment",
+    subtitle: "(Authenticated)",
+    desc: "Assess host vulnerabilities through authentication.",
     Icon: IcoLock,
     tone: "warning",
     mapped: true,
@@ -313,7 +314,7 @@ const TEMPLATES = [
    content, and a heading inside a control announces as a heading, not as the
    control's name. */
 function ScanCard({ tpl, onClick }) {
-  const { Icon, title, desc, tone, mapped, beta, badge } = tpl;
+  const { Icon, title, subtitle, desc, tone, mapped, beta, badge } = tpl;
   return (
     <CcureButton
       variant="ghost"
@@ -327,7 +328,16 @@ function ScanCard({ tpl, onClick }) {
       <span className={`tpl-icon tpl-icon--${tone}`} aria-hidden="true">
         <Icon s={32} />
       </span>
-      <span className="tpl-card-title">{title}</span>
+      <span className="tpl-card-title">
+        {title}
+        {subtitle && (
+          <>
+            {" "}
+            <br />
+            {subtitle}
+          </>
+        )}
+      </span>
       <span className="tpl-card-desc">{desc}</span>
       <span className="tpl-card-badges">
         {beta && <CcureBadge variant="info">Beta</CcureBadge>}
@@ -352,6 +362,7 @@ export default function Dashboard() {
   const filtered = TEMPLATES.filter(
     (t) =>
       t.title.toLowerCase().includes(search.toLowerCase()) ||
+      t.subtitle?.toLowerCase().includes(search.toLowerCase()) ||
       t.desc.toLowerCase().includes(search.toLowerCase()),
   );
 

@@ -281,8 +281,8 @@ line while that happens, and it is a **ratchet in both directions**:
   names the owning module (`platform`, `audit`, later `policy_pro`/`rank`/`ir`)
   of every table. **A new table needs an entry in the same change.**
 
-**Scan tasks, stored credentials and the findings writer (Phase C, G1–G3,
-22–23 Oct 2026).** Record:
+**Scan tasks, stored credentials, the findings writer and compliance's
+evidence and catalogue (Phase C, G1–G4, 22–23 Oct 2026).** Record:
 `docs/architecture/MODULAR_REFACTORING_LOG.md` §6.
 
 - **The scan tasks live in `scans/tasks/`**, one module per area: `phases`,
@@ -331,6 +331,35 @@ line while that happens, and it is a **ratchet in both directions**:
     patched there.
 - **Findings and remediation are one capability** (D-6) in
   `scripts/architecture/capability_map.py` and `table_ownership.yaml`.
+- **Compliance consumes evidence providers** (G4).
+  - **Who answers.** `core/compliance_evidence.py` declares the evidence
+    sources, keeps the registry and caches the answers. The answers live
+    with their tables: `core/findings/evidence.py`, `core/asset_evidence.py`,
+    `core/topology/evidence.py` and `core/web/evidence.py`.
+  - **Who registers them.** `ccure_audit/evidence_providers.py`, Audit's
+    composition root, which also composes `malware_scan` and
+    `web_vulnerability_audit` from two producers each. Celery's `imports`
+    names it, so the worker loads it at start-up and `main.py` through
+    `import_default_modules()`.
+  - **Without it compliance raises.** A declared source with no provider
+    raises `EvidenceProviderMissing`; it does not read as not assessed.
+  - **A new evidence key** goes in its provider's returned dict literal
+    (`tests/compliance/test_compliance_rule_wiring.py` reads the literals);
+    a new source needs a provider registered in the same change.
+  - **The guard:** `tests/repo/test_compliance_evidence_boundary.py`.
+- **The compliance catalogue's code is compliance's** (G4).
+  - **The benchmark loader and selection** are
+    `core/compliance_catalogue/benchmark_loader.py` and
+    `benchmark_selection.py`; `core.benchmarks.loader` and `.selection` are
+    `sys.modules` aliases of them, and module code imports the new paths.
+  - **Another capability asks `core/compliance_catalogue/reads.py`**, as
+    scan-policy validation does, and names no compliance table.
+  - **Configuration audit imports nothing above it.** The pack format
+    defines `BENCHMARK_FRAMEWORK_PREFIX`, the severity floor
+    (`severity_at_least`) is the check kernel's, and the STIG loader
+    passes the NIST SP 800-53 catalogue to the SCAP converter
+    (`nist_controls`, from `core.compliance_seeds`).
+  - **The guard:** `tests/repo/test_compliance_catalogue_boundary.py`.
 
 Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
@@ -352,6 +381,10 @@ prints the graph; `--violations` lists every rule-breaking edge.
   stored scan payloads through the findings write paths with a commit's code,
   on a throwaway copy, and compares the rows, exports, comparisons and
   verification outcomes byte for byte (G3).
+- `Backend/scripts/verification/compliance_golden/` runs the compliance
+  evidence, compliance scans, re-verification, scan-policy validation,
+  benchmark selection and both benchmark loaders on a restored copy with a
+  commit's code, and compares what they decide byte for byte (G4).
 - GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
   only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
   runs where.
@@ -4458,9 +4491,10 @@ against MSRC's published fixed builds instead.
 ## Policy Compliance Engine
 
 The engine is an orchestration layer over the existing scan modules, not a
-scanner: `core/compliance_evidence.py` adapts each module's output into a
-normalised payload, `core/compliance_tasks.py` evaluates rules against it, and
-both machine verdicts and human attestations land in one finding model.
+scanner: each producing module answers for its evidence sources with a
+normalised payload, registered with `core/compliance_evidence.py` (G4, see
+"Architecture guardrails"), `core/compliance_tasks.py` evaluates rules against
+it, and both machine verdicts and human attestations land in one finding model.
 
 Six things that were wrong for a long time and must not be reintroduced:
 
@@ -4489,14 +4523,16 @@ Six things that were wrong for a long time and must not be reintroduced:
   in the rollup, so attesting a control never moved the score — which disabled
   63 of ISO 27001's 93 controls.
 
-- **A rule's evidence key must be one the adapter actually emits.**
+- **A rule's evidence key must be one its provider actually emits.**
   `tests/compliance/test_compliance_rule_wiring.py` asserts this statically and would have
   caught the two defects it exists for: 35 rules named `auto_scan`, an evidence
   source with no adapter, and 14 more read `offline_configuration` keys that
   were computed and then left out of the return dict. Between them, 49 of 79
-  rules could never produce a pass or a fail. When adding an adapter key, put it
-  in the returned dict _literal_ — the guard reads the key surface statically —
-  and drop `None` values at the end so uncollected keys become `manual_review`.
+  rules could never produce a pass or a fail. When adding a key to a provider
+  (since G4 they live with their tables, `core/asset_evidence.py` for
+  `offline_configuration`), put it in the returned dict _literal_ — the guard
+  reads the key surface statically — and drop `None` values at the end so
+  uncollected keys become `manual_review`.
 
 - **Never synthesise evidence.** `attrs["password_policy"]` was a hard-coded
   `{complexity: True, history_length: 24, min_length: 14}` written for every

@@ -2957,6 +2957,231 @@ Metadata only. The capability registry has no `remediation`: `core.remediation` 
   `TypeError` on a listener with no service, name or process: `_clean("unknown")` is `None`.
   The writer keeps that behaviour (§7).
 
+### G4 — C4: compliance consumes evidence providers and owns its catalogue code
+
+Commits, on top of `f00056c`:
+
+- **The code:** `1e6f93c` (the severity floor), `0201d79` (benchmark content reads nothing of
+  compliance), `d763203` (the benchmark loader and selection), `4d27190` (scan policy's
+  catalogue reads), `3d89365` (the evidence providers);
+- **The tooling:** `2c5c5df` (the compliance golden).
+
+**The scope** (analysis §10, C4): "Producers register providers for their sources.
+`core/compliance_evidence.py` becomes a registry. The benchmark loader and selection become
+compliance's catalogue writer. Scan-policy validation reads the catalogue through
+`ComplianceCatalogueService`." Unlocks: "Compliance stops querying five capabilities' tables;
+config audit depends on nothing above it". Risk: "scores must not move; compare full compliance
+runs before and after".
+
+**The owner's terms (23 Oct):**
+
+- G4 / C4 only, preserving assessment results, evidence, APIs and exports;
+- targeted compliance evidence and catalogue tests, the architecture guards, and a before/after
+  compliance comparison on a restored database copy;
+- a short live smoke if needed;
+- the full suite only if the targeted tests show unexpected failures or the change proves
+  broader;
+- stop after verification, and not G5.
+
+#### Before the change: a compliance golden
+
+`Backend/scripts/verification/compliance_golden/` (`2c5c5df`), on the pattern of G3's findings
+golden.
+
+- **The copy.** `run.sh up` restores a full dump into a throwaway PostgreSQL 18 on an internal
+  network. It never connects to the live server: `up` reads the dump file only.
+- **The inputs.** The development installation has three assets, no web scan, no network link
+  and two installed catalogues, too little to exercise most adapters. `setup.sql` adds, once and
+  before any capture:
+  - every catalogue installed for `org_development`, and a policy for each that had none
+    (19 policies, 2,293 policy rules);
+  - three assets: a Windows host whose attributes answer every evidence key, a Linux host
+    answering some (an unparseable date, a NULL, an empty list), and an unauthenticated host
+    with no OS;
+  - services in every state, TLS details, anti-malware names under a port and a process;
+  - copies of real findings, some with no severity or score of their own;
+  - network links;
+  - web scans matched by address and by host name, superseded, failed and deleted, with
+    findings in every status.
+- **What it captures, each step at its own frozen time.** The code is loaded as the worker
+  loads it (Celery's `import_default_modules()`), then:
+  - every asset's evidence for every source and for an undeclared one, translated and through
+    the cache (miss, hit, the cached value);
+  - two rounds of compliance scans of all 19 catalogues, and four scoped scans (asset ids, tags,
+    a CDE scope, an empty scope);
+  - re-verification of every asset-level finding of an automated rule;
+  - scan-policy validation of ten policies in both organisations, with and without a
+    credential;
+  - benchmark selection for every narrowing argument;
+  - both shipped benchmark packs loaded twice;
+  - `scripts/benchmarks/load_stig.py` over the SCAP fixture, with and without a CCI list, as an
+    operator runs it;
+  - every table's digest, and every `compliance_*` table in full.
+- **Determinism.**
+  - The clock is frozen, `random` seeded and `PYTHONHASHSEED` fixed.
+  - `secrets` and `uuid4` are counters spread over every digit. The tool's first version used
+    plain counters, as the findings golden does. Compliance history ids are
+    `uuid4().hex[:24]`, all zeros for a small counter, so every history insert collided and
+    every finding was skipped. A capture of one finding showed it before anything was compared.
+  - The evidence cache is emptied before each step that reads it.
+- **Measured.** Two captures of `f00056c` were byte-identical (38 files). The tool then changed
+  once, to load the code through `import_default_modules()` and to log the module list instead
+  of writing it. A third capture of `f00056c` with that version differs from the first two only
+  in `summary.json`, by that list. The comparisons below are against the third.
+
+#### Configuration audit imports nothing above it — `1e6f93c`, `0201d79`, `d763203`
+
+- **The severity floor** (`1e6f93c`).
+  - **What moved.** `SEVERITY_ORDER` and `severity_at_least` moved verbatim from
+    `core/scan_policy/spec.py` to `core/checks/contract.py`, and the spec re-exports both as the
+    same objects.
+  - **Why.** Benchmark selection imported them from scan policy. Once selection was
+    compliance's, that import and validation's reads would have joined compliance and scan
+    policy in a cycle.
+  - **Why the kernel and not the configuration-audit spec.** The scan-policy resolver's pinned
+    load profile holds the kernel already, and would have gained configuration audit.
+- **The framework-id prefix** (`0201d79`).
+  - `BENCHMARK_FRAMEWORK_PREFIX` is defined with the pack format, which names the framework a
+    pack becomes.
+  - `core.compliance_frameworks.is_benchmark_framework` reads it in the function, so importing
+    that module still loads only the standard library.
+- **The NIST catalogue** (`0201d79`).
+  - **The move.** The CCI crosswalk read the seeded NIST SP 800-53 catalogue through
+    `core.compliance_seeds`. Its reader moved verbatim to
+    `core.compliance_seeds.nist_800_53_control_numbers`, with the same cache and the same
+    warning under the same logger.
+  - **The parameter.** `crosswalk_entries` and `to_pack` take `nist_controls`, and the STIG
+    loader passes it.
+  - **Behaviour.** When the catalogue is supplied, the result is unchanged. When none is
+    supplied, nothing is checked, which is what an unreadable seed did before.
+  - **A pre-existing discrepancy, not changed.** The reader's docstring says an unreadable seed
+    yields no crosswalk at all; the code has always emitted unchecked entries (§7).
+- **The loader and selection** (`d763203`).
+  - **Where they went.** Both moved unchanged, apart from their docstring headers, to
+    `core/compliance_catalogue/benchmark_loader.py` and `benchmark_selection.py`.
+  - **The old paths** are `sys.modules` aliases of the same module objects, the pattern
+    `scans.cvss` uses. Module code imports the new paths, and a guard refuses an import of the
+    old ones.
+  - **Unchanged.** Logger names, the scripts' command lines, the pack format.
+
+#### Scan policy reads the catalogue through compliance — `4d27190`
+
+- **What moved.** Validation's queries of five compliance tables, and its call to
+  `compliance_frameworks.is_active`, moved unchanged to `core/compliance_catalogue/reads.py`.
+- **What it answers.** Plain values: the framework ids that exist, whether one is offered, the
+  ids an organisation installed, and the active rule links per framework.
+- **Unchanged.** Validation's messages and its warning.
+- **A difference from the plan.** The plan names `ComplianceCatalogueService`. It is in
+  `ccure_audit` (the audit boundary, layer 6), and `core` may not import it
+  (`foundations-do-not-import-audit-module`). So the reads are in the compliance capability,
+  where that service could read them too (§7).
+
+#### The evidence providers — `3d89365`
+
+- **The registry.** `core/compliance_evidence.py` keeps the declared sources, the cache and its
+  keys, and the answer for an undeclared source. Its eight adapters are gone. It has
+  `register_evidence_provider`, which refuses an undeclared source and a second provider for one
+  source.
+- **The providers**, moved body for body to the tables they read:
+
+  | Capability   | Module                      | Sources                                                                    |
+  | ------------ | --------------------------- | -------------------------------------------------------------------------- |
+  | Findings     | `core/findings/evidence.py` | `vulnerability_audit`, `services_ports`, `tls_certificates`; service names |
+  | Assets       | `core/asset_evidence.py`    | `credential_validation`, `offline_configuration`, `malware_scan`; identity |
+  | Topology     | `core/topology/evidence.py` | `network_topology`                                                         |
+  | Web scanning | `core/web/evidence.py`      | `web_vulnerability_audit`                                                  |
+
+- **The two mixed sources.** Each read two capabilities' tables, and now takes the other
+  capability's part as an argument:
+
+  - `malware_scan` is handed the service names, in the order its own query returned them;
+  - `web_vulnerability_audit` is handed the asset's identity (organisation, address, host name)
+    instead of the row.
+
+  An AST comparison with the old adapters shows only those two seams.
+
+- **Who registers them: Audit's composition root**, `ccure_audit/evidence_providers.py`, which
+  also composes the two mixed sources.
+  - **A difference from the plan.** Principle 6 says each producer registers. A producer
+    importing compliance's registry would be a lateral edge (findings, assets) or an upward one
+    (topology and web scanning sit a layer below compliance). So the producers declare and the
+    composition root registers (§7).
+- **Every process registers them.** Celery's `imports` names the module, so the worker loads it
+  at start-up, and `main.py` loads it through `import_default_modules()`. The task `include`
+  list, pinned to task modules, is unchanged.
+- **One behaviour change, in a misconfigured process only.** A declared source with no provider
+  raises `EvidenceProviderMissing`. Otherwise a process that evaluated compliance without its
+  providers would score every automated rule as not assessed, which looks like a quiet host.
+
+#### Verification
+
+| Check                                                           | Result                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No live scan in progress                                        | None running or queued before the dump. The golden and the smoke used a throwaway server restored from it                                                                                                                                                                                                                                                                                                                         |
+| The moves, statically                                           | Loader and selection identical apart from the docstring header; the eight adapters AST-identical apart from the two seams; the severity floor verbatim                                                                                                                                                                                                                                                                            |
+| Stage 1: the changed code's tests and `tests/repo` (27 targets) | **1,517 passed, 0 failed, 1 skipped** (the Alembic rehearsal, which skips on an activated `alembic.ini`), 6 min 18 s                                                                                                                                                                                                                                                                                                              |
+| Stage 2: the selector's groups                                  | 13 groups (`assets`, `audit`, `audit_boundary`, `auth`, `compliance`, `credentialed`, `modules`, `repo`, `reports`, `scans`, `security`, `topology`, `web`): **7,503 passed, 0 failed, 210 skipped**, 16 min 5 s. The skips are the environment ones: the audit chain's and retention's DBA bootstrap, the Alembic rehearsal, the live OSV feed                                                                                   |
+| Full suite                                                      | Not run. The selector reports `full` only because `main.py` changed, and that change is a comment; without it the selector names the 13 groups above. Nothing in either stage failed                                                                                                                                                                                                                                              |
+| Interfaces, `f00056c` against `3d89365`                         | Identical: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                                                 |
+| Compliance golden, `f00056c` against `3d89365`                  | **Byte-identical, 38 files.** That covers the evidence of 7 assets for 9 sources; 42 scan runs; 8,049 findings (2,988 pass, 1,273 fail, 3,704 manual review, 84 not applicable); 11,145 history rows; 270 scores; 7,200 re-verifications (1,306 pass, 631 fail, 1,159 manual review, 4,104 refused for a parked framework); 10 policies validated; 21 selection cases (955 checks by default); 2 packs loaded twice; 2 STIG loads |
+| Live smoke, `f00056c` against `3d89365`                         | A real worker, started with `docker-compose.yml`'s command (prefork, the three queues), on a fresh copy, given `compliance.run_scan` by name for ISO 27001 and NIST CSF. Both runs completed at both commits; the 1,146 findings (asset, control, rule, status) and 25 score rows are identical; no `EvidenceProviderMissing`. Importing `main.py`, as the API does, registered all eight sources at `3d89365`                    |
+
+#### Coupling
+
+| Measure                           | `f00056c` | `1e6f93c` | `0201d79` | `d763203` | `4d27190` | `3d89365` |
+| --------------------------------- | --------: | --------: | --------: | --------: | --------: | --------: |
+| Capability cycle, all imports     |        13 |        13 |        13 |        12 |        12 |        12 |
+| Capability cycles, top-level      |   5, 2, 2 |   5, 2, 2 |   5, 2, 2 |      5, 2 |      5, 2 |      5, 2 |
+| Upward edges                      |        31 |        30 |        28 |        19 |        19 |        19 |
+| Lateral edges                     |        44 |        44 |        44 |        44 |        39 |        33 |
+| Foreign-table references / writes |    66 / 9 |    66 / 9 |    66 / 9 |    61 / 5 |    56 / 5 |    50 / 5 |
+
+- **Configuration audit depends on nothing above it.** No configuration-audit module imports a
+  higher layer, and the capability has left both cycles; its top-level pair with compliance is
+  gone.
+- **Compliance.**
+
+  - **The evidence path queries nothing outside compliance.** Compliance's foreign references
+    fell from eight tables to two, and it has no foreign write.
+  - **What is left, outside the evidence path:**
+
+    - the compliance scan reads `assets` for its scope, prerequisites and platform;
+    - the remediation executor sets `services.state` and an asset attribute by assignment, which
+      the ratchet counts as references;
+    - the router joins `assets`.
+
+    The analysis's target for compliance is no foreign table, so it is not met yet (§7).
+
+- **Scan policy names no compliance table.** One lateral edge remains, to compliance's reads.
+- **Unchanged.** The audit boundary's `ComplianceCatalogueService` still reads the five catalogue
+  tables (§7).
+
+**Import cost** (first-party modules / all modules, `f00056c` → `3d89365`):
+
+| Module                                                                                                                                            |    Before |     After |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | --------: | --------: |
+| `core.compliance_evidence`                                                                                                                        |  35 / 395 |   4 / 335 |
+| `core.benchmarks.selection` (now an alias)                                                                                                        |  63 / 377 |  60 / 374 |
+| `core.benchmarks.loader` (now an alias)                                                                                                           |  58 / 372 |  60 / 374 |
+| `core.compliance_tasks`, `core.scan_policy.validation`, `core.benchmarks.pack`, `core.scap`, `core.compliance_frameworks`, `ccure_audit.services` | unchanged | unchanged |
+
+#### What G4 leaves, and what it found
+
+- **Compliance's remaining reads of assets and services**, outside the evidence path (Coupling,
+  §7).
+- **`ComplianceCatalogueService` and the reads** (§7).
+- **Principle 6's wording**, against a composition root that registers the providers (§7).
+- **Found by the golden's inputs: Windows Defender is not recognised as anti-malware.**
+  - **What the collector stores.** The Windows collector records the Defender service as name
+    `WinDefend` and description "Microsoft Defender Antivirus Service".
+  - **What the evidence reads.** The name first. It matches `defender`, which `windefend` does
+    not contain.
+  - **The effect.** A Windows host protected only by Defender fails `crl_malware_agent_v1` and
+    ISO A.8.16's `crl_iso_monitor_agent_v1`.
+  - **Status.** Pre-existing, and preserved (§7).
+- **Found reading the SCAP crosswalk: an unreadable NIST seed is documented as emitting no
+  crosswalk, and emits an unchecked one.** Pre-existing, and preserved (§7).
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -2994,3 +3219,8 @@ Metadata only. The capability registry has no `remediation`: `core.remediation` 
 | new | Take findings and assets out of each other's cycle (C7). After G3 the writes go one way, but `routers.findings`, `routers.remediation` and `core.remediation.reporting` read the asset model, and `routers.assets` reads the findings models                                                                                                                                                                                                                                                                                                                                                                                                   | G3, §6                                                             |
 | new | Whether an unsupported probe should leave a network assessment incomplete. The pipeline retires a network finding only when every plugin outcome is complete, and some probe reports unsupported on every host measured (`default_creds` on a host with no Basic challenge, `heartbleed_probe` where the server refuses a legacy handshake), so a network finding is never fixed by a rescan: on the G3 rescans, removing the web target's `.env` and `.git` read as not assessed. Safe in direction (absence is not remediation), but no network finding is ever retired by a rescan                                                          | G3, §6                                                             |
 | new | Whether the NVD sync's SQL writes to `vulnerability_definitions` go through the findings writer, or the catalogue's ingest stays the vulnerability-intel capability's. It is the one recorded exception in the findings-writer guard                                                                                                                                                                                                                                                                                                                                                                                                           | G3, §6                                                             |
+| new | Recognise Windows Defender as anti-malware. The Windows collector records the service as name `WinDefend`, description "Microsoft Defender Antivirus Service"; the `malware_scan` evidence reads the name first and matches `defender`, which `windefend` does not contain. A Windows host protected only by Defender therefore fails `crl_malware_agent_v1` and ISO A.8.16's `crl_iso_monitor_agent_v1`. Options: match the service names (`WinDefend`, `MsMpEng`, `Sense`), or read the description as well as the name                                                                                                                      | G4, §6                                                             |
+| new | Decide what an unreadable NIST SP 800-53 seed does to a STIG crosswalk. The reader's docstring says no crosswalk is emitted; the code (`if catalogue: controls &= catalogue`) has always emitted the entries unchecked, and since G4 a caller that passes no catalogue gets the same. Options: emit nothing without a catalogue, as documented, or correct the docstring                                                                                                                                                                                                                                                                       | G4, §6                                                             |
+| new | Take compliance's remaining reads and writes of other capabilities' tables through their services, to meet the analysis's target of no foreign table. After G4: the compliance scan reads `assets` for its scope, prerequisites and platform (`core.compliance_tasks`); the remediation executor sets `services.state` and `network_reachable`, and an asset's `reboot_pending`; the router joins `assets` for its findings list and remediation requests. Options: an asset read service, and the findings writer and an asset service for the writes                                                                                         | G4, §6                                                             |
+| new | Whether `ComplianceCatalogueService` (`ccure_audit`, the audit boundary) reads the catalogue through `core.compliance_catalogue.reads` too. C4 named that service for scan policy's reads, which `core` may not import; it still queries the five catalogue tables itself                                                                                                                                                                                                                                                                                                                                                                      | G4, §6                                                             |
+| new | Confirm or amend principle 6 ("each producing capability registers a provider"). Since G4 the producers declare their providers and Audit's composition root (`ccure_audit/evidence_providers.py`) registers them, because a producer importing compliance would be a lateral or upward edge, and two sources compose two producers                                                                                                                                                                                                                                                                                                            | G4, §6                                                             |

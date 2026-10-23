@@ -10,7 +10,6 @@
    "discovery",
    "findings",
    "network_checks",
-   "remediation",
    "scan_policy",
    "scans",
    "scheduling",
@@ -227,14 +226,6 @@
    "vulnerability_definitions"
   ],
   [
-   "remediation",
-   "asset_vulnerabilities"
-  ],
-  [
-   "remediation",
-   "assets"
-  ],
-  [
    "reporting",
    "assets"
   ],
@@ -407,26 +398,6 @@
    "db.models.assets:Asset"
   ],
   [
-   "core.remediation.reporting",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "core.remediation.states",
-   "db.models.findings"
-  ],
-  [
-   "core.remediation.verification",
-   "core.findings.comparison"
-  ],
-  [
-   "core.remediation.verification",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "core.remediation.workflow",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
    "core.risk",
    "core.checks.endpoint_evidence"
   ],
@@ -524,19 +495,11 @@
   ],
   [
    "routers.findings",
-   "core.remediation"
-  ],
-  [
-   "routers.findings",
    "db.models.assets:Asset"
   ],
   [
    "routers.remediation",
    "db.models.assets:Asset"
-  ],
-  [
-   "routers.remediation",
-   "db.models.findings:AssetVulnerability"
   ],
   [
    "routers.scan_policies",

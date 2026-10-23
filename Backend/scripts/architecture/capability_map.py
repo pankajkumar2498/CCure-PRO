@@ -108,8 +108,13 @@ CAPABILITIES: dict[str, tuple[int, str]] = {
     "policy_pro": (3, "Policy Pro module slot"),
     "rank": (3, "Rank module slot"),
     "assets": (4, "Asset registry, correlation, AMT, MAC vendors"),
-    "findings": (4, "Findings store, scan comparison, fix state"),
-    "remediation": (4, "Remediation workflow, SLA, verification"),
+    # D-6 (G3): remediation is part of findings. Its state is a second column
+    # on asset_vulnerabilities, and verification consumes the comparison.
+    "findings": (
+        4,
+        "Findings store and writer, scan comparison, fix state; "
+        "remediation workflow, SLA, verification",
+    ),
     "credential_vault": (4, "Stored credentials"),
     "scan_policy": (4, "Reusable scan policies and snapshots"),
     "scheduling": (4, "Recurring scans"),
@@ -245,8 +250,8 @@ PREFIXES: dict[str, str] = {
     "core.findings": "findings",
     "routers.findings": "findings",
     "db.models.findings": "findings",
-    "core.remediation": "remediation",
-    "routers.remediation": "remediation",
+    "core.remediation": "findings",
+    "routers.remediation": "findings",
     "core.credential_vault": "credential_vault",
     # G2 (C5): the vault's model, moved out of db/models/compliance.py.
     "db.models.credentials": "credential_vault",
@@ -785,8 +790,9 @@ CEILINGS = {
     # from the payload) split the 22 into 16, 4 and 2, and took the renderers
     # out of the top-level cycle; B8 (the orchestrator composes the engines'
     # enrichment) took the port inventory out of the 16. G1's C1 (the routers
-    # dispatch by name) took the task hub out of both.
-    "largest_cycle": 14,
+    # dispatch by name) took the task hub out of both. G3's D-6 (findings and
+    # remediation one capability) made it 13: a merge, not a decoupling.
+    "largest_cycle": 13,
     # G2's model move (the credential vault's model out of the compliance
     # file) broke the top-level cycle into 5, 2 and 2.
     "largest_cycle_top_level": 5,
@@ -811,16 +817,19 @@ CEILINGS = {
     # G2 (C5) the credential vault's read of scan_schedules (scheduling counts
     # its own references now). G3 (C3): the asset syncer's eight imports of the
     # findings capability (its models, comparison, fix state and credentialed
-    # scope) became one, of the findings writer.
-    "lateral_edges": 51,
+    # scope) became one, of the findings writer. D-6 made remediation's six
+    # edges into findings, and findings' one into remediation, internal.
+    "lateral_edges": 44,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
     # its other table access the scans capability's (a reclassification).
     # G2 (C5): compliance, the credentialed audit and scheduling stopped
     # reading compliance_credentials, and the vault scan_schedules. G3 (C3):
-    # the asset syncer stopped naming vulnerability_definitions.
-    "foreign_table_references": 68,
+    # the asset syncer stopped naming vulnerability_definitions. D-6:
+    # remediation's references to asset_vulnerabilities and assets became the
+    # findings capability's (internal, and one it already made).
+    "foreign_table_references": 66,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the

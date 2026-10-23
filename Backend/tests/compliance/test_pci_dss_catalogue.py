@@ -101,7 +101,7 @@ def test_placeholder_rule_ids_follow_the_control_id_not_its_number():
 
 
 def test_unrecorded_pci_facts_are_not_failures(db_session):
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import offline_configuration
     from db.models import Organization
     from db.models.assets import Asset
 
@@ -137,7 +137,7 @@ def test_unrecorded_pci_facts_are_not_failures(db_session):
         db_session.add_all([blank, known])
         db_session.flush()
 
-        adapt = ComplianceEvidenceProvider._adapt_offline_configuration
+        adapt = offline_configuration
         nothing = adapt(db_session, blank.id)
         # Not collected is absent — the engine renders manual_review — never False.
         assert not any(k in nothing for k in keys), {k: nothing.get(k) for k in keys}

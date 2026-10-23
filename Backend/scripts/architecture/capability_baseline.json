@@ -102,35 +102,11 @@
   ],
   [
    "compliance",
-   "asset_vulnerabilities"
-  ],
-  [
-   "compliance",
    "assets"
   ],
   [
    "compliance",
-   "network_links"
-  ],
-  [
-   "compliance",
    "services"
-  ],
-  [
-   "compliance",
-   "tls_details"
-  ],
-  [
-   "compliance",
-   "vulnerability_definitions"
-  ],
-  [
-   "compliance",
-   "web_findings"
-  ],
-  [
-   "compliance",
-   "web_scans"
   ],
   [
    "dashboard",
@@ -288,30 +264,6 @@
   ]
  ],
  "lateral_edges": [
-  [
-   "core.compliance_evidence",
-   "db.models.assets:Asset"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:Service"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:TLSDetail"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:VulnerabilityDefinition"
-  ],
   [
    "core.compliance_tasks",
    "core.credential_vault"

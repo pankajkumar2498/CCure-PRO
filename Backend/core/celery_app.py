@@ -37,6 +37,14 @@ celery_app = Celery(
         *module_registry.task_modules(),
     ],
 )
+# Modules the worker loads at start-up that define no task: the registrations
+# the tasks above depend on. Celery loads these and the include list alike, in
+# the worker and through main.py's import_default_modules().
+celery_app.conf.imports = (
+    # Compliance's evidence providers (G4): core.compliance_tasks evaluates
+    # rules against them, and raises EvidenceProviderMissing without them.
+    "ccure_audit.evidence_providers",
+)
 
 # Optional but recommended configuration for security and stability
 celery_app.conf.update(

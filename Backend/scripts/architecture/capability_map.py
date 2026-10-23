@@ -236,6 +236,8 @@ PREFIXES: dict[str, str] = {
     "ccure_rank": "rank",
     # domain stores
     "core.asset_correlation": "assets",
+    # G4 (C4): what compliance's evidence reads from the asset record.
+    "core.asset_evidence": "assets",
     "core.amt_reconciliation": "assets",
     # Ambiguous: both are used by the scan engines, but the vendor lookup reads
     # the assets capability's mac_vendor_cache and the classifier decides what
@@ -835,8 +837,11 @@ CEILINGS = {
     # scope) became one, of the findings writer. D-6 made remediation's six
     # edges into findings, and findings' one into remediation, internal.
     # G4 (C4): scan-policy validation's six imports of the compliance models
-    # and frameworks became one, of compliance's catalogue reads.
-    "lateral_edges": 39,
+    # and frameworks became one, of compliance's catalogue reads; the
+    # compliance evidence module's six imports of the asset and findings
+    # models went with its adapters (the producers' evidence providers,
+    # registered by ccure_audit/evidence_providers.py).
+    "lateral_edges": 33,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
@@ -848,8 +853,10 @@ CEILINGS = {
     # findings capability's (internal, and one it already made). G4 (C4): the
     # configuration audit's five, through the benchmark loader and selection,
     # now compliance's own; scan policy's five, through validation, asked of
-    # compliance's catalogue reads.
-    "foreign_table_references": 56,
+    # compliance's catalogue reads; compliance's six evidence tables
+    # (asset_vulnerabilities, vulnerability_definitions, tls_details,
+    # network_links, web_scans, web_findings), read by their owners' providers.
+    "foreign_table_references": 50,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the

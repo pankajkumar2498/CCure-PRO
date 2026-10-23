@@ -72,7 +72,8 @@ import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's cate
 import core.scheduling.credential_references  # noqa: F401,E402  (answers the vault)
 
 # The worker's task modules — core/celery_app.py's include list — loaded here
-# once, as a worker loads them at start-up. Since G1 (C1) no router imports a
+# once, as a worker loads them at start-up, with its imports (the compliance
+# evidence providers, which the compliance tasks need when run eagerly). Since G1 (C1) no router imports a
 # task module: each dispatches by registered name (core/task_names.py), and
 # the first lookup in a process that had not loaded them would import the scan
 # pipeline inside a request.

@@ -609,7 +609,7 @@ def test_a_domain_qualified_principal_is_split_for_ntlm():
 # every host this transport touched.
 #
 # These walk the whole path rather than the executor alone:
-#   SMBExecutor -> WindowsCollector -> registry_hardening -> compliance_evidence
+#   SMBExecutor -> WindowsCollector -> registry_hardening -> asset_evidence
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -698,9 +698,9 @@ def test_the_evidence_adapter_drops_an_unassessed_key():
     """
     import inspect
 
-    from core import compliance_evidence
+    from core import asset_evidence
 
-    source = inspect.getsource(compliance_evidence)
+    source = inspect.getsource(asset_evidence)
     for key in (
         "smbv1_disabled",
         "netbios_disabled",

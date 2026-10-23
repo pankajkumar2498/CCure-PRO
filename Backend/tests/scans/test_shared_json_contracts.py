@@ -435,12 +435,10 @@ class _OneAssetDb:
 def test_only_success_counts_as_authenticated_and_nothing_is_defaulted(
     attributes, successful
 ):
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import credential_validation
 
     asset = SimpleNamespace(custom_attributes=attributes)
-    payload = ComplianceEvidenceProvider._adapt_credential_validation(
-        _OneAssetDb(asset), "ast_contract"
-    )
+    payload = credential_validation(_OneAssetDb(asset), "ast_contract")
     # An uncollected password policy is absent, never False/0/8.
     assert payload == {"credentialed_scan_successful": successful}
 
@@ -464,7 +462,7 @@ def _dict_literal_keys_in(path: str, function: str, anchor: str) -> set[str]:
 
 def _password_policy_reads() -> set[str]:
     tree = ast.parse(
-        (BACKEND_ROOT / "core/compliance_evidence.py").read_text(encoding="utf-8")
+        (BACKEND_ROOT / "core/asset_evidence.py").read_text(encoding="utf-8")
     )
     reads = set()
     for node in ast.walk(tree):
@@ -497,7 +495,7 @@ def test_password_policy_keys_written_are_the_keys_compliance_reads():
 
 
 def test_a_collected_password_policy_reaches_compliance_key_by_key():
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import credential_validation
 
     asset = SimpleNamespace(
         custom_attributes={
@@ -505,9 +503,7 @@ def test_a_collected_password_policy_reaches_compliance_key_by_key():
             "password_policy": {"min_length": 14, "lockout_threshold": 5},
         }
     )
-    payload = ComplianceEvidenceProvider._adapt_credential_validation(
-        _OneAssetDb(asset), "ast_contract"
-    )
+    payload = credential_validation(_OneAssetDb(asset), "ast_contract")
     assert payload == {
         "credentialed_scan_successful": True,
         "minimum_password_length": 14,

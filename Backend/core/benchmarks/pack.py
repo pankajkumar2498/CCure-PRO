@@ -76,6 +76,25 @@ __all__ = [
 ]
 
 
+#: The framework a pack becomes is ``compliance_frameworks.id`` =
+#: this prefix + the pack's code (:attr:`BenchmarkPack.framework_id`).
+#:
+#: It is what separates *content the operator loaded* from *a catalogue that
+#: ships with the product*. The parked/active mechanism exists because eleven
+#: shipped catalogues are unfinished; it has nothing to say about a benchmark
+#: somebody deliberately installed, and a loaded benchmark can never appear in
+#: a hardcoded tuple anyway.
+#:
+#: A prefix rather than "anything not in ALL_FRAMEWORK_IDS": that reading would
+#: make a misspelled framework id active, and the guard could no longer answer
+#: 404 for one that does not exist.
+#:
+#: Defined with the pack format, and read from here by
+#: ``core.compliance_frameworks``, since G4: it was compliance's, and the pack
+#: imported it, which put the content format above the compliance catalogue.
+BENCHMARK_FRAMEWORK_PREFIX = "cfw_bm_"
+
+
 class PackError(ValueError):
     """A benchmark pack is malformed, or claims something it cannot support."""
 
@@ -322,8 +341,6 @@ class BenchmarkPack:
         catalogue that ships with the product, and therefore how a benchmark
         avoids being treated as a parked catalogue and scoring nothing.
         """
-        from core.compliance_frameworks import BENCHMARK_FRAMEWORK_PREFIX
-
         return f"{BENCHMARK_FRAMEWORK_PREFIX}{self.code.lower()}"
 
     def controls_in_profile(self, profile: Optional[str]) -> List[BenchmarkControl]:

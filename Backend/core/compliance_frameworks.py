@@ -137,22 +137,17 @@ def active_framework_ids() -> tuple[str, ...]:
     return _configured()
 
 
-#: Framework ids created by ``core/benchmarks/loader.py`` carry this prefix.
-#:
-#: It is what separates *content the operator loaded* from *a catalogue that
-#: ships with the product*. The parked/active mechanism exists because eleven
-#: shipped catalogues are unfinished; it has nothing to say about a benchmark
-#: somebody deliberately installed, and a loaded benchmark can never appear in
-#: a hardcoded tuple anyway.
-#:
-#: A prefix rather than "anything not in ALL_FRAMEWORK_IDS": that reading would
-#: make a misspelled framework id active, and the guard could no longer answer
-#: 404 for one that does not exist.
-BENCHMARK_FRAMEWORK_PREFIX = "cfw_bm_"
-
-
 def is_benchmark_framework(framework_id: str | None) -> bool:
-    """True for a framework created by loading a benchmark pack."""
+    """True for a framework created by loading a benchmark pack.
+
+    Framework ids created by loading a pack carry the pack format's
+    ``BENCHMARK_FRAMEWORK_PREFIX``, which says why it is a prefix. Imported
+    here rather than at the top, so that importing this module still loads
+    only the standard library; the pack format loads the first time a
+    framework id is asked about.
+    """
+    from core.benchmarks.pack import BENCHMARK_FRAMEWORK_PREFIX
+
     return bool(framework_id) and framework_id.startswith(BENCHMARK_FRAMEWORK_PREFIX)
 
 

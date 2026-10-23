@@ -805,8 +805,11 @@ CEILINGS = {
     # assets and credentials routers' imports of the hub, and added one: the
     # credentialed router asks scans.scan_creation for its scan record.
     # G4 (C4): benchmark selection's import of scan policy, for the severity
-    # floor (now the check kernel's).
-    "upward_edges": 30,
+    # floor (now the check kernel's); the benchmark pack's import of the
+    # compliance frameworks, for the framework-id prefix (now the pack's), and
+    # the CCI crosswalk's of the compliance seeds (the STIG loader passes the
+    # NIST catalogue in).
+    "upward_edges": 28,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web

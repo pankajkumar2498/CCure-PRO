@@ -781,10 +781,6 @@
    "db.models.compliance:ComplianceRuleControl"
   ],
   [
-   "core.benchmarks.pack",
-   "core.compliance_frameworks"
-  ],
-  [
    "core.benchmarks.selection",
    "core.compliance_frameworks"
   ],
@@ -815,10 +811,6 @@
   [
    "core.findings.comparison",
    "db.models.scans:Scan"
-  ],
-  [
-   "core.scap.cci",
-   "core.compliance_seeds"
   ],
   [
    "core.scheduling.dispatcher",

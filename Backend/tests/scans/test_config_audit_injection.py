@@ -37,18 +37,17 @@ from testpaths import BACKEND_ROOT
 
 # ── The purpose ──────────────────────────────────────────────────────────────
 
-#: The one edge out of the evaluation path that is not to the check kernel, and
-#: why it stays: the CCI crosswalk resolves the seeded NIST catalogue's path.
-#: It is a seed-file lookup, not an engine, and not B10's.
-_KNOWN = {("core.scap.cci", "core.compliance_seeds")}
+#: Edges out of the evaluation path that are not to the check kernel. Empty
+#: since G4: the CCI crosswalk read the seeded NIST catalogue through
+#: ``core.compliance_seeds``, and the STIG loader passes it in now.
+_KNOWN: set = set()
 
 
 def test_the_audit_engine_and_scap_evaluation_depend_only_on_the_check_kernel():
     """
     The plan's target, for the engine, its collectors and the SCAP compiler and
-    evaluator. The benchmark loader's catalogue access (``core.benchmarks``) is
-    compliance's to take over (C4) and the router is the HTTP edge; neither is
-    here. Lazy imports count.
+    evaluator. The benchmark loader and selection are compliance's since C4,
+    and the router is the HTTP edge; neither is here. Lazy imports count.
     """
     _, edges = collect_edges()
     beyond = sorted(

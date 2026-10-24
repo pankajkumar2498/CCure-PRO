@@ -135,7 +135,7 @@ def test_malware_block_is_recorded_as_blocked_not_success(
     with `changes="blocked_malware"` — an audit trail stating that a file the
     scanner rejected was accepted.
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
 
     def _detect(*_a, **_kw):
         raise MalwareDetected("Eicar-Test-Signature")
@@ -169,7 +169,7 @@ def test_scanner_unavailable_is_recorded_as_unavailable(
     the scanner simply could not answer. An investigation has to be able to
     tell "refused because malicious" from "refused because unverifiable".
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
 
     def _unavailable(*_a, **_kw):
         raise MalwareScanUnavailable("clamd closed the connection without a reply")
@@ -197,7 +197,7 @@ def test_the_three_outcomes_are_distinguishable(
     only field that separates them. If it collapses to "success" the trail
     cannot answer the question it exists for.
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
 
     _evidence_post(client, auth_headers, evidence_control.id)
 

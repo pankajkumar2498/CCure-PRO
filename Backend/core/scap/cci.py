@@ -52,8 +52,8 @@ __all__ = [
 
 #: The framework code the crosswalk targets, matching the seeded catalogue's
 #: ``code``. Crosswalk entries are ``CODE:control_number`` — see
-#: ``routers/compliance.py``'s gap analysis, which splits on the colon and
-#: normalises what follows.
+#: the compliance gap analysis (``routers/compliance_reports.py``), which
+#: splits on the colon and normalises what follows.
 NIST_FRAMEWORK_CODE = "NIST_800_53_R5"
 
 CCI_PATTERN = re.compile(r"CCI-\d{6}", re.IGNORECASE)

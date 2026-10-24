@@ -285,6 +285,15 @@ PREFIXES: dict[str, str] = {
     "core.nist_csf": "compliance",
     "core.nist_csf_catalogue": "compliance",
     "routers.compliance": "compliance",
+    # G6 (C8): the compliance router's parts, mounted by routers.compliance.
+    "routers.compliance_assessment": "compliance",
+    "routers.compliance_attestation": "compliance",
+    "routers.compliance_catalogue": "compliance",
+    "routers.compliance_common": "compliance",
+    "routers.compliance_framework_reports": "compliance",
+    "routers.compliance_remediation": "compliance",
+    "routers.compliance_reports": "compliance",
+    "routers.compliance_schedules": "compliance",
     "db.models.compliance": "compliance",
     # orchestration
     "scans.db_helpers": "scans",

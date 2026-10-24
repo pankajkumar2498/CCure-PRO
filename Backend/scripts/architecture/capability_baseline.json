@@ -332,12 +332,12 @@
    "core.findings.reads"
   ],
   [
-   "routers.compliance",
-   "core.credential_vault"
+   "routers.compliance_common",
+   "db.models.assets:Asset"
   ],
   [
-   "routers.compliance",
-   "db.models.assets:Asset"
+   "routers.compliance_remediation",
+   "core.credential_vault"
   ],
   [
    "routers.scan_policies",

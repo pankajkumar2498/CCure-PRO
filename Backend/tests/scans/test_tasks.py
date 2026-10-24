@@ -41,7 +41,9 @@ def test_run_host_discovery_task_success(mock_orch, mock_db):
 
     mock_db.query().filter().first.return_value = mock_scan
 
-    # We patch the DB Session and helpers
+    # We patch the DB Session and helpers. (get_terminal_phase was patched
+    # here until C6; the task asks scans.pipeline.next_phase now, which
+    # answers None for a basic scan's phase 1 as the patch did.)
     # (A patch of create_completed_scan stood here until G1. The task never
     # reads that name, so it replaced nothing; scans.tasks.phases does not
     # import it, and it is gone.)
@@ -51,8 +53,6 @@ def test_run_host_discovery_task_success(mock_orch, mock_db):
         "scans.tasks.phases._check_cancelled", return_value=False
     ), patch(
         "scans.tasks.phases.resolve_pipeline_mode", return_value="basic"
-    ), patch(
-        "scans.tasks.phases.get_terminal_phase", return_value=1
     ), patch(
         "scans.tasks.phases.resolve_report_context", return_value={}
     ), patch(
@@ -100,8 +100,6 @@ def test_run_host_discovery_task_failure(mock_orch, mock_db):
         "scans.tasks.phases._update_task_id"
     ), patch("scans.tasks.phases._check_cancelled", return_value=False), patch(
         "scans.tasks.phases.resolve_pipeline_mode", return_value="basic"
-    ), patch(
-        "scans.tasks.phases.get_terminal_phase", return_value=1
     ), patch(
         "scans.tasks.common.mark_scan_failed"
     ) as mock_mark_failed:

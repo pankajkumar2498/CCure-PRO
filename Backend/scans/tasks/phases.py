@@ -1,13 +1,19 @@
 """
 The network scan pipeline's tasks: host discovery (phase 1), asset discovery
 (phase 2) and the vulnerability audit (phase 3, with the credentialed
-enrichment of phase 3.5), each starting the next; the three tasks that sync a
-phase's results into the asset registry; and the traditional scan.
+enrichment of phase 3.5); the three tasks that sync a phase's results into the
+asset registry; and the traditional scan.
 
 Split from core/tasks.py in G1 (C2, docs/architecture/MODULAR_REFACTORING_LOG.md
 §6), unchanged. Every task keeps its registered name, queue and limits
 (scripts/architecture/task_registry.json). Logs under ``ccure.tasks``, as the
 hub did.
+
+Since C6 no phase task starts another. ``scans/pipeline.py`` decides which
+phase follows and hands it its hosts, by registered name; what crosses is the
+typed hand-off of ``core/phase_handoff.py`` (host records into asset
+discovery, a service inventory into the vulnerability audit), read here as
+each phase receives it.
 """
 
 import logging
@@ -16,18 +22,27 @@ from config import AppConfig
 from core import task_names
 from core.candidate_enumeration import searches_run, truncated_searches
 from core.celery_app import celery_app
+from core.phase_handoff import ServiceInventory, active, host_records
+from core.phase_handoff import (  # noqa: F401  (core/tasks.py offers this name)
+    merge_host_identity as _merge_host_identity,
+)
 from core.scan_control import ScanCancelled
 from db.base import SessionLocal, utcnow
 from db.models import Scan
 from scan_helpers import (
     carry_scan_coverage,
-    get_terminal_phase,
     phase1_summary_from_scan,
     phase_summary_from_scan,
-    resolve_pipeline_mode,
     resolve_report_context,
 )
 from scans.db_helpers import update_scan_phase
+from scans.pipeline import (
+    ASSET_DISCOVERY,
+    HOST_DISCOVERY,
+    hand_over,
+    next_phase,
+    resolve_pipeline_mode,
+)
 from scans.tasks.common import (
     _check_cancelled,
     _finalize_cancelled,
@@ -40,60 +55,6 @@ from scans.tasks.credentialed import _apply_credentialed_enrichment
 from scans.tasks.topology import _chain_topology_if_needed
 
 log = logging.getLogger("ccure.tasks")
-
-
-def _merge_host_identity(
-    enriched_hosts: list[dict], source_hosts: list[dict]
-) -> list[dict]:
-    """
-    Preserve identity/context fields from the previous phase when the next phase
-    returns only partial host records.
-    """
-    by_ip: dict[str, dict] = {}
-    for host in source_hosts or []:
-        ip = host.get("ip_address") or host.get("ip")
-        if ip:
-            by_ip[ip] = host
-
-    merged: list[dict] = []
-    for idx, host in enumerate(enriched_hosts or []):
-        base = {}
-        ip = host.get("ip_address") or host.get("ip")
-        if ip and ip in by_ip:
-            base = dict(by_ip[ip])
-        elif idx < len(source_hosts or []):
-            base = dict(source_hosts[idx])
-
-        combined = dict(base)
-        combined.update(host or {})
-
-        # Restore important phase-1/2 identity if phase-3 output omitted it.
-        for key in (
-            "ip",
-            "ip_address",
-            "hostname",
-            "mac",
-            "mac_address",
-            "vendor",
-            "is_active",
-            "status",
-            "open_ports",
-            "os_guess",
-            "os_confidence",
-            "device_category",
-            "snmp_device_type",
-            "mdns_name",
-            "netbios_names",
-            "os_fingerprint_full",
-            "tcp_fingerprint",
-            "port_states",
-        ):
-            if combined.get(key) in (None, "", [], {}):
-                if key in base:
-                    combined[key] = base.get(key)
-
-        merged.append(combined)
-    return merged
 
 
 @celery_app.task(
@@ -247,7 +208,6 @@ def run_host_discovery_task(
         from scans.db_helpers import update_scan_phase1
 
         mode = resolve_pipeline_mode(pipeline_mode)
-        terminal = get_terminal_phase(mode)
 
         # Check if execution mode is interactive
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
@@ -255,7 +215,9 @@ def run_host_discovery_task(
         if scan_row and scan_row.options:
             is_interactive = scan_row.options.get("execution_mode") == "interactive"
 
-        is_final = (terminal == 1) or is_interactive
+        # The pipeline decides what follows; None where this phase ends it.
+        following = next_phase(mode, HOST_DISCOVERY, interactive=is_interactive)
+        is_final = following is None
 
         # 1. Run Discovery
         log.info("[TRACE][ENGINE][%s] Calling run_host_discovery_only", ts())
@@ -318,10 +280,10 @@ def run_host_discovery_task(
         # 4. Final Progress Push (Post-Commit)
         from core.redis_client import publish_progress_sync
 
-        # If there's another phase to run, trigger it asynchronously
-        if not is_final and result.get("success") and result.get("data"):
-            active_hosts = [h for h in result["data"] if h.get("is_active")]
-            if active_hosts:
+        # If there's another phase to run, hand it the hosts that answered
+        if following is not None and result.get("success") and result.get("data"):
+            handoff = active(host_records(result["data"]))
+            if handoff:
                 log.info(
                     "[TRACE][TASK][%s] Chaining next phase (Asset Discovery) for scan_id=%s",
                     ts(),
@@ -338,10 +300,11 @@ def run_host_discovery_task(
                 if not resolved_exclude_ports and scan_row and scan_row.options:
                     resolved_exclude_ports = scan_row.options.get("exclude_ports")
 
-                # Dispatch Phase 2 (Asset Discovery) directly
-                next_task = run_asset_discovery_task.delay(
+                # Hand Phase 2 (Asset Discovery) its hosts
+                next_task = hand_over(
+                    following,
+                    handoff,
                     user_id=user_id,
-                    hosts=active_hosts,
                     intensity=port_scan_intensity,  # Dedicated port scan intensity (separate from discovery intensity)
                     scan_id=scan_id,
                     pipeline_mode=pipeline_mode,
@@ -477,7 +440,9 @@ def run_asset_discovery_task(
         if scan_row and scan_row.options:
             is_interactive = scan_row.options.get("execution_mode") == "interactive"
 
-        is_final = (get_terminal_phase(mode) == 2) or is_interactive
+        # The pipeline decides what follows; None where this phase ends it.
+        following = next_phase(mode, ASSET_DISCOVERY, interactive=is_interactive)
+        is_final = following is None
 
         # Fetch options from scan_row if None
         resolved_exclude_ot = exclude_ot_from_nmap
@@ -507,10 +472,13 @@ def run_asset_discovery_task(
         if not resolved_exclude_ports and scan_row and scan_row.options:
             resolved_exclude_ports = scan_row.options.get("exclude_ports")
 
+        # What host discovery (or the person continuing the scan) handed over.
+        records = host_records(hosts)
+
         orch = _new_orchestrator(db, scan_id=scan_id)
         result = _run_async(
             orch.run_asset_discovery_only(
-                hosts=hosts,
+                hosts=[record.wire() for record in records],
                 intensity=intensity,
                 pipeline_mode=mode,
                 scan_id=scan_id,
@@ -583,19 +551,21 @@ def run_asset_discovery_task(
         # Final Progress Push
         from core.redis_client import publish_progress_sync
 
-        # If there's another phase to run, trigger it asynchronously
-        if not is_final and result.get("success") and result.get("data"):
-            active_hosts = [h for h in result["data"] if h.get("is_active")]
-            if active_hosts:
+        # If there's another phase to run, hand it the inventory of the hosts
+        # that answered
+        if following is not None and result.get("success") and result.get("data"):
+            inventory = ServiceInventory.from_wire(result["data"]).active()
+            if inventory.hosts:
                 log.info(
                     "[TRACE][TASK][%s] Chaining next phase (Vulnerability Audit) for scan_id=%s",
                     ts(),
                     scan_id,
                 )
-                # Dispatch Phase 3 (Vulnerability Audit) directly
-                next_task = run_vulnerability_audit_task.delay(
+                # Hand Phase 3 (Vulnerability Audit) the service inventory
+                next_task = hand_over(
+                    following,
+                    inventory.hosts,
                     user_id=user_id,
-                    hosts=active_hosts,
                     scan_id=scan_id,
                     pipeline_mode=pipeline_mode,
                     exclude_ot_from_nmap=resolved_exclude_ot,
@@ -719,6 +689,9 @@ def run_vulnerability_audit_task(
             if scan_row and scan_row.options:
                 resolved_exclude_ips = scan_row.options.get("exclude_ips")
 
+        # What asset discovery (or the person continuing the scan) handed over.
+        inventory = ServiceInventory.from_wire(hosts)
+
         orch = _new_orchestrator(db, scan_id=scan_id)
 
         # GAP-12. Whether a probe may *write* to a scanned host is a per-scan
@@ -745,14 +718,14 @@ def run_vulnerability_audit_task(
             )
             with allow_intrusive_probes(True):
                 result = orch.run_vulnerability_audit_only(
-                    hosts=hosts,
+                    hosts=inventory.wire(),
                     scan_id=scan_id,
                     exclude_ot_from_nmap=resolved_exclude_ot,
                     exclude_ips=resolved_exclude_ips,
                 )
         else:
             result = orch.run_vulnerability_audit_only(
-                hosts=hosts,
+                hosts=inventory.wire(),
                 scan_id=scan_id,
                 exclude_ot_from_nmap=resolved_exclude_ot,
                 exclude_ips=resolved_exclude_ips,
@@ -769,7 +742,8 @@ def run_vulnerability_audit_task(
             )
             return result
 
-        result["data"] = _merge_host_identity(result.get("data", []), hosts)
+        # The audit returns partial records; identity comes from the inventory.
+        result["data"] = inventory.restore_identity(result.get("data", []))
 
         # Phase 3.5 — authenticated checks, merged into these same results
         # before anything reads them. Runs only when credentials were supplied.

@@ -3182,6 +3182,198 @@ golden.
 - **Found reading the SCAP crosswalk: an unreadable NIST seed is documented as emitting no
   crosswalk, and emits an unchecked one.** Pre-existing, and preserved (§7).
 
+### G5 — C6: a typed phase hand-off, and one pipeline definition
+
+Commits, on top of `4b77625`:
+
+- **The code:** `f533e61` (the hand-off and the pipeline, defined), `c011844` (the phase
+  tasks hand over through the pipeline), `ec415b7` (the browser's continuation too);
+- **The tooling:** `07bd679` and `518777a` (the phase-pipeline golden).
+
+**The scope** (analysis §10, C6): "Typed phase hand-off. `HostRecord` and `ServiceInventory`
+between phases; one pipeline definition instead of each task starting the next." Unlocks: "The
+network pipeline becomes composable". Risk: Medium–High.
+
+**The owner's terms (24 Oct):**
+
+- G5 / C6 only;
+- inspect the plan's phase hand-off before editing, and replace the untyped hand-off with the
+  typed contract, changing only the producers, consumers and tests that need it;
+- validate phase payload compatibility, ordering and failure propagation, with targeted
+  orchestration tests and the architecture guards first, and broader tests only if those
+  expose a regression;
+- stop after verification, and not G6.
+
+#### What crossed between phases before C6
+
+- **The hand-off.** Host discovery dispatched asset discovery, and asset discovery the
+  vulnerability audit, by calling the next task's `.delay()` with `hosts=` a list of dicts.
+  - **Which hosts:** the active ones, picked with `h.get("is_active")`.
+  - **Whether to continue:** from `get_terminal_phase` and the interactive setting.
+- **The identity merge.** The vulnerability audit restored the hosts' identity from what it was
+  handed (`_merge_host_identity`), in its own module.
+- **The browser's continuation.** `POST /scan/asset-discovery` and `/scan/vulnerability-audit`
+  dispatched the same tasks by registered name, with the records the browser posted.
+- **The records** are projections of `core.models.HostResult`:
+
+  - phase 1 hands over `to_phase1_dict()` or `to_basic_dict()`;
+  - phase 2 hands over `to_clean_dict()`.
+
+  The stored phase payloads carry exactly those key sets, which was read off the live database
+  before the change.
+
+- **The aliasing that matters.** The receiving phase gives the dicts to its engines, which add
+  to them and edit their port records in place. Phase 3's merge reads those edits back from the
+  dicts it was handed: Nmap's pre-enrichment of the ports reaches the stored payload only that
+  way.
+
+#### The hand-off — `core/phase_handoff.py` (`f533e61`)
+
+In the scan kernel; it imports only the standard library.
+
+- **`HostRecord`** is one host: its address (`ip_address`, or `ip` where only that is written),
+  whether it answered, the services found on it (`ServiceRecord`, read from `open_ports`), and
+  the record itself.
+- **`ServiceInventory`** is what asset discovery hands the audit: the hosts in order, `active()`,
+  and `restore_identity`, the merge moved verbatim as `merge_host_identity`. Its key list is
+  `HOST_IDENTITY_FIELDS`.
+- **The wire form is unchanged, deliberately.**
+  - **Why it must be:** Celery carries JSON; the tasks' signatures are pinned; the browser posts
+    back the records it was shown; and a message queued before a deploy is read after it.
+  - **How:** a record crosses as its producer's dict, every key in order. `HostRecord.wire()`
+    returns that dict itself, not a copy, so the in-place edits and the merge keep working.
+- **One change in behaviour, in a malformed hand-off only.** A record that is not a mapping is
+  refused with `HandoffError` when the receiving phase reads it. Before, it failed inside that
+  phase's engines. Either way the phase fails and the scan is settled as failed.
+
+#### The pipeline — `scans/pipeline.py` (`f533e61`, `c011844`, `ec415b7`)
+
+- **One definition.**
+  - **The table:** which phases each mode runs, moved verbatim from `scan_helpers.py`.
+    `scan_helpers` re-exports the same objects, under the same logger.
+  - **The phases:** the three network phases and their registered task names.
+  - **`next_phase`:** the rule each phase task applied before. A phase continues to the next
+    unless it is the mode's terminal phase, or the scan is interactive.
+  - **`hand_over`:** dispatches a phase by registered name, with its hosts as their own dicts.
+- **No phase task starts another** (`c011844`):
+  - host discovery hands asset discovery the `HostRecord`s that answered;
+  - asset discovery hands the audit the active part of its `ServiceInventory`;
+  - each reads its input as the typed hand-off, and the audit restores identity through the
+    inventory;
+  - `_merge_host_identity` stays a name of the task module, because `core/tasks.py` offers it.
+- **The browser's continuation hands over through the pipeline too** (`ec415b7`). The request
+  models, the checks before dispatch and the response are unchanged.
+- **The task names, queues, limits and signatures are unchanged**, and so is what each task
+  receives.
+- **The guard is `tests/repo/test_phase_pipeline_boundary.py`.** It refuses:
+  - a read of asset discovery's or the audit's registered name outside their definition, their
+    task module and the pipeline;
+  - a direct `.delay` or `.apply_async` of either task;
+  - a hand-off module importing beyond the standard library.
+
+#### Before the change: a phase-pipeline golden
+
+`Backend/scripts/verification/pipeline_golden/` (`07bd679`, `518777a`).
+
+- **Where it runs.** On the findings golden's restored server (`findings_golden/run.sh up`), on a
+  fresh copy of its template, Celery eager, with one commit's code.
+- **What runs for real.** The phase tasks, the scan-phase writers, the asset syncer, the
+  findings writer, the credentialed enrichment and the topology check are the commit's own code.
+- **What is replaced.** Only the orchestrator, by a recorder. It takes each phase's input as the
+  task hands it over and answers from the phase results the restored database stores. Like the
+  real phase 3, it edits the port records it was handed in place and returns hosts without open
+  ports, hostname or vendor, which the task then restores.
+- **Sixteen scenarios**, each started by dispatching host discovery by name (two start a later
+  phase directly):
+  - the three pipeline modes;
+  - options forwarded from the request and from the scan record, and explicit ports;
+  - no active host;
+  - an interactive scan continued with the browser's records (extra keys, an address under
+    `ip`, a truthy non-boolean `is_active`);
+  - a phase reporting failure, one raising, two cancelled between phases;
+  - a broker refusing phase 2, and one refusing phase 3;
+  - asset discovery started with a host that did not answer;
+  - a phase-3 hand-off with records that carry no address.
+- **What it records:**
+  - every dispatch's name and arguments as the broker carries them;
+  - every orchestrator call's arguments;
+  - every progress frame and each result;
+  - every table's digest, and the `scans` and `scan_phases` rows in full.
+- **Determinism.** The clock is frozen; `secrets`, `uuid4` and the Celery task ids are counters.
+  `audit_chain_heads.updated_at`, which PostgreSQL stamps itself, is left out of that row.
+
+#### Verification
+
+| Check                                                                                                                                                                          | Result                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No live scan in progress                                                                                                                                                       | None running or queued before the dump; the golden used a throwaway server restored from it                                                                                                                                                                                                                                                                                                               |
+| The hand-off as before, statically                                                                                                                                             | The merge's body and key list equal to the pre-C6 one; the pipeline table and helpers moved verbatim and re-exported as the same objects; every dispatch passes the same keyword arguments                                                                                                                                                                                                                |
+| New tests (`test_phase_handoff`, `test_scan_pipeline`, `test_phase_pipeline_boundary`)                                                                                         | Records cross as the same dicts, key order kept, edits downstream visible; `is_active` read for truth as before; the merge equal to the pre-C6 one over six shapes, key order included; `next_phase` equal to the pre-C6 rule for every mode, phase and interactive setting (48 cases); a refused dispatch raises; the boundary                                                                           |
+| Quick set (the new tests, the phase tasks, the continuation route, the task, registry and capability guards)                                                                   | 200 passed, uncommitted tree                                                                                                                                                                                                                                                                                                                                                                              |
+| Stage 1, `ec415b7`, clean worktree: `tests/repo` and the 27 pipeline-touching files of `tests/scans`, the three rate-limit inventories, two report tests and one topology test | **1,335 passed, 0 failed, 1 skipped** (the Alembic rehearsal, an environment skip), 6 min 6 s                                                                                                                                                                                                                                                                                                             |
+| Broader tests                                                                                                                                                                  | Not run. The selector names 9 groups (targeted, not full); stage 1 showed no regression, so the owner's terms did not call for them                                                                                                                                                                                                                                                                       |
+| Interfaces, `4b77625` against `ec415b7`                                                                                                                                        | Identical: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                         |
+| Pipeline golden, first version (15 scenarios)                                                                                                                                  | Two captures of `4b77625` identical (19 files); `c011844` and `ec415b7` identical to them                                                                                                                                                                                                                                                                                                                 |
+| Pipeline golden, final version (16 scenarios)                                                                                                                                  | Two captures of `4b77625` identical (20 files); `ec415b7` identical                                                                                                                                                                                                                                                                                                                                       |
+| Golden mutations, each committed in a scratch worktree, never on a branch                                                                                                      | 4 of 4 caught: records copied at hand-over (the stored phase-3 payloads differ); asset discovery handing on hosts that did not answer (caught once the sixteenth scenario existed: in the automatic pipeline phase 1 had already dropped them, so the first version compared it identical); interactive mode ignored (9 files); a refused dispatch swallowed (the two broker scenarios and the scan rows) |
+| Guard mutations                                                                                                                                                                | A phase task dispatching the audit directly, and the router dispatching it by name: each caught by two of the boundary tests                                                                                                                                                                                                                                                                              |
+
+#### Coupling
+
+Unchanged: capability cycles 12 and 5, 2 (top-level); upward edges 19; lateral 33;
+foreign-table references 50 and writes 5. The new modules belong to the scan kernel (the
+hand-off) and the scans capability (the pipeline), and every edge they add points down.
+
+**Import cost** (first-party modules, `4b77625` → `ec415b7`):
+
+| Module                | Before | After |
+| --------------------- | -----: | ----: |
+| `scans.tasks.phases`  |    145 |   147 |
+| `routers.phase_scans` |    146 |   148 |
+| `scan_helpers`        |     93 |    96 |
+| `core.phase_handoff`  |      — |     2 |
+| `scans.pipeline`      |      — |     5 |
+
+#### Differences from the plan
+
+- **The hand-off is typed at the phase boundary, and the engines still work on the dicts.** The
+  plan's interface table gives the engines `discover(…) → list[HostRecord]` and
+  `inventory(hosts, …) → ServiceInventory`. That is an engine refactor:
+
+  - the engines read and edit the records in place, and phase 3 depends on it;
+  - C6 asks for the hand-off "between phases".
+
+  So the records cross as their own dicts, with the typed fields read beside them (§7).
+
+- **§12's target for `scans`, "imports engines only through the pipeline definition", is not
+  met.** C6 moved the chaining; the orchestrator, in the scans capability, still imports the
+  engines itself (§7).
+- **No live scan.** §11 asks for live validation of C6, and the owner's terms asked for targeted
+  tests first and broader validation only on a regression; there was none.
+  - **Why the golden stands in:** the live harness runs Celery eager too, and C6 changes neither
+    the orchestrator nor an engine.
+  - **What neither exercises:** a real broker's JSON round trip of the hand-off. It carries the
+    same dicts with the same keyword arguments, under the same task names and queues, so it is
+    unchanged by construction, and it was not measured.
+- **Host discovery is still dispatched by the routes and the scheduler.** It starts a scan from
+  a request; nothing is handed to it.
+
+#### What G5 leaves, and what it found
+
+- **A phase run beyond its mode's terminal phase still chains on.** For example, asset
+  discovery in a basic scan dispatches the audit. That was the rule, and `next_phase` keeps it.
+  The routes refuse a phase outside the scan's mode, so only a direct task call reaches it (§7).
+- **Found by the golden: a continued scan's posted records reach the stored phase-3 payload key
+  for key.**
+  - **How:** the identity merge starts from the record the audit was handed and lays the audit's
+    own record over it.
+  - **The effect:** a key the browser posted that the audit does not itself write is stored as a
+    scan result.
+  - **Who can do it:** a person with `audit.scan.run`, continuing their own scan, for hosts its
+    scope admits.
+  - **Status:** pre-existing, and preserved (§7).
+- **The engines' own record type** (§7), and the scans capability's direct engine imports (§7).
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -3224,3 +3416,8 @@ golden.
 | new | Take compliance's remaining reads and writes of other capabilities' tables through their services, to meet the analysis's target of no foreign table. After G4: the compliance scan reads `assets` for its scope, prerequisites and platform (`core.compliance_tasks`); the remediation executor sets `services.state` and `network_reachable`, and an asset's `reboot_pending`; the router joins `assets` for its findings list and remediation requests. Options: an asset read service, and the findings writer and an asset service for the writes                                                                                         | G4, §6                                                             |
 | new | Whether `ComplianceCatalogueService` (`ccure_audit`, the audit boundary) reads the catalogue through `core.compliance_catalogue.reads` too. C4 named that service for scan policy's reads, which `core` may not import; it still queries the five catalogue tables itself                                                                                                                                                                                                                                                                                                                                                                      | G4, §6                                                             |
 | new | Confirm or amend principle 6 ("each producing capability registers a provider"). Since G4 the producers declare their providers and Audit's composition root (`ccure_audit/evidence_providers.py`) registers them, because a producer importing compliance would be a lateral or upward edge, and two sources compose two producers                                                                                                                                                                                                                                                                                                            | G4, §6                                                             |
+| new | Whether a continued scan's posted host records should reach the stored results. The vulnerability audit's identity merge starts from the record it was handed and lays its own over it, so a key the browser posted to `/scan/vulnerability-audit` that the audit does not itself write is stored in the phase-3 payload as a scan result. The person needs `audit.scan.run` and their own scan, and the hosts must be in its scope. Options: merge only `HOST_IDENTITY_FIELDS` from the handed-over record, or validate the posted records against the phase's own projection (`HostResult`)                                                  | G5, §6                                                             |
+| new | Whether a phase run beyond its pipeline mode's terminal phase should chain onward. Asset discovery in a basic scan dispatches the audit, as each phase task did before C6 and `scans.pipeline.next_phase` still does. The routes refuse a phase outside the scan's mode, so only a direct task call reaches it. Option: stop at the mode's own phases (`PIPELINE_PHASES`)                                                                                                                                                                                                                                                                      | G5, §6                                                             |
+| new | Give the engines the typed records (the analysis's `discover(…) → list[HostRecord]`, `inventory(hosts, …) → ServiceInventory`). C6 typed the hand-off between phases; the engines still read and edit the records as dicts in place, and phase 3's identity merge depends on those edits                                                                                                                                                                                                                                                                                                                                                       | G5, §6                                                             |
+| new | Take the scans capability's direct engine imports through the pipeline definition (§12's target for `scans`). The orchestrator still imports the discovery, port and vulnerability engines itself                                                                                                                                                                                                                                                                                                                                                                                                                                              | G5, §6                                                             |
+| new | Run C6's live validation (§11) if wanted: about two hours for a before/after pair. The phase-pipeline golden covers the hand-off with the tasks' own code; the live harness runs Celery eager too, so neither exercises a real broker's JSON round trip, which C6 leaves unchanged by construction                                                                                                                                                                                                                                                                                                                                             | G5, §6                                                             |

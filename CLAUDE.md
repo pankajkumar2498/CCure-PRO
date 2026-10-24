@@ -281,8 +281,9 @@ line while that happens, and it is a **ratchet in both directions**:
   names the owning module (`platform`, `audit`, later `policy_pro`/`rank`/`ir`)
   of every table. **A new table needs an entry in the same change.**
 
-**Scan tasks, stored credentials, the findings writer and compliance's
-evidence and catalogue (Phase C, G1–G4, 22–23 Oct 2026).** Record:
+**Scan tasks, stored credentials, the findings writer, compliance's
+evidence and catalogue, and the phase hand-off (Phase C, G1–G5,
+22–24 Oct 2026).** Record:
 `docs/architecture/MODULAR_REFACTORING_LOG.md` §6.
 
 - **The scan tasks live in `scans/tasks/`**, one module per area: `phases`,
@@ -360,6 +361,18 @@ evidence and catalogue (Phase C, G1–G4, 22–23 Oct 2026).** Record:
     passes the NIST SP 800-53 catalogue to the SCAP converter
     (`nist_controls`, from `core.compliance_seeds`).
   - **The guard:** `tests/repo/test_compliance_catalogue_boundary.py`.
+- **One pipeline definition, and a typed hand-off between phases** (G5).
+  - **The pipeline is `scans/pipeline.py`:** the modes' phases (re-exported by
+    `scan_helpers`), the three network phases by registered name, `next_phase`
+    and `hand_over`. No phase task starts another, and the browser's
+    continuation hands over through it too.
+  - **What crosses is `core/phase_handoff.py`:** `HostRecord` into asset
+    discovery, `ServiceInventory` into the vulnerability audit, and the
+    identity merge.
+  - **A record crosses as its producer's own dict, never a copy.** The
+    receiving phase's engines edit it in place, and phase 3 reads the edits
+    back when it restores identity.
+  - **The guard:** `tests/repo/test_phase_pipeline_boundary.py`.
 
 Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
@@ -381,6 +394,10 @@ prints the graph; `--violations` lists every rule-breaking edge.
   stored scan payloads through the findings write paths with a commit's code,
   on a throwaway copy, and compares the rows, exports, comparisons and
   verification outcomes byte for byte (G3).
+- `Backend/scripts/verification/pipeline_golden/` runs the phase tasks, Celery
+  eager, on a copy of that golden's restored server, with the orchestrator
+  replaced by a recorder, and compares every hand-off, dispatch, progress frame
+  and stored phase byte for byte, failures and cancellations included (G5).
 - `Backend/scripts/verification/compliance_golden/` runs the compliance
   evidence, compliance scans, re-verification, scan-policy validation,
   benchmark selection and both benchmark loaders on a restored copy with a
@@ -1954,7 +1971,8 @@ compounded, and each is worth keeping in mind separately:
   covering every task has to be sized for the longest, at which point it bounds
   nothing that matters, and the failure it produces is the silent kind above.
   Phases chain as _separate_ tasks (`run_host_discovery` → `run_asset_discovery`
-  → `run_vulnerability_audit` via `.delay()`), so each budget covers one phase,
+  → `run_vulnerability_audit`, dispatched by `scans.pipeline.hand_over`), so
+  each budget covers one phase,
   not the pipeline — the 11,714s scan was wall-clock across three tasks.
   **A new scan task must declare its own limits**; nothing inherits one now.
 
@@ -1996,7 +2014,7 @@ episode was a worker running code from before a commit that fixed it.
 
 `pipeline_mode` selects the phases: `basic` = 1, `asset` = 1+2,
 `vulnerability_audit` = 1+2+3. The UI posts to `/scan/host-discovery` and the
-backend auto-chains the later phases.
+backend chains the later phases through `scans/pipeline.py` (G5).
 
 - **Phase 1** — `core/discovery/engine.py`, Scapy only (ARP/ICMP/TCP/UDP). No
   Nmap, no port scanning.

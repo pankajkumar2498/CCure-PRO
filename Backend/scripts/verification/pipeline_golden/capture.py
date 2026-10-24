@@ -34,8 +34,9 @@ Scenarios: each pipeline mode run through; options forwarded from the request
 and from the scan record; no active host; interactive continuation with the
 browser's host records (extra keys, an address under ``ip``, a truthy
 non-boolean ``is_active``); a phase that reports failure, one that raises, and
-one cancelled between phases; a broker refusing the next dispatch; a phase-3
-hand-off holding records with no address.
+one cancelled between phases; a broker refusing the next dispatch; a phase-2
+run started with a host that did not answer; a phase-3 hand-off holding
+records with no address.
 
 Then every table's digest, and the scan-pipeline tables in full.
 
@@ -803,6 +804,30 @@ def audit_broker_refuses_phase3(db, ctx):
     FAIL_DISPATCH.add(task_names.RUN_VULNERABILITY_AUDIT)
     _start(db, ctx, "audit_broker_refuses_phase3", "vulnerability_audit")
     FAIL_DISPATCH.clear()
+
+
+@scenario
+def phase2_hands_on_only_answering_hosts(db, ctx):
+    """Asset discovery started with a host that did not answer: its output
+    keeps the host, and only the answering ones are handed to phase 3."""
+    ctx["n"] += 1
+    at(START + _dt_module.timedelta(hours=ctx["n"]))
+    scan_id = "scn_golden_phase2_hands_on_only_answering_hosts"
+    CURRENT["scan_id"] = scan_id
+    CURRENT["behaviour"] = Behaviour()
+    _new_scan(db, scan_id, ctx["n"], "vulnerability_audit", {})
+    event("scenario", name="phase2_hands_on_only_answering_hosts", scan_id=scan_id)
+    hosts = [copy.deepcopy(h) for h in Stored.p1_hosts if h.get("is_active")]
+    hosts.append({"ip_address": "10.250.5.5", "is_active": False, "status": "Inactive"})
+    _dispatch(
+        task_names.RUN_ASSET_DISCOVERY,
+        "asset_discovery_direct",
+        user_id=ctx["user"],
+        hosts=hosts,
+        intensity="normal",
+        scan_id=scan_id,
+        pipeline_mode="vulnerability_audit",
+    )
 
 
 @scenario

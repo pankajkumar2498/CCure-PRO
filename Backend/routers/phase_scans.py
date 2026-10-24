@@ -21,11 +21,10 @@ from ccure_platform.api import (
 # Dispatched by registered name (G1): importing a task module from a router
 # loaded the whole scan pipeline into every process that serves HTTP.
 from core.celery_app import registered_task
+from core.phase_handoff import host_records
 from core.task_names import (
-    RUN_ASSET_DISCOVERY,
     RUN_HOST_DISCOVERY,
     RUN_TRADITIONAL_SCAN,
-    RUN_VULNERABILITY_AUDIT,
 )
 from db.base import get_db
 from db.models import Scan
@@ -44,6 +43,10 @@ from scan_helpers import (
 from scans.db_helpers import (
     create_scan,
 )
+
+# A continued scan's next phase is handed its hosts the way the pipeline hands
+# them on (C6): the typed hand-off, by the phase's registered name.
+from scans.pipeline import ASSET_DISCOVERY, VULNERABILITY_AUDIT, hand_over
 from scans.policy_binding import (
     reapply_policy_snapshot as _reapply_policy_snapshot,
     resolve_scan_policy as _resolve_scan_policy,
@@ -607,9 +610,10 @@ async def scan_asset_discovery(
 
     validate_custom_ports(req.custom_ports)
 
-    task = registered_task(RUN_ASSET_DISCOVERY).delay(
+    task = hand_over(
+        ASSET_DISCOVERY,
+        host_records(req.hosts),
         user_id=str(user.id),
-        hosts=req.hosts,
         intensity=req.intensity,
         scan_id=req.scan_id,
         pipeline_mode=req.pipeline_mode,
@@ -674,9 +678,10 @@ async def scan_vulnerability_audit(
 
     _assert_hosts_admitted(db, scan, req.hosts)
 
-    task = registered_task(RUN_VULNERABILITY_AUDIT).delay(
+    task = hand_over(
+        VULNERABILITY_AUDIT,
+        host_records(req.hosts),
         user_id=str(user.id),
-        hosts=req.hosts,
         scan_id=req.scan_id,
         pipeline_mode=req.pipeline_mode,
         exclude_ot_from_nmap=req.exclude_ot_from_nmap,

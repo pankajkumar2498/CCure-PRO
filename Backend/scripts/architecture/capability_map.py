@@ -191,6 +191,8 @@ PREFIXES: dict[str, str] = {
     # platform-owned scan scope, used by scans, credentialed audit, scheduling
     # and policy alike — a kernel service, not the scans capability's own.
     "core.scan_scope": "scan_kernel",
+    # C6 (G5): what one network-scan phase hands the next.
+    "core.phase_handoff": "scan_kernel",
     # check kernel (scans.cvss / scans.finding_normalizer are its aliases)
     "core.checks": "check_kernel",
     "scans.cvss": "check_kernel",
@@ -292,6 +294,8 @@ PREFIXES: dict[str, str] = {
     # G1 (C1): creates the scan record a request starts, for the credentialed
     # route, which used to assemble it from four of this capability's internals.
     "scans.scan_creation": "scans",
+    # C6 (G5): the network pipeline's one definition and its hand-over.
+    "scans.pipeline": "scans",
     "scan_helpers": "scans",
     "orchestrator.scan_orchestrator": "scans",
     # B8: the enrichment the port and discovery engines used to compose by

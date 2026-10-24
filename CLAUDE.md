@@ -282,8 +282,8 @@ line while that happens, and it is a **ratchet in both directions**:
   of every table. **A new table needs an entry in the same change.**
 
 **Scan tasks, stored credentials, the findings writer, compliance's
-evidence and catalogue, and the phase hand-off (Phase C, G1–G5,
-22–24 Oct 2026).** Record:
+evidence and catalogue, the phase hand-off, the findings/assets read paths
+and the compliance router (Phase C, G1–G6, 22–24 Oct 2026).** Record:
 `docs/architecture/MODULAR_REFACTORING_LOG.md` §6.
 
 - **The scan tasks live in `scans/tasks/`**, one module per area: `phases`,
@@ -373,6 +373,31 @@ evidence and catalogue, and the phase hand-off (Phase C, G1–G5,
     receiving phase's engines edit it in place, and phase 3 reads the edits
     back when it restores identity.
   - **The guard:** `tests/repo/test_phase_pipeline_boundary.py`.
+- **Findings never import the asset registry** (G6).
+  - **Hosts come through a port.** The findings side reads a finding's
+    organisation, address and name through `core/findings/hosts.py`
+    (`hosts()`, a subquery of `HOST_COLUMNS`), and hands the asset's
+    counts-and-risk write over with `record_open_findings`.
+  - **The asset registry answers it** (`core/asset_hosts.py`), registered by
+    `ccure_audit/host_directory.py`, which Celery's `imports` names. Without it
+    a read raises `HostDirectoryMissing`. A new host column the findings side
+    reads goes in `HOST_COLUMNS` and the projection together.
+  - **The assets router reads findings through `core/findings/reads.py`**,
+    never the findings models.
+  - **The guard:** `tests/repo/test_findings_assets_boundary.py`.
+- **The compliance router is mounted from its parts** (G6).
+  - **The parts:** `routers/compliance_{catalogue,assessment,attestation,
+    schedules,remediation,reports,framework_reports,common}.py`.
+    `routers/compliance.py` mounts their sections in the historical route
+    order; a new route goes in its section, in its place.
+  - **Each part's `__name__` is `routers.compliance`,** so limiter keys, the
+    gateway policy's endpoints and model names are unchanged. Do not "fix"
+    it in passing.
+  - **`routers/compliance.py` refuses a patch.** Patch the part whose code reads
+    the name; the error names it.
+  - **The documents are renderers:** the 20 generators are in
+    `reporting/compliance/` and import nothing of compliance.
+  - **The guard:** `tests/repo/test_compliance_router_split.py`.
 
 Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
@@ -402,6 +427,11 @@ prints the graph; `--violations` lists every rule-breaking edge.
   evidence, compliance scans, re-verification, scan-policy validation,
   benchmark selection and both benchmark loaders on a restored copy with a
   commit's code, and compares what they decide byte for byte (G4).
+- `Backend/scripts/verification/api_golden/` drives the findings,
+  remediation, asset and compliance APIs through `main.app` on a copy of that
+  golden's restored server, with a real broker: it reads every Celery message
+  back from Redis and decodes it as a worker would. It compares every
+  response, report digest, broker message, query plan and table (G6).
 - GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
   only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
   runs where.
@@ -1018,8 +1048,9 @@ imports `ccure_contracts` before the integration adapter is built (plan Phase 14
   `web_pdf_generator.py` and `report_helpers.py` are in `Backend/reporting/`.
   Note the name: `Backend/reports/` already exists and is the _runtime output
   directory_ for generated PDFs, bind-mounted into the API container. Code in
-  `reporting/`, artefacts in `reports/`. Compliance keeps its own DOCX/PDF
-  generators inside `routers/compliance.py`.
+  `reporting/`, artefacts in `reports/`. Compliance's DOCX/PDF generators are
+  in `reporting/compliance/` (G6); their routes are
+  `routers/compliance_reports.py` and `compliance_framework_reports.py`.
 
 ## Deployment: Linux VM (`ccurepro`, 10.180.22.127) — since 17 Sep 2026
 

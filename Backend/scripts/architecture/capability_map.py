@@ -234,6 +234,8 @@ PREFIXES: dict[str, str] = {
     "reporting.report_helpers": "renderers",
     "reporting.availability": "renderers",
     "reporting.host_assessment": "renderers",
+    # G6 (C8): the compliance reports' renderers, out of routers/compliance.py.
+    "reporting.compliance": "renderers",
     "ccure_policy": "policy_pro",
     "ccure_rank": "rank",
     # domain stores

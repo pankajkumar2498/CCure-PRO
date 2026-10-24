@@ -15,8 +15,8 @@ Note the deliberate name. ``Backend/reports/`` already exists and is the
 container by ``docker-compose.yml``. Code lives in ``reporting/``; artefacts land
 in ``reports/``.
 
-Compliance has its own DOCX/PDF generators inside ``routers/compliance.py`` and
-is not part of this package.
+Compliance's DOCX/PDF documents are rendered by ``reporting/compliance/`` (G6),
+from the controls and verdicts the compliance routes read.
 """
 
 

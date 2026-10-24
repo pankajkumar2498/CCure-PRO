@@ -44,6 +44,10 @@ celery_app.conf.imports = (
     # Compliance's evidence providers (G4): core.compliance_tasks evaluates
     # rules against them, and raises EvidenceProviderMissing without them.
     "ccure_audit.evidence_providers",
+    # The findings side's host directory (G6): the remediation section of a
+    # credentialed scan's report reads hosts, and raises HostDirectoryMissing
+    # without it.
+    "ccure_audit.host_directory",
 )
 
 # Optional but recommended configuration for security and stability

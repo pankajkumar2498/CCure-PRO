@@ -240,6 +240,8 @@ PREFIXES: dict[str, str] = {
     "core.asset_correlation": "assets",
     # G4 (C4): what compliance's evidence reads from the asset record.
     "core.asset_evidence": "assets",
+    # G6 (C7): the asset registry's answer to the findings side's host port.
+    "core.asset_hosts": "assets",
     "core.amt_reconciliation": "assets",
     # Ambiguous: both are used by the scan engines, but the vendor lookup reads
     # the assets capability's mac_vendor_cache and the classifier decides what
@@ -845,7 +847,11 @@ CEILINGS = {
     # compliance evidence module's six imports of the asset and findings
     # models went with its adapters (the producers' evidence providers,
     # registered by ccure_audit/evidence_providers.py).
-    "lateral_edges": 33,
+    # G6 (C7): the findings and remediation routers' and the remediation
+    # report's imports of the asset model went (they read hosts through the
+    # findings side's port, core.findings.hosts); the asset registry's answer
+    # to the port imports its column list.
+    "lateral_edges": 31,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
@@ -860,7 +866,9 @@ CEILINGS = {
     # compliance's catalogue reads; compliance's six evidence tables
     # (asset_vulnerabilities, vulnerability_definitions, tls_details,
     # network_links, web_scans, web_findings), read by their owners' providers.
-    "foreign_table_references": 50,
+    # G6 (C7): the findings capability's reads of assets (it joins hosts
+    # through its port).
+    "foreign_table_references": 49,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the

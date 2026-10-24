@@ -154,10 +154,6 @@
   ],
   [
    "findings",
-   "assets"
-  ],
-  [
-   "findings",
    "scans"
   ],
   [
@@ -265,6 +261,10 @@
  ],
  "lateral_edges": [
   [
+   "core.asset_hosts",
+   "core.findings.hosts"
+  ],
+  [
    "core.compliance_tasks",
    "core.credential_vault"
   ],
@@ -283,10 +283,6 @@
   [
    "core.findings.comparison",
    "core.scan_policy"
-  ],
-  [
-   "core.remediation.reporting",
-   "db.models.assets:Asset"
   ],
   [
    "core.risk",
@@ -362,14 +358,6 @@
   ],
   [
    "routers.compliance",
-   "db.models.assets:Asset"
-  ],
-  [
-   "routers.findings",
-   "db.models.assets:Asset"
-  ],
-  [
-   "routers.remediation",
    "db.models.assets:Asset"
   ],
   [

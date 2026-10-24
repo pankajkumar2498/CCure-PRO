@@ -18,6 +18,11 @@ shared by every host that ever matched the CVE, whereas the finding was scored
 against the version detected on this one. Severity is stored lower case
 (``scans.cvss.CANONICAL_SEVERITIES``) and Title-cased on the way out, because
 the frontend keys its badge classes on "Critical"/"High"/...
+
+A finding's host — its organisation, address and name — is read through the
+findings side's host port, ``core.findings.hosts``, never the asset model
+(G6, C7): the asset registry depends on findings, and the port keeps the two
+out of each other's cycle. The queries still join hosts in one statement.
 """
 
 import logging
@@ -32,7 +37,7 @@ from engines.credentialed.vuln_matcher import compare_distro_versions
 from ccure_platform.api import log_audit_event
 from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
-from db.models.assets import Asset
+from core.findings.hosts import hosts, record_open_findings
 from db.models.findings import (
     FIX_STATE_NOT_RELEASED,
     FIX_STATES,
@@ -152,15 +157,23 @@ def list_findings(
 ):
     org = _resolve_org(user, org_id)
 
+    host = hosts()
     q = (
-        db.query(AssetVulnerability, VulnerabilityDefinition, Asset)
+        db.query(
+            AssetVulnerability,
+            VulnerabilityDefinition,
+            host.c.id,
+            host.c.ip_address,
+            host.c.hostname,
+            host.c.risk_score,
+        )
         .join(
             VulnerabilityDefinition,
             AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
         )
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
         .options(joinedload(AssetVulnerability.service))
-        .filter(Asset.org_id == org)
+        .filter(host.c.org_id == org)
     )
 
     # Severity lives on the finding, not the catalogue: a finding is scored
@@ -205,7 +218,7 @@ def list_findings(
             or_(
                 VulnerabilityDefinition.id.ilike(f"%{search}%"),
                 VulnerabilityDefinition.title.ilike(f"%{search}%"),
-                func.cast(Asset.ip_address, String).ilike(f"%{search}%"),
+                func.cast(host.c.ip_address, String).ilike(f"%{search}%"),
                 AssetVulnerability.detected_version.ilike(f"%{search}%"),
             )
         )
@@ -236,7 +249,7 @@ def list_findings(
     rows = q.offset(skip).limit(limit).all()
 
     result = []
-    for finding, vuln, asset in rows:
+    for finding, vuln, host_id, host_ip, host_name, host_risk in rows:
         cvss = float(finding.cvss_score or 0)
         epss = float(finding.epss_score or 0)
         ps, pl = compute_priority(
@@ -291,10 +304,10 @@ def list_findings(
                 # keeps its severity.
                 "fix_state": finding.fix_state,
                 "asset": {
-                    "id": asset.id,
-                    "ip_address": str(asset.ip_address),
-                    "hostname": asset.hostname,
-                    "risk_score": asset.risk_score,
+                    "id": host_id,
+                    "ip_address": str(host_ip),
+                    "hostname": host_name,
+                    "risk_score": host_risk,
                 },
                 "port": _finding_port(finding),
                 "first_found_at": (
@@ -369,11 +382,12 @@ def list_findings_grouped(
     org = _resolve_org(user, org_id)
 
     worst = func.max(AssetVulnerability.cvss_score)
+    host = hosts()
     q = (
         db.query(
             AssetVulnerability.asset_id.label("asset_id"),
-            Asset.ip_address.label("ip_address"),
-            Asset.hostname.label("hostname"),
+            host.c.ip_address.label("ip_address"),
+            host.c.hostname.label("hostname"),
             func.coalesce(AssetVulnerability.component, "Unattributed").label(
                 "component"
             ),
@@ -416,12 +430,12 @@ def list_findings_grouped(
                 "ransomware_linked"
             ),
         )
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(host.c.org_id == org)
         .group_by(
             AssetVulnerability.asset_id,
-            Asset.ip_address,
-            Asset.hostname,
+            host.c.ip_address,
+            host.c.hostname,
             func.coalesce(AssetVulnerability.component, "Unattributed"),
         )
     )
@@ -518,20 +532,30 @@ def get_finding(
 ):
     org = _resolve_org(user, org_id)
 
+    host = hosts()
     row = (
-        db.query(AssetVulnerability, VulnerabilityDefinition, Asset)
+        db.query(
+            AssetVulnerability,
+            VulnerabilityDefinition,
+            host.c.id,
+            host.c.ip_address,
+            host.c.hostname,
+            host.c.os_name,
+            host.c.risk_score,
+            host.c.risk_level,
+        )
         .join(
             VulnerabilityDefinition,
             AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
         )
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(AssetVulnerability.id == finding_id, Asset.org_id == org)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(AssetVulnerability.id == finding_id, host.c.org_id == org)
         .first()
     )
     if not row:
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    finding, vuln, asset = row
+    finding, vuln, host_id, host_ip, host_name, host_os, host_risk, host_level = row
 
     # Enrich vulnerability definition details if they are missing in the postgres/main database
     if not vuln.description or not vuln.cvss_vector:
@@ -668,12 +692,12 @@ def get_finding(
             "published_at": str(vuln.published_at) if vuln.published_at else None,
         },
         "asset": {
-            "id": asset.id,
-            "ip_address": str(asset.ip_address),
-            "hostname": asset.hostname,
-            "os_name": asset.os_name,
-            "risk_score": asset.risk_score,
-            "risk_level": asset.risk_level,
+            "id": host_id,
+            "ip_address": str(host_ip),
+            "hostname": host_name,
+            "os_name": host_os,
+            "risk_score": host_risk,
+            "risk_level": host_level,
         },
     }
 
@@ -697,10 +721,11 @@ def update_finding_status(
 ):
     org = _resolve_org(user, org_id)
 
+    host = hosts()
     row = (
-        db.query(AssetVulnerability, Asset)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(AssetVulnerability.id == finding_id, Asset.org_id == org)
+        db.query(AssetVulnerability, host.c.id)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(AssetVulnerability.id == finding_id, host.c.org_id == org)
         .first()
     )
     if not row:
@@ -792,39 +817,9 @@ def update_finding_status(
             if sev_rows
             else {}
         )
-        asset = db.query(Asset).filter(Asset.id == asset_id).first()
-        if asset:
-            asset.vuln_counts = {
-                "critical": sev_map.get("critical", 0),
-                "high": sev_map.get("high", 0),
-                "medium": sev_map.get("medium", 0),
-                "low": sev_map.get("low", 0),
-            }
-
-            # Recompute a simple aggregate risk score from counts (same logic as credentialed sync)
-            computed = min(
-                100,
-                (asset.vuln_counts.get("critical", 0) * 25)
-                + (asset.vuln_counts.get("high", 0) * 15)
-                + (asset.vuln_counts.get("medium", 0) * 8)
-                + (asset.vuln_counts.get("low", 0) * 3),
-            )
-            # Assigned unconditionally. Guarding this with `computed >=
-            # risk_score` meant risk could only ever ratchet upwards: an asset
-            # whose findings were all fixed or accepted kept its old score and
-            # stayed "Critical" on the dashboard while its own vuln_counts read
-            # zero — the two numbers came from the same rows and disagreed.
-            asset.risk_score = int(computed)
-            if computed >= 90:
-                asset.risk_level = "Critical"
-            elif computed >= 70:
-                asset.risk_level = "High"
-            elif computed >= 40:
-                asset.risk_level = "Medium"
-            elif computed > 0:
-                asset.risk_level = "Low"
-            else:
-                asset.risk_level = "Info"
+        # The asset's counts and risk are the asset registry's to write
+        # (core/asset_hosts.py); it answers False for no such asset.
+        if record_open_findings(db, asset_id, sev_map):
             db.commit()
     except Exception:
         db.rollback()
@@ -869,10 +864,11 @@ def update_finding_notes(
     user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     org = _resolve_org(user, org_id)
+    host = hosts()
     row = (
-        db.query(AssetVulnerability, Asset)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(AssetVulnerability.id == finding_id, Asset.org_id == org)
+        db.query(AssetVulnerability, host.c.id)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(AssetVulnerability.id == finding_id, host.c.org_id == org)
         .first()
     )
     if not row:

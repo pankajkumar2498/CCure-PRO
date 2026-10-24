@@ -29,10 +29,11 @@ has to establish it. Nothing in this file imports
 ``core.remediation.verification``.
 
 **Tenant isolation is applied in the query, never after it.** Every lookup
-joins ``Asset`` and filters ``Asset.org_id``, which is how
+joins the finding's host and filters its organisation, which is how
 ``routers/findings.py`` already scopes a finding — a finding belonging to
 another organisation returns 404, not 403, because a 403 confirms the id
-exists.
+exists. Hosts are read through the findings side's port,
+``core.findings.hosts``, never the asset model (G6, C7).
 
 **Accepting a risk is its own permission.** ``findings:update`` covers moving
 work through the queue; deciding the organisation will carry a risk
@@ -93,7 +94,7 @@ from core.remediation.sla import (
 )
 from db.base import get_db
 from ccure_platform import api as platform_api
-from db.models.assets import Asset
+from core.findings.hosts import hosts
 from db.models.findings import AssetVulnerability, FindingRemediationEvent
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
@@ -125,10 +126,11 @@ def _get_finding(db: Session, finding_id: str, org_id: str) -> AssetVulnerabilit
     ``routers/findings.py`` uses. Fetching by id and comparing afterwards
     answers 403 for another tenant's finding, which confirms the id exists.
     """
+    host = hosts()
     row = (
         db.query(AssetVulnerability)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(AssetVulnerability.id == finding_id, Asset.org_id == org_id)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(AssetVulnerability.id == finding_id, host.c.org_id == org_id)
         .first()
     )
     if row is None:
@@ -294,10 +296,11 @@ def remediation_summary(
     org = _resolve_org(user, org_id)
     now = datetime.now(timezone.utc)
 
+    host = hosts()
     base = (
         db.query(AssetVulnerability)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(host.c.org_id == org)
         .filter(is_remediation_work(AssetVulnerability.status))
     )
     if asset_id:
@@ -362,10 +365,11 @@ def _listing(
     offset: int = 0,
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
+    host = hosts()
     query = (
         db.query(AssetVulnerability)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(host.c.org_id == org)
         .filter(is_remediation_work(AssetVulnerability.status))
     )
     if states:
@@ -655,12 +659,13 @@ def assign(
                 detail="The owner must be a user in this organisation.",
             )
 
+    host = hosts()
     rows = (
         db.query(AssetVulnerability)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
         .filter(
             AssetVulnerability.id.in_(body.finding_ids),
-            Asset.org_id == org,
+            host.c.org_id == org,
         )
         .all()
     )

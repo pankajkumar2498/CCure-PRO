@@ -435,23 +435,12 @@ def finish_progress(scan_id: str, db: Session = None):
             session.close()
 
 
-def make_pdf_cve_paragraph(cve_id: str, style) -> "Paragraph":
-    """
-    Constructs a ReportLab Paragraph containing a secure, clickable hyperlink
-    directing the user to the NVD reference page for the specified CVE.
-    """
-    import html
+def __getattr__(name: str):
+    # make_pdf_cve_paragraph is a renderer's helper and lives in
+    # reporting/report_helpers.py since G6. The old name stays, imported on
+    # first use so that loading this module does not load ReportLab.
+    if name == "make_pdf_cve_paragraph":
+        from reporting.report_helpers import make_pdf_cve_paragraph
 
-    from reportlab.platypus import Paragraph
-
-    clean_id = str(cve_id).strip()
-    # Guard check: if it's not a valid CVE ID, return plain styled Paragraph
-    if not clean_id.upper().startswith("CVE-"):
-        return Paragraph(html.escape(clean_id), style)
-
-    safe_id = html.escape(clean_id.upper())
-    url = f"https://nvd.nist.gov/vuln/detail/{safe_id}"
-
-    # Branded blue link markup
-    link_html = f'<a href="{url}" color="#0066CC"><b>{safe_id}</b></a>'
-    return Paragraph(link_html, style)
+        return make_pdf_cve_paragraph
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

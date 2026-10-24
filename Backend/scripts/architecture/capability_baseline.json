@@ -12,8 +12,7 @@
    "scan_policy",
    "scans",
    "scheduling",
-   "topology",
-   "web_dast"
+   "topology"
   ],
   [
    "check_kernel",
@@ -638,10 +637,6 @@
   [
    "engines.vulnerability.vulnerability_engine",
    "core.device_classifier"
-  ],
-  [
-   "reporting.web_pdf_generator",
-   "scan_helpers"
   ],
   [
    "routers.assets",

@@ -806,8 +806,10 @@ CEILINGS = {
     # enrichment) took the port inventory out of the 16. G1's C1 (the routers
     # dispatch by name) took the task hub out of both. G3's D-6 (findings and
     # remediation one capability) made it 13: a merge, not a decoupling. G4
-    # (C4) took configuration audit out: it imports nothing above it.
-    "largest_cycle": 12,
+    # (C4) took configuration audit out: it imports nothing above it. G6 took
+    # web DAST out: its PDF renderer takes the CVE paragraph from the
+    # renderers (reporting.report_helpers), not from scan_helpers.
+    "largest_cycle": 11,
     # G2's model move (the credential vault's model out of the compliance
     # file) broke the top-level cycle into 5, 2 and 2. G4 (C4) broke the
     # compliance and configuration-audit pair: [5, 2].
@@ -827,7 +829,8 @@ CEILINGS = {
     # NIST catalogue in). Then the benchmark loader and selection became
     # compliance's catalogue code (core/compliance_catalogue): their nine
     # imports of the compliance models and frameworks are internal.
-    "upward_edges": 19,
+    # G6: the web PDF renderer's import of scan_helpers, for the CVE paragraph.
+    "upward_edges": 18,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web

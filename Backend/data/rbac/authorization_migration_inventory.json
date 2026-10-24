@@ -757,7 +757,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 67,
+      "line": 63,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -767,7 +767,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 193,
+      "line": 183,
       "function": "list_assets",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -777,7 +777,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 300,
+      "line": 290,
       "function": "debug_reconcile",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -787,7 +787,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 369,
+      "line": 359,
       "function": "list_global_certificates",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -797,7 +797,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 485,
+      "line": 415,
       "function": "list_global_services",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -807,7 +807,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 583,
+      "line": 469,
       "function": "list_service_assets",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -817,7 +817,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 647,
+      "line": 500,
       "function": "get_coverage_stats",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -827,7 +827,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 756,
+      "line": 609,
       "function": "get_reconciliation_drilldown",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -837,7 +837,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1042,
+      "line": 895,
       "function": "get_asset",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -847,7 +847,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1069,
+      "line": 922,
       "function": "get_asset_services",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -857,7 +857,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1138,
+      "line": 940,
       "function": "get_asset_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -867,7 +867,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1206,
+      "line": 961,
       "function": "get_asset_changelog",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -877,7 +877,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1321,
+      "line": 1076,
       "function": "update_asset",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -887,7 +887,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1372,
+      "line": 1127,
       "function": "add_tag",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -897,7 +897,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1397,
+      "line": 1152,
       "function": "remove_tag",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -907,7 +907,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1426,
+      "line": 1181,
       "function": "add_note",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -917,7 +917,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1553,
+      "line": 1308,
       "function": "import_amt_inventory",
       "mechanism": "require_authorized",
       "permission": "audit.asset.import_amt",

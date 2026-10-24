@@ -42,19 +42,7 @@
  "foreign_table_references": [
   [
    "assets",
-   "asset_vulnerabilities"
-  ],
-  [
-   "assets",
    "scans"
-  ],
-  [
-   "assets",
-   "services"
-  ],
-  [
-   "assets",
-   "tls_details"
   ],
   [
    "audit_boundary",
@@ -338,19 +326,11 @@
   ],
   [
    "routers.assets",
-   "db.models.findings"
+   "core.findings"
   ],
   [
    "routers.assets",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "routers.assets",
-   "db.models.findings:Service"
-  ],
-  [
-   "routers.assets",
-   "db.models.findings:TLSDetail"
+   "core.findings.reads"
   ],
   [
    "routers.compliance",

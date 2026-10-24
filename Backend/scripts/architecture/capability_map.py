@@ -849,9 +849,10 @@ CEILINGS = {
     # registered by ccure_audit/evidence_providers.py).
     # G6 (C7): the findings and remediation routers' and the remediation
     # report's imports of the asset model went (they read hosts through the
-    # findings side's port, core.findings.hosts); the asset registry's answer
-    # to the port imports its column list.
-    "lateral_edges": 31,
+    # findings side's port, core.findings.hosts), and the assets router's four
+    # of the findings models became two, of the findings reads and their
+    # package; the asset registry's answer to the port imports its column list.
+    "lateral_edges": 29,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
@@ -867,8 +868,9 @@ CEILINGS = {
     # (asset_vulnerabilities, vulnerability_definitions, tls_details,
     # network_links, web_scans, web_findings), read by their owners' providers.
     # G6 (C7): the findings capability's reads of assets (it joins hosts
-    # through its port).
-    "foreign_table_references": 49,
+    # through its port), and the assets router's of asset_vulnerabilities,
+    # services and tls_details (it asks the findings reads).
+    "foreign_table_references": 46,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the

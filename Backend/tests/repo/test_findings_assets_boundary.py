@@ -7,10 +7,12 @@ the findings writer (G3). So the findings capability does not depend on the
 asset registry. It reads hosts — a finding's organisation, address and name,
 and the risk an asset's open findings give it — through its port,
 ``core.findings.hosts``, which Audit's composition root fills with the asset
-registry's answer (``ccure_audit/host_directory.py``). These pin:
+registry's answer (``ccure_audit/host_directory.py``). The assets router reads
+the findings tables through ``core.findings.reads``. These pin:
 
 * nothing in the findings capability imports the asset registry or names its
   table;
+* the assets router imports no findings model and names no findings table;
 * every process that reads hosts registers the directory: the worker through
   Celery's ``imports``, the API through the same loader call;
 * the asset registry's projection has exactly the port's columns, from the
@@ -59,6 +61,22 @@ def test_the_findings_capability_names_no_asset_table():
         tuple(r) for r in capability_map.measure()["foreign_table_references"]
     }
     assert {("findings", t) for t in _owned_by("assets")} & references == set()
+
+
+def test_the_assets_router_reads_findings_through_the_findings_reads():
+    into_findings = sorted(
+        {
+            e.dst
+            for e in _edges()
+            if e.src == "routers.assets"
+            and capability_map.capability_of(e.dst.split(":")[0]) == "findings"
+        }
+    )
+    assert into_findings == ["core.findings", "core.findings.reads"]
+    references = {
+        tuple(r) for r in capability_map.measure()["foreign_table_references"]
+    }
+    assert {("assets", t) for t in _owned_by("findings")} & references == set()
 
 
 def test_the_worker_and_the_api_load_the_host_directory():

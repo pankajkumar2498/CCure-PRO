@@ -3782,6 +3782,153 @@ All on the final code unless named.
   while this was verified; it imports nothing F1 changed, `vitest related` does not select it,
   and it passed in the full run (§7).
 
+### F2 — scans and credentialed results meet only in Audit's shared layer
+
+Commit `2a055e1`, on top of `8b27a7a`.
+
+**The scope** (analysis §10): "`ScanContext` moves out of the shared layout's imports, and the
+components shared by scans and credentialed results move to Audit's shared layer." §7.3 measured
+it as "scans ↔ credentialed import each other; the shared layout imports `ScanContext`".
+
+**What was coupled.** `components/layout/` held `ScanStepper`, the one layout file that read
+`ScanContext`; only the three phase-results pages use it. `components/scan/` held two kinds of
+file besides the scan screens' own: two components both features use, and seven sections only
+`CredentialedResults` renders (one of them, `FindingsListSection`, says it was extracted from
+that page). So the credentialed page imported eight files from the scans feature's folder.
+
+**What moved**, by use rather than by name, each with `git mv`:
+
+| File                                                                                                                                                                     | From      | To                    | Used by                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | --------------------- | --------------------------------------- |
+| `ScanStepper`                                                                                                                                                            | `layout/` | `scan/`               | the three phase-results pages           |
+| `ReportExportPanel`                                                                                                                                                      | `scan/`   | `common/`             | `ScanComparison`, `CredentialedResults` |
+| `RiskBadge`                                                                                                                                                              | `scan/`   | `common/`             | `ScanHistory`, `CredentialedResults`    |
+| `ConfigAuditSection`, `FindingsListSection`, `FindingEnrichment`, `PackageCoverageSection`, `PackageInventorySection`, `ScanPolicySnapshot`, `SuppressedFindingsSection` | `scan/`   | `credentialed/` (new) | `CredentialedResults` only              |
+
+`scripts/audit/manifests/field_coverage.json` already listed the seven sections as the
+credentialed renderers. `RiskBadge` keeps its deprecation: it is the adapter its header says it
+is, now in the folder its two consumers share. Seven test files moved with their components;
+`Phase1RealResponse.test.jsx` exercises only credentialed sections, with the credentialed
+fixture, so it went with them.
+
+**Nothing else changed in the files**: seven moved byte-identical, and `ScanStepper` and
+`RiskBadge` differ only in the path their header names. **The production bundle is
+byte-identical before and after** — every file in `dist/`, compared by content — so nothing the
+browser receives changed, and no harness capture was needed to show it.
+
+**What still crosses.** The credentialed screens call the scan APIs (`api/scans.js` for the scan
+record, `api/scanPolicies.js` for the policy snapshot). Those are the HTTP boundary, not the scans
+feature, and the guard allows them.
+
+**The guard**, `src/__tests__/modules/audit/featureBoundaries.test.js`: the shared layout
+imports no scan state, no feature component and no page; the credentialed screens and
+`components/credentialed/` import nothing of the scan screens, `components/scan/` or
+`ScanContext`; and the reverse. Each of the three rules fails its mutation (a `ScanContext`
+import in `AppLayout`, `ExportPanel` in `CredentialedResults`, `ConfigAuditSection` in
+`ScanHistory`). Audit's README describes the folders.
+
+#### Verification
+
+- The full frontend unit suite before the guard was written: 123 files, **3,187 passed**, the
+  same counts as before the move (the tests moved; none was lost). The guard's 4 tests pass, and
+  F3's full run below includes them.
+- Lint, `ux4g:check -- --dependencies-only`, `ux4g:architecture`, the build with
+  `VITE_API_BASE_URL=/api`, `ux4g:verify` (byte-identical over two runs) and the authorization
+  inventory's `--check` (one entry moved with `ReportExportPanel`): all pass.
+- The bundle comparison above.
+- Backend, in throwaway containers: the selector's `tests/repo` and `tests/security`, plus
+  `tests/reports/test_report_field_coverage.py`, which reads the manifest the move edited and the
+  selector does not name: **1,200 passed**, 1 skipped (`test_alembic_module_branches`, which
+  skips where `alembic.ini` is already activated).
+
+### F3 — the credential screens use one API
+
+Commit `debf8c1`, on top of `2a055e1`.
+
+**The scope** (analysis §10, after S2): "The credential screens use one API." S2 left the backend
+with one credential service and one permission set, and kept `/compliance/credentials` as an
+adapter over it for "the three screens [that] still call [it]": the scan setup
+(`NewScan.jsx`), the credentialed scan (`CredentialedScan.jsx`) and the compliance workspace
+(its Credentials Manager tab and its remediation dialog). `ScanCredentials.jsx` already used
+`/credentials`.
+
+**What changed.** All three read and write through `api/credentials.js`, the credential store's
+client: `listCredentials()`, `createCredential()`, `deleteCredential()`. `api/compliance.js`
+loses its three credential functions. No frontend source names `/compliance/credentials`
+any more.
+
+**What the screens now send and read.** The rows are the same — both routes list through
+`credential_vault.list_for_org` with no type filter, and the screens read only `id`, `name`,
+`username`, `port` and `auth_method`, which both carry. The differences are the store's
+contract:
+
+- **The list** arrives as `{credentials, total}` instead of a bare array; the screens read
+  `credentials`.
+- **Create** sends the store's body: `credential_type: "ssh"` (what the alias created by
+  default), `private_key` instead of `key_content`, the unused secret omitted rather than null,
+  and `domain: null` and `options: {}`. Both routes create through `credential_vault.create`.
+- **Refusals** carry the store's wording: a duplicate name is 409 "A credential named 'x'
+  already exists." where the alias answered 400 "A credential with this name already exists".
+  The workspace prints whatever `detail` says, so the toast follows.
+- **Delete** answers `{success, id, name, schedules_affected, note}`. The workspace still says
+  "Credential deleted successfully." and does not show the note (§7).
+
+**One behaviour changes, in the right direction: the organisation.** The alias always acted in
+the user's home organisation — it never read the `org_id` the client sends with every request
+(`resolve_active_organisation(user)`). A superadmin switched into another organisation was
+offered, and could create and delete, the home organisation's credentials, while the scan the
+picker fed ran in the switched one. `/credentials` resolves the requested organisation like
+every other Audit route, so the screens now show the credentials of the organisation they are
+in. For anyone not switched, nothing changes.
+
+**The alias stays.** Its routes, shapes and tests are unchanged; only its comment, which said
+three screens still call it, is corrected (same line count, so the RBAC migration inventory is
+unchanged). Retiring it is decision D-3 (§7).
+
+**The tests.** Seven test files followed the screens: the five workspace files, `NewScan`'s
+contract test and the credentialed-scan test now mock `/credentials` with the store's envelope
+and assert its body and paths. The UX4G harness's fixtures and the Playwright catalogue serve
+`/credentials` for these screens; the catalogue's alias stub, now reached by nothing, is gone.
+`src/__tests__/modules/audit/credentialApi.test.js` keeps it so: nothing names
+`/compliance/credentials`, and only `api/credentials.js` names `/credentials`. Both rules fail
+their mutation.
+
+#### Verification
+
+- **The affected tests**: the five workspace files, `NewScan`'s contract test, the
+  credentialed-scan test and `ScanCredentials`' tests: 13 files, 427 tests, all passing once
+  `NewScan`'s read allow-list named `/credentials` (8 failed until then, all on that check).
+- **The full frontend unit suite**, which the selector asks for because the authorization
+  inventory moved (one `NewScan` site, by a line): 125 files, **3,193 passed**, 0 failed — F2's
+  and F3's guards included.
+- **Lint and the UX4G gates**: `npm run lint`, `ux4g:check -- --dependencies-only`,
+  `ux4g:architecture`, the build with `VITE_API_BASE_URL=/api`, `ux4g:verify` (byte-identical over
+  two runs) and the inventory's `--check`: all pass.
+- **Backend**, in throwaway containers: the selector's `tests/compliance`, `tests/repo` and
+  `tests/security` (for the router comment), plus `tests/credentialed/test_auth_methods.py`, which
+  pins `/credentials`' contract the screens now depend on (`tests/security/` holds the alias's
+  consolidation tests): **1,462 passed**, 1 skipped (the same `alembic.ini` skip).
+- **The browser, before and after.** The UX4G harness built `2a055e1` and F3 and captured the
+  compliance workspace's and the scan setup's states (114 captures each), each with its own
+  commit's fixtures. Every capture ready in both; none with an unstubbed read, a refused write,
+  an off-origin request, a CSP report or an exception. In 23 captures the requests differ, and in
+  every one the difference is the same single swap — `GET /api/compliance/credentials?org_id=o-1`
+  out, `GET /api/credentials?org_id=o-1` in — with the count unchanged. In 5 the screenshot
+  differs, all in the header's noisy area recorded under F1 (four at x 1323–1348, one at
+  x 326–352 on the phone-width mission view, where the same element sits), by at most 6 levels.
+  Every other category is identical in every capture.
+
+#### What is left
+
+- **The workspace does not show the store's delete note** ("N schedule(s) referenced this
+  credential and will now fail …"), which Scan Credentials can; the alias never sent one (§7).
+- **The scan setup's empty state still points to Compliance** to register a credential, though
+  the credential store's own page is Scan Credentials (§7).
+- **The workspace's credential buttons are still gated on `manage_frameworks`** — the §7 row
+  from S2, unchanged by F3, which moved the calls and not the gates.
+- **`npm run test:browser` was not run**; the selector reports `browser: false`. The Playwright
+  catalogue's stubs were changed with the screens and are exercised only by that suite.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -3841,3 +3988,6 @@ All on the final code unless named.
 | new | Fix the intermittent `AppLayout — reads on mount › shows running-scan and critical badges from the summary` (`src/__tests__/modules/audit/components/layout/AppLayout.test.jsx`): it fails in about one run in three on its own, on code F1 did not touch                                                                                                                                                                                                                                                                                                                                                                                      | F1, §6                                                             |
 | new | Make the UX4G harness run on the Node it names. The README says Node 20 or later, but `lib/chrome.mjs` uses the global `WebSocket`, which Node 20 has only behind `--experimental-websocket`; this VM runs Node 20.20, so every capture failed at start until `NODE_OPTIONS=--experimental-websocket` was set                                                                                                                                                                                                                                                                                                                                  | F1, §6                                                             |
 | new | Find what changes the header's 25 × 4 px (x 1323–1348, y 18–22) between two harness captures of one build. In the light theme 4 or 5 of the 95 compliance captures differ there by up to 6 levels, so the determinism gate fails on this VM whatever the change; F1 read it with the area recorded                                                                                                                                                                                                                                                                                                                                             | F1, §6                                                             |
+| new | Show the credential store's delete note in the compliance workspace's Credentials Manager tab, as Scan Credentials does: since F3 the delete answers how many schedules the credential leaves without one, and the tab still says only "Credential deleted successfully."                                                                                                                                                                                                                                                                                                                                                                      | F3, §6                                                             |
+| new | Point the scan setup's "no stored credentials" state at Scan Credentials, the credential store's own page, rather than at Compliance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | F3, §6                                                             |
+| new | D-3 can now be decided on its own: since F3 no screen calls `/compliance/credentials`. Retiring it removes three routes from the API and from the gateway policy; keeping it costs nothing the frontend sees                                                                                                                                                                                                                                                                                                                                                                                                                                   | F3, §6                                                             |

@@ -3648,6 +3648,140 @@ The compliance router loads its eight parts and ten renderer modules.
 - **The network pipeline's broker round trip** (G5's §7 row) is still unverified: G6 measured the
   compliance dispatches only.
 
+### F1 — the compliance workspace calls through `api/compliance.js`, and is split by tab
+
+Commits, on top of `f3f602f`:
+
+- `cc5670c` — the workspace's calls go through `src/modules/audit/api/compliance.js`;
+- `38902a2` — the page is split by tab.
+
+**The scope** (analysis §10, "Frontend, in parallel and low risk"): "Compliance calls go through
+an `api/compliance.js` module, and `ComplianceWorkspace.jsx` is split by tab." F2 and F3 are not
+started. The credential calls are still the compliance alias of the vault's API
+(`/compliance/credentials`); moving the screens to one credential API is F3.
+
+#### The API module (`cc5670c`)
+
+The analysis counted 31 direct calls. There were **34**: three more were written as chains
+(`axiosInstance\n  .get(…)\n  .then(…)`) that a one-line search does not see — the marketplace's
+active-framework read on mount, the dashboard's per-framework summaries, and the credential list
+the remediation dialog loads. All 34 go through 29 functions, each sending the method, path,
+query, body and config the page sent, built the same way: a one-argument `post` stays
+one-argument, the multipart header and `responseType: "arraybuffer"` are the module's, and the
+exception decision still encodes its id. The workspace tests assert the requests on the wire
+(`expect(api.post.mock.calls).toEqual(…)`) and passed unchanged.
+
+`ComplianceWorkspace.api.test.js` keeps the HTTP client out of the page and its tab parts.
+Mutation: an `axiosInstance` import put back into the page fails it.
+
+#### The split (`38902a2`)
+
+The page went from 5,183 lines to **3,040**. What moved, verbatim, to
+`src/modules/audit/components/compliance/workspace/`:
+
+| Part                           | Lines | Props | What it is                                                   |
+| ------------------------------ | ----- | ----- | ------------------------------------------------------------ |
+| `ComplianceDashboardTab.jsx`   | 476   | 26    | the Dashboard tab                                            |
+| `ComplianceMarketplaceTab.jsx` | 134   | 8     | the Marketplace tab                                          |
+| `CompliancePoliciesTab.jsx`    | 249   | 8     | the Policies tab                                             |
+| `ComplianceControlsTab.jsx`    | 211   | 8     | the Controls tab                                             |
+| `ComplianceFindingsTab.jsx`    | 328   | 21    | the Findings tab                                             |
+| `ExceptionsPanel.jsx`          | 175   | —     | the Exceptions tab, already a component in the page          |
+| `ComplianceCredentialsTab.jsx` | 294   | 24    | the Credentials Manager tab                                  |
+| `ComplianceApprovalsTab.jsx`   | 378   | 14    | the Approvals Queue tab                                      |
+| `shared.jsx`                   | 230   | —     | score bands, theme labels and badges, and the paging control |
+
+The Schedules tab was already its own component (`ComplianceSchedules.jsx`) and is rendered as it
+was.
+
+**The page keeps the state, the requests, the handlers and the dialogs.** The dialogs are opened
+from several tabs (an attestation from Controls and Findings, a rule edit from Policies and
+Findings), so they belong to the page that owns the state they share. A tab is a function of
+its props and holds no hook; the page renders it under the same `activeTab` condition, in the
+same place, so the DOM is the one it was. `useId` values do not move either: React 18 numbers
+them in mount order on the client, and a component that calls no hook adds none.
+
+**The stylesheets stay imported by the page**, in the order they were, so the bundle's CSS order
+and the cascade are unchanged.
+
+**How the props were chosen.** A script parsed the page (`espree`, `eslint-scope`) and, for each
+tab's JSX, listed every name it reads that the component's scope defines (a prop) or the
+module defines (an import, or a helper moved to `shared.jsx`). JSX element names are not
+references to `eslint-scope`, so they were collected from the tree. ESLint then checked the
+result with `no-undef`, `react/jsx-no-undef` and `no-unused-vars` on: nothing undefined, nothing
+unused, in the page or any part. The unused imports the page was left with were removed the
+same way.
+
+**Prettier re-wrapped three labels, and the browser saw it.** At the tabs' shallower indentation
+Prettier joined text it had split before: `Download{" "}` / `{reportFmt.toUpperCase()} Report`
+became `Download {reportFmt.toUpperCase()}{" "}` / `Report`, and `Rule Code:{" "}` and
+`Target Host:{" "}` became `Rule Code: ` and `Target Host: `. The words are the same, but React
+renders each JSX child as its own text node, so the nodes were not (`" Download"`, `" "`, `"PDF"`,
+`" Report"` became `" Download "`, `"PDF"`, `" "`, `"Report"`), and how Chrome draws a label
+depends on how it is split. The harness's first after-capture showed it: 42 pixels of the
+dashboard's "Download PDF Report" button, on the "Re", in every dashboard and gap-analysis state, by up to
+57 levels, and in no capture of the same build twice. The three labels now write their text
+pieces as string children (`{"Rule Code:"}`, `{" Download"}`, `{" Report"}`), which Prettier
+cannot merge with the whitespace beside them, and the nodes are the page's again.
+
+The harness's DOM comparison did not catch this: it records an element's text as a hash of the
+content, not of its nodes. A token comparison did, once written: each moved block before and
+after, through `espree`'s tokenizer, with JSX text reduced the way the JSX transform reduces it and a string
+literal alone in braces read as the text child it is. All seven tabs, `ExceptionsPanel` and the
+five shared helpers are identical under it, and so are the page's unmoved regions (the
+component body, the panel's other children, the dialogs, and the module-level code left in
+place). Putting one of the joined labels back makes it fail.
+
+**The tests that read the source.** Six workspace tests sliced a tab's markup out of the page by
+its `{activeTab === "…" && (` marker and asserted on it (design-system parts only, no inline
+style, no hand-built control). They now read the tab's own file and assert that the page
+renders the tab at that marker; the dialog slices and the stylesheet checks are unchanged.
+
+#### Verification
+
+All on the final code unless named.
+
+- **The workspace's tests**, the eight files that render it and assert its requests, the API
+  guard and the module-boundary test: 10 files, 271 tests passed. `vitest related` over the
+  changed files, before the label fix: 10 files, 289 passed.
+- **The full frontend unit suite**, which the CI selector asks for because the authorization
+  inventory changed: 123 files, **3,187 passed**, 0 failed.
+- **Lint and the UX4G gates:** `npm run lint`, `ux4g:check -- --dependencies-only`,
+  `ux4g:architecture`, the build with `VITE_API_BASE_URL=/api` (its two runs byte-identical),
+  `ux4g:verify`, `ux4g:check -- --dist` and the authorization inventory's `--check`: all pass.
+- **The backend groups the selector names**, `tests/repo` and `tests/security`, in throwaway
+  containers (`scripts/ci/local_guard_tests.sh`): **1,145 passed**, 1 skipped
+  (`test_alembic_module_branches`, which skips where `alembic.ini` is already activated).
+- **The token comparison** above: the seven tabs, `ExceptionsPanel`, the five shared helpers and
+  the page's unmoved regions identical; the mutation caught.
+- **The browser, before and after.** The UX4G harness built `cc5670c` and the split as
+  production images and captured the 55 compliance states (95 captures, light and dark where a
+  state has both) twice each, with every request answered from fixtures. No capture showed a
+  refused write, an unstubbed read, an off-origin request, a CSP report or a page exception.
+  Before against after, in all four pairings, every category but the screenshot (accessible
+  names, roles, ARIA states, text, classes, computed styles, element boxes, contrast, tab order,
+  requests among them) identical in every capture; 88 to 93 of the 95 screenshots identical.
+  Every screenshot that differs differs in the same 25 × 4 px of the header (x 1323–1348,
+  y 18–22), in the light theme, by at most 6 levels, and the same area differs between two
+  captures of one build (4 captures before, 5 after), so it is the environment, not the change.
+  The first after-capture also differed in the download button (above); the second did not.
+
+#### What is left
+
+- **The page is still 3,040 lines**, about 760 of them the dialogs. F1 split it by tab, as
+  planned; splitting the dialogs out is a further step, if wanted (§7).
+- **The prop lists are long** (26 for the dashboard, most of them the report's scoping filters
+  and their setters). They are what the markup reads; grouping them would change the tabs' interfaces and was not F1's
+  business.
+- **The harness's determinism gate does not pass on this VM.** Two captures of one build
+  differ in 4 or 5 of 95 screenshots, always in the header area above. The gate was read with
+  that recorded rather than loosened (§7).
+- **`npm run test:browser` was not run.** The selector reports `browser: false` for these files;
+  the harness covered the compliance states instead.
+- **`AppLayout.test.jsx` is intermittent.** One test failed in about one run in three on its own
+  while this was verified; it imports nothing F1 changed, `vitest related` does not select it,
+  and it passed in the full run (§7).
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -3703,3 +3837,7 @@ The compliance router loads its eight parts and ten renderer modules.
 | new | Take findings out of the capability cycle: it reaches the scan model (the comparison), the credentialed audit (the writer's coverage import, the router's version comparator), configuration audit (the credentialed scope) and scan policy (the comparison)                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
 | new | Whether the compliance router's parts keep `routers.compliance` as their `__name__` or take their own. Renaming changes every compliance limiter key and the gateway route policy's endpoints, so it needs the policy regenerated and the gateway rebuilt in the same release                                                                                                                                                                                                                                                                                                                                                                  | G6, §6                                                             |
 | new | Give the API golden a passing NIST CSF control. In the restored data no CSF control passes (26 fail, 80 not assessed), so the renderer's label for a pass is never drawn and a change to it went uncaught (G6's golden mutations); `setup.sql` could add a passing attestation                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |
+| new | Split the compliance workspace's dialogs out of the page (about 760 of its 3,040 lines), as F1 split its tabs. They share the page's state with several tabs, so each would take its state as props as the tabs do                                                                                                                                                                                                                                                                                                                                                                                                                             | F1, §6                                                             |
+| new | Fix the intermittent `AppLayout — reads on mount › shows running-scan and critical badges from the summary` (`src/__tests__/modules/audit/components/layout/AppLayout.test.jsx`): it fails in about one run in three on its own, on code F1 did not touch                                                                                                                                                                                                                                                                                                                                                                                      | F1, §6                                                             |
+| new | Make the UX4G harness run on the Node it names. The README says Node 20 or later, but `lib/chrome.mjs` uses the global `WebSocket`, which Node 20 has only behind `--experimental-websocket`; this VM runs Node 20.20, so every capture failed at start until `NODE_OPTIONS=--experimental-websocket` was set                                                                                                                                                                                                                                                                                                                                  | F1, §6                                                             |
+| new | Find what changes the header's 25 × 4 px (x 1323–1348, y 18–22) between two harness captures of one build. In the light theme 4 or 5 of the 95 compliance captures differ there by up to 6 levels, so the determinism gate fails on this VM whatever the change; F1 read it with the area recorded                                                                                                                                                                                                                                                                                                                                             | F1, §6                                                             |

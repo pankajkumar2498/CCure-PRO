@@ -4,7 +4,37 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useId } from "react";
-import axiosInstance from "@shell/api/axiosInstance";
+import {
+  applyComplianceRemediation,
+  attestComplianceControl,
+  cancelRemediationRequest,
+  createComplianceCredential,
+  createCompliancePolicy,
+  decideComplianceException,
+  decideRemediationRequest,
+  deleteComplianceCredential,
+  deleteComplianceEvidence,
+  downloadComplianceReport,
+  getComplianceGapAnalysis,
+  getComplianceScanRun,
+  getComplianceSummary,
+  installComplianceFramework,
+  listComplianceCredentials,
+  listComplianceFindings,
+  listComplianceMarketplace,
+  listCompliancePolicies,
+  listCompliancePolicyRules,
+  listControlEvidence,
+  listFrameworkControls,
+  listPendingExceptionFindings,
+  listRemediationRequests,
+  requestComplianceException,
+  rollbackRemediationRequest,
+  triggerComplianceScan,
+  uninstallComplianceFramework,
+  updateComplianceRule,
+  uploadControlEvidence,
+} from "@audit/api/compliance";
 import AppLayout from "@audit/components/layout/AppLayout";
 import ComplianceEvidence from "@audit/components/compliance/ComplianceEvidence";
 import ComplianceSchedules from "@audit/components/compliance/ComplianceSchedules";
@@ -873,8 +903,7 @@ export default function ComplianceWorkspace() {
   // dropdown is on screen from the first render, on every tab.
   useEffect(() => {
     let cancelled = false;
-    axiosInstance
-      .get("/compliance/marketplace")
+    listComplianceMarketplace()
       .then((res) => {
         const ids = res.data?.active_framework_ids;
         if (!cancelled && Array.isArray(ids) && ids.length) {
@@ -1106,9 +1135,7 @@ export default function ComplianceWorkspace() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const res = await axiosInstance.get(
-          `/compliance/scans/${activeScanRunId}`,
-        );
+        const res = await getComplianceScanRun(activeScanRunId);
         if (cancelled) return;
         setScanRunStatus(res.data);
         if (res.data.status === "completed") {
@@ -1221,9 +1248,7 @@ export default function ComplianceWorkspace() {
   ) => {
     setLoadingGapAnalysis(true);
     try {
-      const res = await axiosInstance.get(
-        `/compliance/gap-analysis?source_framework_id=${sourceId}&target_framework_id=${targetId}`,
-      );
+      const res = await getComplianceGapAnalysis(sourceId, targetId);
       setGapAnalysis(res.data);
       setGapStale(false);
       setModalType("gap_analysis");
@@ -1314,9 +1339,7 @@ export default function ComplianceWorkspace() {
 
     try {
       if (activeTab === "dashboard") {
-        const res = await axiosInstance.get(
-          `/compliance/summary${queryString}`,
-        );
+        const res = await getComplianceSummary(queryString);
         setSummary(res.data);
 
         // When All Frameworks is selected, also fetch per-framework scores for
@@ -1325,8 +1348,7 @@ export default function ComplianceWorkspace() {
           const FW_LIST = activeFrameworks;
           const fwResults = await Promise.allSettled(
             FW_LIST.map((fw) =>
-              axiosInstance
-                .get(`/compliance/summary?framework_id=${fw.id}`)
+              getComplianceSummary(`?framework_id=${fw.id}`)
                 .then((r) => ({
                   id: fw.id,
                   name: fw.name,
@@ -1354,37 +1376,25 @@ export default function ComplianceWorkspace() {
           cParams.push(`status=${controlsStatusFilter}`);
         if (controlsSearch.trim())
           cParams.push(`search=${encodeURIComponent(controlsSearch.trim())}`);
-        const res = await axiosInstance.get(
-          `/compliance/frameworks/${fwId}/controls${
-            cParams.length ? `?${cParams.join("&")}` : ""
-          }`,
-        );
+        const res = await listFrameworkControls(fwId, cParams);
         setControlsData(res.data);
       } else if (activeTab === "marketplace") {
-        const res = await axiosInstance.get("/compliance/marketplace");
+        const res = await listComplianceMarketplace();
         setMarketplace(res.data.data || []);
       } else if (activeTab === "policies") {
-        const res = await axiosInstance.get(
-          `/compliance/policies${queryString}`,
-        );
+        const res = await listCompliancePolicies(queryString);
         setPolicies(res.data.data || []);
       } else if (activeTab === "findings") {
-        const res = await axiosInstance.get(
-          `/compliance/findings?limit=10000${params.length > 0 ? `&${params.join("&")}` : ""}`,
-        );
+        const res = await listComplianceFindings(params);
         setFindings(res.data.data || []);
       } else if (activeTab === "exceptions") {
-        const res = await axiosInstance.get(
-          `/compliance/findings?status=pending&limit=10000${params.length > 0 ? `&${params.join("&")}` : ""}`,
-        );
+        const res = await listPendingExceptionFindings(params);
         setExceptions(res.data.data || []);
       } else if (activeTab === "credentials") {
-        const res = await axiosInstance.get("/compliance/credentials");
+        const res = await listComplianceCredentials();
         setCredentialsList(res.data || []);
       } else if (activeTab === "approvals") {
-        const res = await axiosInstance.get(
-          "/compliance/remediations/requests",
-        );
+        const res = await listRemediationRequests();
         setApprovalsList(res.data.data || []);
       }
     } catch (e) {
@@ -1405,7 +1415,7 @@ export default function ComplianceWorkspace() {
 
   const handleInstallFramework = async (id) => {
     try {
-      await axiosInstance.post(`/compliance/marketplace/${id}/install`);
+      await installComplianceFramework(id);
       pushToast("Framework installed successfully.", "success");
       fetchTabData(true);
     } catch (e) {
@@ -1420,7 +1430,7 @@ export default function ComplianceWorkspace() {
   const handleUninstallFramework = async (id) => {
     // Asked first by the Marketplace's uninstall dialog.
     try {
-      await axiosInstance.post(`/compliance/marketplace/${id}/uninstall`);
+      await uninstallComplianceFramework(id);
       pushToast("Framework uninstalled successfully.", "success");
       fetchTabData(true);
     } catch (e) {
@@ -1443,10 +1453,7 @@ export default function ComplianceWorkspace() {
   const handleDecideException = async (exc, status) => {
     setDecidingException(true);
     try {
-      await axiosInstance.patch(
-        `/compliance/exceptions/${encodeURIComponent(exc.id)}`,
-        { status },
-      );
+      await decideComplianceException(exc.id, status);
       pushToast(
         status === "approved" ? "Waiver approved." : "Waiver rejected.",
         "success",
@@ -1466,7 +1473,7 @@ export default function ComplianceWorkspace() {
   const handleCreatePolicy = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.post("/compliance/policies", {
+      await createCompliancePolicy({
         framework_id:
           selectedFrameworkId && selectedFrameworkId !== "all"
             ? selectedFrameworkId
@@ -1506,18 +1513,15 @@ export default function ComplianceWorkspace() {
     }
 
     try {
-      await axiosInstance.post(
-        `/compliance/controls/${selectedControl.id}/attest`,
-        {
-          status: attestStatus,
-          note: attestNote,
-          justification: attestJustification || null,
-          next_review_at: attestNextReview
-            ? new Date(attestNextReview).toISOString()
-            : null,
-          evidence_file_ids: controlEvidence.map((f) => f.id),
-        },
-      );
+      await attestComplianceControl(selectedControl.id, {
+        status: attestStatus,
+        note: attestNote,
+        justification: attestJustification || null,
+        next_review_at: attestNextReview
+          ? new Date(attestNextReview).toISOString()
+          : null,
+        evidence_file_ids: controlEvidence.map((f) => f.id),
+      });
       setModalOpen(false);
       pushToast("Attestation recorded.", "success");
       fetchTabData();
@@ -1532,9 +1536,7 @@ export default function ComplianceWorkspace() {
 
   const loadControlEvidence = async (controlId) => {
     try {
-      const res = await axiosInstance.get(
-        `/compliance/controls/${controlId}/evidence`,
-      );
+      const res = await listControlEvidence(controlId);
       setControlEvidence(res.data.data || []);
     } catch (e) {
       console.error("Failed to load control evidence", e);
@@ -1571,11 +1573,7 @@ export default function ComplianceWorkspace() {
     const form = new FormData();
     form.append("file", file);
     try {
-      await axiosInstance.post(
-        `/compliance/controls/${controlId}/evidence`,
-        form,
-        { headers: { "Content-Type": "multipart/form-data" } },
-      );
+      await uploadControlEvidence(controlId, form);
       pushToast(`Attached ${file.name}.`, "success");
       await loadControlEvidence(controlId);
     } catch (e) {
@@ -1590,7 +1588,7 @@ export default function ComplianceWorkspace() {
 
   const handleDeleteEvidence = async (fileId, controlId) => {
     try {
-      await axiosInstance.delete(`/compliance/evidence/${fileId}`);
+      await deleteComplianceEvidence(fileId);
       await loadControlEvidence(controlId);
       pushToast("Evidence removed.", "success");
     } catch (e) {
@@ -1626,13 +1624,10 @@ export default function ComplianceWorkspace() {
     e.preventDefault();
     if (!selectedFinding) return;
     try {
-      await axiosInstance.post(
-        `/compliance/findings/${selectedFinding.id}/exception`,
-        {
-          reason: exceptionReason,
-          expires_at: new Date(exceptionExpiry).toISOString(),
-        },
-      );
+      await requestComplianceException(selectedFinding.id, {
+        reason: exceptionReason,
+        expires_at: new Date(exceptionExpiry).toISOString(),
+      });
       setModalOpen(false);
       pushToast("Exception waiver request submitted.", "success");
       fetchTabData();
@@ -1674,7 +1669,7 @@ export default function ComplianceWorkspace() {
         expected: expectedParsed,
       };
 
-      await axiosInstance.put(`/compliance/rules/${selectedFinding.rule_id}`, {
+      await updateComplianceRule(selectedFinding.rule_id, {
         check_definition: checkDefUpdated,
         severity: editRuleSeverity.toLowerCase(),
         severity_weight:
@@ -1707,7 +1702,7 @@ export default function ComplianceWorkspace() {
     setLoading(true);
     try {
       // Query fresh active policies directly from backend to avoid stale state
-      const policyRes = await axiosInstance.get("/compliance/policies");
+      const policyRes = await listCompliancePolicies();
       const fetchedPolicies = policyRes.data.data || [];
 
       if (fetchedPolicies.length === 0) {
@@ -1737,7 +1732,7 @@ export default function ComplianceWorkspace() {
       let lastRunId = null;
       for (const policy of policiesToRun) {
         try {
-          const runRes = await axiosInstance.post("/compliance/scans", {
+          const runRes = await triggerComplianceScan({
             framework_id: policy.framework_id,
             policy_id: policy.id,
             asset_ids: [],
@@ -1799,9 +1794,7 @@ export default function ComplianceWorkspace() {
       setExpandedPolicyId(policyId);
       setLoadingRules(true);
       try {
-        const res = await axiosInstance.get(
-          `/compliance/policies/${policyId}/rules`,
-        );
+        const res = await listCompliancePolicyRules(policyId);
         setPolicyRules(res.data.data || []);
       } catch (e) {
         pushToast(
@@ -1819,8 +1812,7 @@ export default function ComplianceWorkspace() {
 
   useEffect(() => {
     if (modalOpen && (modalType === "remediate" || modalType === "rollback")) {
-      axiosInstance
-        .get("/compliance/credentials")
+      listComplianceCredentials()
         .then((res) => setCredentialsList(res.data || []))
         .catch((err) =>
           console.error("Failed to load credentials for modal", err),
@@ -1855,10 +1847,7 @@ export default function ComplianceWorkspace() {
         };
       }
 
-      const res = await axiosInstance.post(
-        `/compliance/findings/${id}/remediate`,
-        payload,
-      );
+      const res = await applyComplianceRemediation(id, payload);
       pushToast(res.data.message || "Remediation script processed.", "success");
       setJitUsername("");
       setJitPassword("");
@@ -1906,10 +1895,7 @@ export default function ComplianceWorkspace() {
         };
       }
 
-      const res = await axiosInstance.post(
-        `/compliance/remediations/requests/${requestId}/rollback`,
-        payload,
-      );
+      const res = await rollbackRemediationRequest(requestId, payload);
       pushToast(res.data.message || "Rollback script processed.", "success");
       setJitUsername("");
       setJitPassword("");
@@ -1964,9 +1950,7 @@ export default function ComplianceWorkspace() {
   const handleDownloadReport = async (endpoint, filename) => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get(endpoint, {
-        responseType: "arraybuffer",
-      });
+      const res = await downloadComplianceReport(endpoint);
       const mimeType =
         res.headers["content-type"] ||
         (filename.endsWith(".docx")
@@ -3900,7 +3884,7 @@ export default function ComplianceWorkspace() {
                       if (savingCredential) return;
                       setSavingCredential(true);
                       try {
-                        await axiosInstance.post("/compliance/credentials", {
+                        await createComplianceCredential({
                           name: newCredName,
                           username: newCredUsername,
                           auth_method: newCredAuthMethod,
@@ -4038,9 +4022,7 @@ export default function ComplianceWorkspace() {
                   const c = credentialToDelete;
                   setDeletingCredential(true);
                   try {
-                    await axiosInstance.delete(
-                      `/compliance/credentials/${c.id}`,
-                    );
+                    await deleteComplianceCredential(c.id);
                     pushToast("Credential deleted successfully.", "success");
                     fetchTabData();
                   } catch (e) {
@@ -4354,9 +4336,7 @@ export default function ComplianceWorkspace() {
                       ? "rollback"
                       : "remediation";
                     try {
-                      await axiosInstance.post(
-                        `/compliance/remediations/requests/${req.id}/cancel`,
-                      );
+                      await cancelRemediationRequest(req.id);
                       pushToast(
                         `${label.charAt(0).toUpperCase() + label.slice(1)} request cancelled successfully.`,
                         "success",
@@ -4373,10 +4353,7 @@ export default function ComplianceWorkspace() {
                     }
                   } else if (kind === "approve") {
                     try {
-                      await axiosInstance.post(
-                        `/compliance/remediations/requests/${req.id}/approve`,
-                        { status: "approved" },
-                      );
+                      await decideRemediationRequest(req.id, "approved");
                       const label = req.id.startsWith("crrq_rollback_")
                         ? "Rollback"
                         : "Remediation request";
@@ -4393,10 +4370,7 @@ export default function ComplianceWorkspace() {
                     }
                   } else {
                     try {
-                      await axiosInstance.post(
-                        `/compliance/remediations/requests/${req.id}/approve`,
-                        { status: "rejected" },
-                      );
+                      await decideRemediationRequest(req.id, "rejected");
                       const label = req.id.startsWith("crrq_rollback_")
                         ? "Rollback"
                         : "Remediation request";

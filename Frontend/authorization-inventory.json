@@ -171,21 +171,21 @@
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 742,
+      "line": 772,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 750,
+      "line": 780,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 754,
+      "line": 784,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"

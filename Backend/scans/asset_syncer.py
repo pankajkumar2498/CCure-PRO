@@ -620,6 +620,61 @@ def _set_asset_field(
     return True
 
 
+def _set_credentialed_mac(
+    db: Session,
+    org_id: str,
+    asset: Asset,
+    scan_id: str,
+    incoming,
+    claimed: dict[str, str],
+) -> None:
+    """
+    Write the MAC a credentialed session read off a host onto its asset.
+
+    It carries the ``credentialed`` rank, as the standalone audit's write does:
+    the host reported its own interface, which outranks an address inferred on
+    the wire. ARP stops at the scanner's own segment, so the only other source
+    for a host behind a router is a NetBIOS reply, which Linux does not send.
+
+    A MAC another asset in the organisation already holds is left where it is.
+    ``uq_assets_org_mac`` would refuse it, and ``sync_vulnerability_audit``
+    commits once for every host, so the refusal would lose the whole scan's
+    findings rather than one field. Two records for one machine is an identity
+    question, which the discovery syncs answer by matching on MAC; this sync
+    attaches findings and does not merge assets. ``claimed`` covers the hosts
+    written earlier in the same sync: the session does not autoflush, so the
+    query cannot see them.
+    """
+    mac = mac_identity(incoming)
+    if not mac:
+        return
+    holder_id = claimed.get(mac)
+    if holder_id is None:
+        holder = (
+            db.query(Asset.id)
+            .filter(
+                Asset.org_id == org_id,
+                Asset.mac_address == mac,
+                Asset.id != asset.id,
+            )
+            .first()
+        )
+        holder_id = holder.id if holder else None
+    if holder_id is not None and holder_id != asset.id:
+        logger.warning(
+            "Scan %s: MAC %s read from asset %s is already held by asset %s; "
+            "not recorded on %s",
+            scan_id,
+            mac,
+            asset.id,
+            holder_id,
+            asset.id,
+        )
+        return
+    if _set_asset_field(db, asset, scan_id, "mac_address", mac, "credentialed"):
+        claimed[mac] = asset.id
+
+
 def _enrich_findings_with_intel(hosts: List[dict]) -> None:
     """
     Attach exploit provenance and vendor advisories to every finding in place.
@@ -1291,6 +1346,9 @@ def sync_vulnerability_audit(
     # they are fetched once per sync rather than once per (host, finding).
     _catalogue_cache: dict[str, dict | None] = {}
 
+    # MAC -> asset id, for the MACs this sync has written so far.
+    claimed_macs: dict[str, str] = {}
+
     touched_asset_ids = set()
     for host in hosts:
         ip = _resolve_ip(host)
@@ -1400,6 +1458,13 @@ def sync_vulnerability_audit(
             host.get("os_version") or system_info.get("os_version_id"),
             "vulnerability_audit",
             max_len=100,
+        )
+        # The MAC the session read off the host — for a host behind a router,
+        # the only MAC this pipeline can see. Nothing wrote it, so
+        # 10.180.6.45 kept no MAC through three authenticated audits that had
+        # each read 2c:58:b9:87:0b:b3 (28 Oct 2026).
+        _set_credentialed_mac(
+            db, org_id, asset, scan_id, system_info.get("mac_address"), claimed_macs
         )
         _set_asset_field(
             db,

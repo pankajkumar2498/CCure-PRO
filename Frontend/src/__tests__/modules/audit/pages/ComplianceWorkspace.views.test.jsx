@@ -1569,25 +1569,27 @@ describe("ComplianceWorkspace views — batch 26b", () => {
         path.join(AUDIT_SRC, "pages/ComplianceWorkspace.jsx"),
         "utf8",
       ).replace(/\r\n/g, "\n");
+      // The tabs' markup lives in their own files since F1; the page renders them.
+      const part = (name) =>
+        readFileSync(
+          path.join(AUDIT_SRC, "components/compliance/workspace", name),
+          "utf8",
+        ).replace(/\r\n/g, "\n");
       expect(source).toMatch(
         /import\s+["']\.\.\/styles\/compliance-views\.css["']/,
       );
-      const at = (needle, from = 0) => {
-        const i = source.indexOf(needle, from);
-        expect(i).toBeGreaterThan(-1);
-        return i;
-      };
-      const dashboard = at('{activeTab === "dashboard" && summary && (');
-      const marketplace = at('{activeTab === "marketplace" && (');
-      const policies = at('{activeTab === "policies" && (', marketplace);
-      const controls = at('{activeTab === "controls" && (');
-      const findings = at('{activeTab === "findings" &&');
-      const exceptions = at('{activeTab === "exceptions" && (');
+      for (const component of [
+        "ComplianceDashboardTab",
+        "CompliancePoliciesTab",
+        "ComplianceControlsTab",
+        "ComplianceFindingsTab",
+      ])
+        expect(source).toMatch(new RegExp(`<${component}\\b`));
       for (const block of [
-        source.slice(dashboard, marketplace),
-        source.slice(policies, controls),
-        source.slice(controls, findings),
-        source.slice(findings, exceptions),
+        part("ComplianceDashboardTab.jsx"),
+        part("CompliancePoliciesTab.jsx"),
+        part("ComplianceControlsTab.jsx"),
+        part("ComplianceFindingsTab.jsx"),
       ]) {
         expect(block).not.toMatch(/style=\{/);
         expect(block.match(/#[0-9a-fA-F]{3,8}\b/g) || []).toEqual([]);

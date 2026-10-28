@@ -30,7 +30,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
@@ -678,6 +678,12 @@ describe("ComplianceWorkspace gap analysis and pagination — batch 31", () => {
       path.join(AUDIT_SRC, "pages/ComplianceWorkspace.jsx"),
       "utf8",
     ).replace(/\r\n/g, "\n");
+    // The tabs' markup lives in their own files since F1; the page renders them.
+    const part = (name) =>
+      readFileSync(
+        path.join(AUDIT_SRC, "components/compliance/workspace", name),
+        "utf8",
+      ).replace(/\r\n/g, "\n");
     expect(source).toMatch(
       /import\s+["']\.\.\/styles\/compliance-gap\.css["']/,
     );
@@ -705,12 +711,18 @@ describe("ComplianceWorkspace gap analysis and pagination — batch 31", () => {
     ])
       expect(gap).toMatch(new RegExp(`<${part}\\b`));
 
-    const credentialsTab = source.slice(
-      at('{activeTab === "credentials" && ('),
-      at('{activeTab === "approvals" && ('),
-    );
-    expect(credentialsTab).toMatch(/<PagingControls\b/);
+    expect(
+      source.slice(
+        at('{activeTab === "credentials" && ('),
+        at('{activeTab === "approvals" && ('),
+      ),
+    ).toMatch(/<ComplianceCredentialsTab\b/);
+    expect(part("ComplianceCredentialsTab.jsx")).toMatch(/<PagingControls\b/);
     expect(source).not.toMatch(/\bPaginationBar\b/);
+    for (const name of readdirSync(
+      path.join(AUDIT_SRC, "components/compliance/workspace"),
+    ))
+      expect(part(name)).not.toMatch(/\bPaginationBar\b/);
 
     // The retired pager's rules are gone. `.cw-pagination-select` outlived
     // them on the header's selects until Batch 32 migrated those too, so no

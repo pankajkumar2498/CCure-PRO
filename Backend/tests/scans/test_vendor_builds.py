@@ -356,7 +356,7 @@ def test_a_package_managers_own_version_is_not_mistaken_for_a_banner():
 
 
 def test_the_correction_leaves_a_vendor_build_alone():
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [_ssh_port()]
     listeners = [{"port": "22", "product": "OpenSSH for Windows", "version": "9.5.6.3"}]
@@ -374,7 +374,7 @@ def test_the_correction_leaves_a_vendor_build_alone():
 
 
 def test_the_correction_still_settles_an_open_ended_fingerprint():
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -389,7 +389,7 @@ def test_the_correction_still_settles_an_open_ended_fingerprint():
 
 
 def test_scan_11s_sequence_ends_potential():
-    from core.tasks import (
+    from scans.tasks.credentialed import (
         _restate_findings_for_corrected_ports,
         _upgrade_network_fingerprints,
     )

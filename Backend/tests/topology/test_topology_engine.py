@@ -622,7 +622,7 @@ def test_sync_host_discovery_mac_first_and_ip_hijack(db_session, test_org):
 
 
 def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, test_org):
-    from core.tasks import _sync_credentialed_asset_identity
+    from scans.tasks.credentialed_sync import _sync_credentialed_asset_identity
 
     asset_a = Asset(
         id=f"ast_{test_org.slug}_192_168_1_5",

@@ -23,6 +23,14 @@ from types import SimpleNamespace
 import pytest
 from testpaths import BACKEND_ROOT
 
+#: The scan tasks' source, which was core/tasks.py until G1 split it into
+#: scans/tasks/ (core/tasks.py is now a facade that re-exports them). A check
+#: over "the hub" reads all of these, so it sees what it saw before the split.
+SCAN_TASK_MODULES = tuple(
+    str(path.relative_to(BACKEND_ROOT))
+    for path in sorted((BACKEND_ROOT / "scans" / "tasks").glob("*.py"))
+)
+
 
 def _scan(options=None):
     return SimpleNamespace(id="scn_contract", options=options)
@@ -109,7 +117,7 @@ def test_a_scan_without_a_snapshot_has_no_policy(options):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# scans.options["assessment_scope"] — written by core.tasks and the package
+# scans.options["assessment_scope"] — written by scans/tasks/ and the package
 # matcher through core.findings.record_assessment_scope, read by the scan
 # comparison and so by remediation verification.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -198,7 +206,7 @@ def test_a_scope_without_a_check_list_restricts_no_check(raw):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # scans.options["credentials"] — written by the host-discovery request (the
-# only writer), read by the credentialed pass in core.tasks. Both sides use
+# only writer), read by the credentialed pass in scans/tasks/. Both sides use
 # core.credential_scope, so a stored plan is one the reader accepts.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -211,7 +219,7 @@ def test_the_credential_plan_writer_and_reader_share_one_validator():
         )
 
     assert calls("routers/phase_scans.py", "validate_credential_options")
-    assert calls("core/tasks.py", "credential_plan_entries")
+    assert any(calls(path, "credential_plan_entries") for path in SCAN_TASK_MODULES)
 
 
 @pytest.mark.parametrize(
@@ -234,7 +242,7 @@ def test_a_plan_the_writer_accepts_the_reader_resolves(plan):
 
 def test_a_scan_without_a_plan_gets_no_credentialed_pass():
     from core.credential_scope import validate_credential_options
-    from core.tasks import _credentialed_plan_for_scan
+    from scans.tasks.credentialed import _credentialed_plan_for_scan
 
     assert validate_credential_options({}) == {}
     assert _credentialed_plan_for_scan(None, _scan(None)) == []
@@ -245,7 +253,7 @@ def test_a_scan_without_a_plan_gets_no_credentialed_pass():
 # Port-scan options — written by POST /scan/asset-discovery
 # (routers/phase_scans.py) and forwarded from a schedule by
 # core/scheduling/dispatcher.py; read back from scans.options by the phase
-# tasks in core.tasks when not passed explicitly.
+# tasks in scans/tasks/ when not passed explicitly.
 # ─────────────────────────────────────────────────────────────────────────────
 
 PIPELINE_KEYS = {
@@ -320,8 +328,15 @@ def _dispatcher_forwarded_keys() -> set[str]:
     return keys
 
 
+def _scan_task_option_reads() -> dict[str, object]:
+    reads: dict[str, object] = {}
+    for path in SCAN_TASK_MODULES:
+        reads.update(_scan_row_option_reads(path))
+    return reads
+
+
 def test_every_port_option_a_phase_task_reads_is_written_by_the_route():
-    reads = _scan_row_option_reads("core/tasks.py")
+    reads = _scan_task_option_reads()
     read_pipeline_keys = set(reads) & PIPELINE_KEYS
     assert read_pipeline_keys == PIPELINE_KEYS
     assert PIPELINE_KEYS <= _option_subscript_writes("routers/phase_scans.py")
@@ -332,14 +347,14 @@ def test_a_schedule_forwards_every_port_option_under_its_own_name():
 
 
 def test_a_missing_port_option_means_the_documented_default():
-    reads = _scan_row_option_reads("core/tasks.py")
+    reads = _scan_task_option_reads()
     for key, default in READER_DEFAULTS.items():
         assert reads[key] is default, key
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # assets.custom_attributes["credentialed_status"] and ["password_policy"] —
-# written by the credentialed pass (core.tasks, scans.asset_syncer), read by
+# written by the credentialed pass (scans/tasks/, scans.asset_syncer), read by
 # the compliance engine (core.compliance_evidence, core.compliance_tasks).
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -388,7 +403,7 @@ def test_every_status_written_is_in_the_vocabulary():
         "CREDENTIALED_STATUS_FAILED",
         "status",  # set_credentialed_status's own parameter
     }
-    for path in ("core/tasks.py", "scans/asset_syncer.py"):
+    for path in (*SCAN_TASK_MODULES, "scans/asset_syncer.py"):
         assert _status_literals_written(path) <= allowed, path
 
 
@@ -420,12 +435,10 @@ class _OneAssetDb:
 def test_only_success_counts_as_authenticated_and_nothing_is_defaulted(
     attributes, successful
 ):
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import credential_validation
 
     asset = SimpleNamespace(custom_attributes=attributes)
-    payload = ComplianceEvidenceProvider._adapt_credential_validation(
-        _OneAssetDb(asset), "ast_contract"
-    )
+    payload = credential_validation(_OneAssetDb(asset), "ast_contract")
     # An uncollected password policy is absent, never False/0/8.
     assert payload == {"credentialed_scan_successful": successful}
 
@@ -449,7 +462,7 @@ def _dict_literal_keys_in(path: str, function: str, anchor: str) -> set[str]:
 
 def _password_policy_reads() -> set[str]:
     tree = ast.parse(
-        (BACKEND_ROOT / "core/compliance_evidence.py").read_text(encoding="utf-8")
+        (BACKEND_ROOT / "core/asset_evidence.py").read_text(encoding="utf-8")
     )
     reads = set()
     for node in ast.walk(tree):
@@ -467,7 +480,9 @@ def _password_policy_reads() -> set[str]:
 
 def test_password_policy_keys_written_are_the_keys_compliance_reads():
     written = _dict_literal_keys_in(
-        "core/tasks.py", "_sync_credentialed_asset_identity", "lockout_threshold"
+        "scans/tasks/credentialed_sync.py",
+        "_sync_credentialed_asset_identity",
+        "lockout_threshold",
     )
     assert written == {
         "complexity",
@@ -480,7 +495,7 @@ def test_password_policy_keys_written_are_the_keys_compliance_reads():
 
 
 def test_a_collected_password_policy_reaches_compliance_key_by_key():
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import credential_validation
 
     asset = SimpleNamespace(
         custom_attributes={
@@ -488,9 +503,7 @@ def test_a_collected_password_policy_reaches_compliance_key_by_key():
             "password_policy": {"min_length": 14, "lockout_threshold": 5},
         }
     )
-    payload = ComplianceEvidenceProvider._adapt_credential_validation(
-        _OneAssetDb(asset), "ast_contract"
-    )
+    payload = credential_validation(_OneAssetDb(asset), "ast_contract")
     assert payload == {
         "credentialed_scan_successful": True,
         "minimum_password_length": 14,

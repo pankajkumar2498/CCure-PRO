@@ -63,23 +63,19 @@ def assets(db_session):
 
 
 def test_uncollected_values_are_absent(db_session, assets):
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import offline_configuration
 
     blank, _ = assets
-    payload = ComplianceEvidenceProvider._adapt_offline_configuration(
-        db_session, blank.id
-    )
+    payload = offline_configuration(db_session, blank.id)
     present = {k: payload[k] for k in KEYS if k in payload}
     assert not present, f"asserted without being collected: {present}"
 
 
 def test_collected_values_are_reported_as_collected(db_session, assets):
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.asset_evidence import offline_configuration
 
     _, read = assets
-    payload = ComplianceEvidenceProvider._adapt_offline_configuration(
-        db_session, read.id
-    )
+    payload = offline_configuration(db_session, read.id)
     assert payload["uac_enabled"] is False  # collected and off: a real finding
     assert payload["firewall_profile_active"] is True
     assert payload["remote_desktop_disabled"] is True

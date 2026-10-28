@@ -46,7 +46,7 @@ from core.benchmarks import (  # noqa: E402
     discover_packs,
     load_pack,
 )
-from core.benchmarks.loader import load_pack_into_db  # noqa: E402
+from core.compliance_catalogue.benchmark_loader import load_pack_into_db  # noqa: E402
 from db.base import SessionLocal  # noqa: E402
 
 

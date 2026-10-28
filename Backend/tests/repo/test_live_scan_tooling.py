@@ -21,16 +21,33 @@ drift silently:
   column that does not exist);
 * the comparison names every difference except time, and tolerates only the
   two things B3 measured as timing: discovery's sampled frames and where the
-  stop route's frame lands.
+  stop route's frame lands;
+* the throwaway credentials of the credentialed runs (T0) are made per run,
+  reach no argument, environment or file, are set on the targets in sessions
+  that log nothing, and are revoked and confirmed on every exit; the leak check
+  finds one planted where it searches;
+* the harness stores them through the credential vault, encrypted, dispatches
+  the credentialed scans with the credentialed route's own arguments, and
+  refuses a run whose credentialed scans did not authenticate;
+* the comparison reads the credentialed runs' verdicts and ignores the send
+  time their frames carry;
+* the rescans (G3) ask for each target state by a marker live_scan.sh
+  answers, on the harness's stdin and with nothing else written there; every
+  state they ask for is one ``targets.sh state`` knows; ``up`` and every exit
+  leave the targets in the original state; a run whose rescans did not reach
+  every classification is refused; and the comparison reads the rescans
+  exactly.
 """
 
 import importlib.util
+import io
 import ipaddress
 import json
 import os
 import re
 import subprocess
 import sys
+import types
 import uuid
 
 import pytest
@@ -176,11 +193,16 @@ elif args[:2] == ["container", "inspect"]:
         print("running")
     elif "MacAddress" in template:
         print(box["address"])
+    elif "Config.Image" in template:
+        print(box.get("image", ""))
 elif args[0] == "rm":
     state.pop(args[-1], None)
     save()
 elif args[0] == "run" and "--rm" not in args:
-    state[opt("--name")] = {"address": f"{opt('--ip')} {opt('--mac-address')}"}
+    state[opt("--name")] = {
+        "address": f"{opt('--ip')} {opt('--mac-address')}",
+        "image": args[-1],
+    }
     save()
 """
 
@@ -211,10 +233,17 @@ def _run_up(tmp_path, containers: dict) -> tuple[list[list[str]], str, dict]:
     return calls, done.stdout, json.loads(state.read_text())
 
 
+def _image(env: dict, target: str) -> str:
+    return env["SSH_IMAGE_TAG"] if target == "SSH" else env[f"{target}_IMAGE"]
+
+
 def _defined() -> dict:
     env = _targets_env()
     return {
-        env[f"{t}_CONTAINER"]: {"address": f"{env[f'{t}_TARGET']} {env[f'{t}_MAC']}"}
+        env[f"{t}_CONTAINER"]: {
+            "address": f"{env[f'{t}_TARGET']} {env[f'{t}_MAC']}",
+            "image": _image(env, t),
+        }
         for t in TARGETS
     }
 
@@ -238,13 +267,32 @@ def test_up_replaces_a_target_holding_another_mac(tmp_path):
     env = _targets_env()
     containers = _defined()
     web = env["WEB_CONTAINER"]
-    containers[web] = {"address": f"{env['WEB_TARGET']} 3a:2e:0d:74:a2:00"}
+    containers[web] = {
+        "address": f"{env['WEB_TARGET']} 3a:2e:0d:74:a2:00",
+        "image": env["WEB_IMAGE"],
+    }
     calls, out, state = _run_up(tmp_path, containers)
     assert ["rm", "-f", web] in calls
     assert [
         c[c.index("--name") + 1] for c in calls if c[0] == "run" and "--rm" not in c
     ] == [web]
     assert f"replacing {web}" in out
+    assert state == _defined()
+
+
+def test_up_replaces_a_target_running_another_image(tmp_path):
+    """
+    T0: an SSH target from the image before the audit account existed holds the
+    right address and MAC, and must still be replaced: a credentialed run
+    against it could not log in.
+    """
+    env = _targets_env()
+    containers = _defined()
+    ssh = env["SSH_CONTAINER"]
+    containers[ssh] = dict(containers[ssh], image="ccure-validation-ssh:ubuntu-24.04")
+    calls, out, state = _run_up(tmp_path, containers)
+    assert ["rm", "-f", ssh] in calls
+    assert f"replacing {ssh}" in out
     assert state == _defined()
 
 
@@ -288,20 +336,31 @@ def test_importing_the_harness_runs_nothing():
     assert callable(harness.main)
 
 
-def test_the_harness_dispatches_with_the_routes_own_arguments():
-    """routers/phase_scans.py's run_host_discovery_task.delay(...) keywords."""
+def _route_dispatches(router: str, task_name_constant: str) -> list:
+    """
+    Every ``registered_task(CONSTANT).delay(...)`` call in a router: since G1
+    the routes dispatch by registered name (core/task_names.py).
+    """
     import ast
 
-    harness = _load("live_scan_harness")
-    tree = ast.parse((BACKEND_ROOT / "routers" / "phase_scans.py").read_text())
-    calls = [
+    tree = ast.parse((BACKEND_ROOT / "routers" / f"{router}.py").read_text())
+    return [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "delay"
-        and getattr(node.func.value, "id", None) == "run_host_discovery_task"
+        and isinstance(node.func.value, ast.Call)
+        and getattr(node.func.value.func, "id", None) == "registered_task"
+        and [getattr(a, "id", None) for a in node.func.value.args]
+        == [task_name_constant]
     ]
+
+
+def test_the_harness_dispatches_with_the_routes_own_arguments():
+    """routers/phase_scans.py's host-discovery ``.delay(...)`` keywords."""
+    harness = _load("live_scan_harness")
+    calls = _route_dispatches("phase_scans", "RUN_HOST_DISCOVERY")
     assert len(calls) == 1
     assert tuple(k.arg for k in calls[0].keywords) == harness.DISPATCH_KWARGS
 
@@ -357,13 +416,17 @@ def test_the_harness_refuses_before_anything_when_the_interface_is_unknown(
     monkeypatch.setenv("CCURE_LIVE_SWEEP", "172.30.250.0/24")
     monkeypatch.setenv("CCURE_LIVE_EXCLUDE", "172.30.250.1")
     monkeypatch.setenv("CCURE_LIVE_SCANNER_ADDRESS", scanner)
+    monkeypatch.setenv("CCURE_LIVE_SSH_TARGET", "172.30.250.10")
+    monkeypatch.setenv("CCURE_LIVE_PG_TARGET", "172.30.250.13")
+    monkeypatch.setenv("CCURE_LIVE_WEB_TARGET", "172.30.250.11")
 
     def created(*_args):
         raise AssertionError("an identity was created before the interface was known")
 
     monkeypatch.setattr(harness, "make_identity", created)
-    with pytest.raises(SystemExit, match="refusing"):
-        harness.main("no-interface")
+    monkeypatch.setattr(harness, "store_credentials", created)
+    with pytest.raises(SystemExit, match="scanner's"):
+        harness.main("no-interface", io.StringIO(json.dumps(CREDENTIALS) + "\n"))
 
 
 def test_the_harness_reads_back_against_the_real_schema(db_session):
@@ -452,6 +515,11 @@ def test_frames_are_reduced_to_one_scan_with_relative_times():
 
 
 def _result(findings, frame_t=1.0, elapsed=300.0):
+    """
+    A result in the harness's shape: the concurrent runs carry their own row,
+    phases and frames, and share the organisation's state ("concurrent"); the
+    cancel run, alone, carries its own.
+    """
     run = {
         "scan": {
             "status": "complete",
@@ -459,17 +527,19 @@ def _result(findings, frame_t=1.0, elapsed=300.0):
             "progress": {"active": 4, "start_time": f"t{elapsed}"},
         },
         "phases": [{"phase_order": 1, "status": "complete"}],
-        "assets": [{"ip_address": "10.0.0.1"}],
-        "services": [],
-        "findings": findings,
         "task_result": {"success": True},
         "frames": [{"t": frame_t, "phase": 1, "status": "running"}],
         "elapsed_s": elapsed,
     }
+    state = {
+        "assets": [{"ip_address": "10.0.0.1"}],
+        "services": [],
+        "findings": findings,
+    }
     cancel = dict(
-        run, stop={"applied": True, "task_returned_s_after_stop": elapsed / 30}
+        run, **state, stop={"applied": True, "task_returned_s_after_stop": elapsed / 30}
     )
-    return {"full": run, "cancel": cancel}
+    return {"full": run, "concurrent": state, "cancel": cancel}
 
 
 def test_the_comparison_ignores_time_and_names_everything_else(tmp_path):
@@ -660,3 +730,620 @@ def test_a_discovery_sample_the_batch_frame_covers_is_tolerated():
         _with_full(FULL_FRAMES), _with_full(early)
     )
     assert differences == [] and len(tolerated) == 1
+
+
+# ── T0: throwaway credentials and the credentialed runs ──────────────────────
+#
+# The credentials are made by live_scan.sh for one run and revoked when it
+# ends; the harness stores them as the application stores any credential and
+# keeps only their ids. These pin where a credential may and may not go.
+
+#: Placeholder credentials for the harness's own tests. Never a real secret.
+CREDENTIALS = {
+    "ssh": {"username": "ccure-audit", "password": "placeholder ssh password"},
+    "database": {
+        "username": "ccure_audit",
+        "password": "placeholder database password",
+        "database": "postgres",
+    },
+}
+
+
+def _live() -> str:
+    return (VALIDATION / "live_scan.sh").read_text(encoding="utf-8")
+
+
+def test_the_ssh_target_has_one_locked_audit_account_and_no_secret():
+    env = _targets_env()
+    text = (VALIDATION / "ssh-target" / "Dockerfile").read_text(encoding="utf-8")
+    # The instructions, not the comments explaining them.
+    docker = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert f"ARG AUDIT_USER={env['SSH_AUDIT_USER']}" in docker
+    # Created, then locked: "!" matches no password.
+    assert 'useradd --create-home --shell /bin/bash "$AUDIT_USER"' in docker
+    assert "usermod --password '!' \"$AUDIT_USER\"" in docker
+    # Elevation asks for the password; nothing is NOPASSWD.
+    assert "ALL=(ALL:ALL) ALL" in docker and "NOPASSWD" not in docker
+    # No password and no key is ever put into the image.
+    for forbidden in (
+        "chpasswd",
+        "passwd -d",
+        "authorized_keys",
+        "ssh-copy-id",
+        "COPY",
+        "ADD ",
+    ):
+        assert forbidden not in docker, forbidden
+    targets = (VALIDATION / "targets.sh").read_text(encoding="utf-8")
+    assert '--build-arg AUDIT_USER="$SSH_AUDIT_USER"' in targets
+
+
+def test_the_throwaway_credentials_never_reach_an_argument_an_environment_or_a_file():
+    """
+    Each credential is a shell variable made from /dev/urandom, never exported,
+    and only ever given to `printf` (a builtin, so never a process argument)
+    piped into a container's stdin, or matched through a pipe by the leak check.
+    """
+    live = _live().replace("\\\n", " ")
+    assert "SSH_PW=$(random_hex 16)" in live and "DB_PW=$(random_hex 16)" in live
+    assert not re.search(r"export\s+(SSH_PW|DB_PW)|declare\s+-x", live)
+    uses = [
+        line.strip()
+        for line in live.splitlines()
+        if re.search(r"\$\{?(SSH_PW|DB_PW)", line)
+    ]
+    assert uses
+    for line in uses:
+        assert line.startswith(("printf ", "secrets() {")), line
+        # The printf itself, before any pipe, never writes to a file.
+        assert ">" not in line.split("|")[0], line
+    # Every printf that carries one feeds a container's stdin.
+    grant = live[
+        live.index("grant_credentials() {") : live.index("# Revoke, then confirm")
+    ]
+    assert '| docker exec -i "$SSH_CONTAINER" chpasswd' in grant
+    assert '} | docker exec -i "$PG_CONTAINER" psql' in grant
+    assert '| docker start -a -i "$RUN-scan"' in live
+    # And no credential appears where a container's configuration would hold it.
+    for command in re.findall(r"docker (?:run|create)\b[^\n]*", live):
+        assert "_PW" not in command.replace("$PW", ""), command
+    # The harness takes them on stdin, which it reads before anything else.
+    assert 'docker create --name "$RUN-scan" --init -i ' in live
+    assert 'docker start -a -i "$RUN-scan"' in live
+
+
+def test_the_role_password_is_set_in_a_session_that_logs_no_statement():
+    """A failing ALTER ROLE would otherwise be logged with the password in it."""
+    live = _live()
+    grant = live[
+        live.index("grant_credentials() {") : live.index("# Revoke, then confirm")
+    ]
+    for setting in (
+        "SET log_statement = 'none';",
+        "SET log_min_error_statement = 'panic';",
+    ):
+        assert grant.index(setting) < grant.index(
+            "ALTER ROLE %s LOGIN PASSWORD"
+        ), setting
+
+
+def test_the_credentials_are_revoked_and_confirmed_on_every_exit():
+    live = _live()
+    assert "trap cleanup EXIT" in live
+    cleanup = live[live.index("cleanup() {") : live.index("trap cleanup EXIT")]
+    assert cleanup.index("revoke_credentials") < cleanup.index("docker rm -f")
+    assert "exit 4" in cleanup
+    revoke = live[live.index("revoke_credentials() {") : live.index("holds_secret() {")]
+    assert "usermod --password '!'" in revoke
+    assert "NOLOGIN PASSWORD NULL" in revoke
+    # Confirmed from the targets themselves, not assumed.
+    assert "getent shadow" in revoke and "pg_authid" in revoke
+
+
+#: The leak check's functions, run against a stand-in docker.
+_LEAK_DOCKER = r"""#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+leaky = os.environ.get("LEAKY", "")
+if args[:1] == ["logs"] and args[-1] == leaky:
+    print("a line holding " + os.environ["PLANTED"])
+elif args[:2] == ["exec", leaky]:
+    print("COPY credentials FROM stdin; " + os.environ["PLANTED"])
+else:
+    print("nothing to see")
+"""
+
+
+def _leak_check(tmp_path, leaky: str) -> subprocess.CompletedProcess:
+    live = _live()
+    functions = live[
+        live.index("# Both credentials as patterns") : live.index("cleanup() {")
+    ]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(_LEAK_DOCKER)
+    (bin_dir / "docker").chmod(0o755)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "x.log").write_text("harness output\n")
+    (out / "x.json").write_text("{}\n")
+    script = "\n".join(
+        [
+            "set -uo pipefail",
+            'SSH_PW="$PLANTED"; DB_PW=unrelated-0000; SINCE=2026-01-01T00:00:00Z',
+            f'OUT="{out}"; LABEL=x; RUN=r',
+            "SSH_CONTAINER=s WEB_CONTAINER=w REDIS_CONTAINER=rd PG_CONTAINER=p",
+            functions,
+            "leak_check",
+        ]
+    )
+    return subprocess.run(
+        ["bash", "-c", script],
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "PLANTED": "planted-secret-7f3a",
+            "LEAKY": leaky,
+        },
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "leaky, where",
+    [
+        ("w", "docker logs w"),
+        ("r-pg", "docker logs r-pg"),
+        ("r-pg", "the throwaway database"),
+    ],
+)
+def test_the_leak_check_finds_a_planted_credential(tmp_path, leaky, where):
+    done = _leak_check(tmp_path, leaky)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "SECRET LEAK" in done.stderr and where in done.stderr
+    # It names where, never what.
+    assert "planted-secret-7f3a" not in done.stdout + done.stderr
+
+
+def test_the_leak_check_passes_a_clean_run(tmp_path):
+    done = _leak_check(tmp_path, "nobody")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "secret check: neither credential appears" in done.stdout
+
+
+def test_the_harness_reads_its_credentials_from_stdin_and_refuses_without():
+    harness = _load("live_scan_harness")
+    assert (
+        harness.read_credentials(io.StringIO(json.dumps(CREDENTIALS) + "\n"))
+        == CREDENTIALS
+    )
+    for bad, why in (
+        ("", "no throwaway credentials"),
+        ("not json\n", "not one JSON line"),
+        (json.dumps({"ssh": CREDENTIALS["ssh"]}) + "\n", "database credential"),
+        (
+            json.dumps(dict(CREDENTIALS, ssh={"username": "u", "password": ""})) + "\n",
+            "ssh credential",
+        ),
+    ):
+        with pytest.raises(SystemExit, match=why) as refused:
+            harness.read_credentials(io.StringIO(bad))
+        for part in CREDENTIALS.values():
+            assert part["password"] not in str(refused.value)
+
+
+def test_the_harness_dispatches_credentialed_scans_with_the_routes_own_arguments():
+    """routers/credentialed.py's credentialed-scan ``.delay(...)`` keywords."""
+    harness = _load("live_scan_harness")
+    calls = _route_dispatches("credentialed", "RUN_CREDENTIALED_SCAN")
+    assert len(calls) == 1
+    assert (
+        tuple(k.arg for k in calls[0].keywords) == harness.CREDENTIALED_DISPATCH_KWARGS
+    )
+
+
+def test_stored_credentials_are_encrypted_and_only_their_ids_kept(db_session):
+    from db.models import ComplianceCredential
+
+    harness = _load("live_scan_harness")
+    org_id, user_id = harness.make_identity(f"cred-{uuid.uuid4().hex[:6]}")
+    ids = harness.store_credentials(org_id, user_id, CREDENTIALS)
+    assert set(ids) == {"ssh", "database"}
+    rows = {
+        r.id: r
+        for r in db_session.query(ComplianceCredential).filter(
+            ComplianceCredential.tenant_id == org_id
+        )
+    }
+    ssh, database = rows[ids["ssh"]], rows[ids["database"]]
+    assert (ssh.credential_type, ssh.transport, ssh.port) == ("ssh", "ssh", 22)
+    assert (database.credential_type, database.transport, database.port) == (
+        "database",
+        "postgresql",
+        5432,
+    )
+    for row in (ssh, database):
+        values = " ".join(str(getattr(row, c.name)) for c in row.__table__.columns)
+        for part in CREDENTIALS.values():
+            assert part["password"] not in values  # stored encrypted, never plain
+
+
+def test_the_phase_35_scan_carries_the_credential_plan_as_the_route_merges_it(
+    db_session,
+):
+    from db.models import Scan
+
+    harness = _load("live_scan_harness")
+    org_id, user_id = harness.make_identity(f"plan-{uuid.uuid4().hex[:6]}")
+    plan = {"credentials": [{"credential_id": "cred-x", "targets": ["192.0.2.10"]}]}
+    scan_id, kwargs, _task = harness.dispatch(
+        org_id,
+        user_id,
+        ["192.0.2.10"],
+        "vulnerability_audit",
+        "192.0.2.1",
+        options=plan,
+    )
+    db_session.expire_all()
+    scan = db_session.query(Scan).filter(Scan.id == scan_id).one()
+    assert scan.options["credentials"] == plan["credentials"]
+    assert "scan_policy" in scan.options  # the snapshot survived the merge
+    assert "password" not in json.dumps(kwargs)
+    # The route's validator applies: a null plan is refused, not ignored.
+    with pytest.raises(ValueError, match="not null"):
+        harness.dispatch(
+            org_id,
+            user_id,
+            ["192.0.2.10"],
+            "basic",
+            "192.0.2.1",
+            options={"credentials": None},
+        )
+
+
+def test_a_run_whose_credentialed_scans_did_not_authenticate_is_refused():
+    harness = _load("live_scan_harness")
+    cfg = {"ssh_target": "172.30.250.10"}
+    result = {
+        "concurrent": {
+            "assets": [
+                {"ip_address": "172.30.250.10", "credentialed_status": "success"}
+            ]
+        },
+        **{run: {"verdicts": [{"Check ID": "x"}]} for run in harness.CREDENTIALED_RUNS},
+    }
+    assert all(harness.authenticated(result, cfg).values())
+    result["concurrent"]["assets"][0]["credentialed_status"] = "failed"
+    result["database"]["verdicts"] = []
+    flags = harness.authenticated(result, cfg)
+    assert sorted(k for k, ok in flags.items() if not ok) == [
+        "database_has_verdicts",
+        "ssh_host_marked_success",
+    ]
+
+
+def test_the_harness_exits_5_after_writing_a_result_that_did_not_authenticate(tmp_path):
+    """The harness's own `__main__` block, run with `main` replaced."""
+    import ast
+
+    harness = _load("live_scan_harness")
+    tree = ast.parse((VALIDATION / "live_scan_harness.py").read_text(encoding="utf-8"))
+    block = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test)
+    )
+    code = compile(
+        ast.Module(body=block.body, type_ignores=[]), "harness __main__", "exec"
+    )
+
+    def run(flags):
+        written = tmp_path / "x.json"
+        written.unlink(missing_ok=True)
+        namespace = {
+            "sys": types.SimpleNamespace(
+                argv=["harness", "x"], stdin=None, exit=sys.exit
+            ),
+            "json": json,
+            "main": lambda label, stream: {"authenticated": flags},
+            "open": lambda path, *a, **k: open(written, *a, **k),
+            "NOT_AUTHENTICATED": harness.NOT_AUTHENTICATED,
+        }
+        exec(code, namespace)
+        return json.loads(written.read_text())
+
+    assert run({"ssh_host_marked_success": True})["authenticated"]
+    with pytest.raises(SystemExit) as refused:
+        run({"ssh_host_marked_success": True, "database_has_verdicts": False})
+    assert refused.value.code == harness.NOT_AUTHENTICATED == 5
+    # Written first, so the refused run can still be read.
+    assert json.loads((tmp_path / "x.json").read_text())["authenticated"] == {
+        "ssh_host_marked_success": True,
+        "database_has_verdicts": False,
+    }
+
+
+def _with_credentialed(verdict="PASS", timestamp="2026-10-22T10:00:00"):
+    result = _result([])
+    for run in ("credentialed", "host", "database"):
+        result[run] = dict(
+            result["full"],
+            frames=[
+                {"t": 1.0, "phase": 5, "status": "running", "timestamp": timestamp}
+            ],
+            verdicts=[{"Host": "172.30.250.10", "Check ID": "c1", "Verdict": verdict}],
+        )
+    result["authenticated"] = {"ssh_host_marked_success": True}
+    return result
+
+
+def test_the_comparison_reads_the_credentialed_runs_and_ignores_their_send_times():
+    compare = _load("compare_live_scans")
+    before = _with_credentialed()
+    assert (
+        compare.compare(before, _with_credentialed(timestamp="2026-10-22T10:09:59"))
+        == []
+    )
+
+    changed = compare.compare(before, _with_credentialed(verdict="FAIL"))
+    assert len(changed) == 3 and all(" verdicts:" in line for line in changed)
+
+    unauthenticated = _with_credentialed()
+    unauthenticated["authenticated"] = {"ssh_host_marked_success": False}
+    assert compare.compare(before, unauthenticated)
+
+    one_sided = _with_credentialed()
+    del one_sided["database"]
+    assert any(
+        line.startswith("database: missing")
+        for line in compare.compare(before, one_sided)
+    )
+
+
+# ── The rescans (G3) ─────────────────────────────────────────────────────────
+
+
+def test_the_rescan_marker_is_the_one_live_scan_sh_answers():
+    harness = _load("live_scan_harness")
+    assert f'RESCAN_MARKER="{harness.RESCAN_MARKER}"' in _live()
+
+
+def test_every_rescan_state_is_one_targets_sh_knows():
+    harness = _load("live_scan_harness")
+    targets = (VALIDATION / "targets.sh").read_text(encoding="utf-8")
+    body = targets[targets.index("set_state() {") : targets.index("status() {")]
+    known = set(re.findall(r"^\s+(\w+)\) web=", body, re.MULTILINE))
+    assert known == {"original", "web_clean", "ssh_hardened"}
+    asked = {state for _run, state, _kind, _target in harness.RESCANS}
+    assert asked <= known
+    # The harness's expectations name only rescans it runs.
+    assert set(harness.RESCAN_EXPECTED) <= {r[0] for r in harness.RESCANS}
+
+
+def test_the_rescans_reach_each_classification_on_each_path():
+    """
+    What the sequence is built to show, checked against its own order: each
+    expectation's baseline is the rescan it says it is.
+    """
+    harness = _load("live_scan_harness")
+    order = [run for run, *_ in harness.RESCANS]
+    kinds = {run: kind for run, _state, kind, _t in harness.RESCANS}
+    states = {run: state for run, state, _kind, _t in harness.RESCANS}
+    hosts = {run: target for run, _s, _k, target in harness.RESCANS}
+
+    def baseline(run):
+        mode = "credentialed" if kinds[run] == "standalone" else "vulnerability_audit"
+        earlier = order[: order.index(run)]
+        for other in reversed(earlier):
+            other_mode = (
+                "credentialed"
+                if kinds[other] == "standalone"
+                else "vulnerability_audit"
+            )
+            if other_mode == mode and hosts[other] == hosts[run]:
+                return other
+        return None
+
+    assert baseline("web_removed") == "web_baseline"
+    assert states["web_removed"] == "web_clean" != states["web_baseline"]
+    assert baseline("web_restored") == "web_removed"
+    assert baseline("ssh_not_assessed") == "ssh_pipeline_baseline"
+    assert kinds["ssh_not_assessed"] == "network"
+    assert kinds["ssh_pipeline_baseline"] == "pipeline"
+    for path in ("pipeline", "host"):
+        fixed, back = f"ssh_{path}_fixed", f"ssh_{path}_reappeared"
+        assert states[fixed] == "ssh_hardened" and states[back] == "original"
+        assert baseline(back) == fixed
+    # Each path runs its whole course before the other starts.
+    assert order.index("ssh_pipeline_reappeared") < order.index("ssh_host_baseline")
+
+
+def test_the_harness_waits_for_each_state_and_refuses_an_unconfirmed_one(capsys):
+    harness = _load("live_scan_harness")
+    harness.request_target_state("web_clean", io.StringIO("ok web_clean\n"))
+    assert capsys.readouterr().out == f"{harness.RESCAN_MARKER} web_clean\n"
+    for answer in ("failed web_clean\n", "ok original\n", ""):
+        with pytest.raises(SystemExit, match="could not be put in state 'web_clean'"):
+            harness.request_target_state("web_clean", io.StringIO(answer))
+
+
+def test_rescan_coverage_needs_every_classification_and_event():
+    harness = _load("live_scan_harness")
+    rescans = {
+        run: {
+            "comparison": {"counts": {classification: 2}},
+            "remediation_events": (
+                [["172.30.250.10", "X", "f", event, None, None]] if event else []
+            ),
+        }
+        for run, (classification, event) in harness.RESCAN_EXPECTED.items()
+    }
+    assert all(harness.rescan_coverage(rescans).values())
+    rescans["ssh_pipeline_reappeared"]["comparison"]["counts"] = {
+        "reappeared": 0,
+        "new": 3,
+    }
+    rescans["ssh_host_reappeared"]["remediation_events"] = []
+    flags = harness.rescan_coverage(rescans)
+    assert sorted(k for k, ok in flags.items() if not ok) == [
+        "ssh_host_reappeared_reopened",
+        "ssh_pipeline_reappeared_reappeared",
+    ]
+    # Every classification the remediation path turns on is expected somewhere.
+    expected = {c for c, _event in harness.RESCAN_EXPECTED.values()}
+    assert {"fixed", "reappeared", "not_assessed"} <= expected
+
+
+#: A docker that reports the scanner running for a few calls, then exited.
+_ANSWER_DOCKER = r"""#!/usr/bin/env python3
+import os, sys
+path = os.environ["CALLS"]
+n = int(open(path).read() or 0) + 1
+open(path, "w").write(str(n))
+print("running" if n <= int(os.environ["RUNNING_FOR"]) else "exited")
+"""
+
+#: targets.sh, as the answer loop calls it: chatty on stdout, failing on "broken".
+_ANSWER_TARGETS = """#!/bin/sh
+echo "targets.sh says something about $2"
+[ "$2" != broken ]
+"""
+
+
+def test_the_answer_loop_writes_only_answers_to_the_harness_stdin(tmp_path):
+    live = _live()
+    function = live[
+        live.index("answer_rescan_requests() {") : live.index("cleanup() {")
+    ]
+    bin_dir, here, out = tmp_path / "bin", tmp_path / "here", tmp_path / "out"
+    for d in (bin_dir, here, out):
+        d.mkdir()
+    (bin_dir / "docker").write_text(_ANSWER_DOCKER)
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    (here / "targets.sh").write_text(_ANSWER_TARGETS)
+    for f in (bin_dir / "docker", bin_dir / "sleep", here / "targets.sh"):
+        f.chmod(0o755)
+    marker = _load("live_scan_harness").RESCAN_MARKER
+    (out / "x.log").write_text(
+        f"harness output\n{marker} web_clean\nmore\n{marker} broken\n"
+        f"{marker} original\n"
+    )
+    (tmp_path / "calls").write_text("")
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            "\n".join(
+                [
+                    "set -uo pipefail",
+                    f'RESCAN_MARKER="{marker}"; OUT="{out}"; LABEL=x; RUN=r; HERE="{here}"',
+                    function,
+                    "answer_rescan_requests",
+                ]
+            ),
+        ],
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "CALLS": str(tmp_path / "calls"),
+            "RUNNING_FOR": "10",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    # Each request answered once, in order, and nothing else on stdout.
+    assert done.stdout == "ok web_clean\nfailed broken\nok original\n"
+    assert "targets.sh says something about web_clean" in done.stderr
+
+
+def test_up_ends_in_the_original_state_and_every_exit_restores_it(tmp_path):
+    env = _targets_env()
+    calls, out, _ = _run_up(tmp_path, _defined())
+    assert ["exec", "-i", env["SSH_CONTAINER"], "sh", "-s", "original"] in calls
+    assert "targets in state original" in out
+    live = _live()
+    cleanup = live[live.index("cleanup() {") : live.index("trap cleanup EXIT")]
+    assert '"$HERE/targets.sh" state original' in cleanup
+    assert "exit 7" in cleanup
+
+
+def test_the_harness_exits_6_when_the_rescans_fall_short(tmp_path):
+    import ast
+
+    harness = _load("live_scan_harness")
+    tree = ast.parse((VALIDATION / "live_scan_harness.py").read_text(encoding="utf-8"))
+    block = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test)
+    )
+    code = compile(
+        ast.Module(body=block.body, type_ignores=[]), "harness __main__", "exec"
+    )
+    written = tmp_path / "x.json"
+    namespace = {
+        "sys": types.SimpleNamespace(argv=["harness", "x"], stdin=None, exit=sys.exit),
+        "json": json,
+        "main": lambda label, stream: {
+            "authenticated": {"ssh_host_marked_success": True},
+            "rescan_coverage": {
+                "ssh_host_fixed_fixed": True,
+                "ssh_host_reappeared_reappeared": False,
+            },
+        },
+        "open": lambda path, *a, **k: open(written, *a, **k),
+        "NOT_AUTHENTICATED": harness.NOT_AUTHENTICATED,
+        "RESCANS_INCOMPLETE": harness.RESCANS_INCOMPLETE,
+    }
+    with pytest.raises(SystemExit) as refused:
+        exec(code, namespace)
+    assert refused.value.code == harness.RESCANS_INCOMPLETE == 6
+    assert json.loads(written.read_text())["rescan_coverage"]["ssh_host_fixed_fixed"]
+
+
+def _with_rescans(classification="fixed", elapsed=60.0):
+    result = _with_credentialed()
+    result["rescans"] = {
+        "ssh_host_fixed": {
+            "kind": "standalone",
+            "target_state": "ssh_hardened",
+            "scan": {"status": "complete", "duration_seconds": elapsed},
+            "phases": [{"phase_order": 1, "status": "complete"}],
+            "task_result": {"success": True},
+            "elapsed_s": elapsed,
+            "comparison": {
+                "baseline": "ssh_host_baseline",
+                "counts": {classification: 1},
+                "findings": [
+                    ["172.30.250.10", "X", "credentialed_package", classification]
+                ],
+            },
+            "remediation_events": [],
+            "verification_preview": {"verified": [], "reopened": []},
+            "target_findings": [["X", "credentialed_package", "fixed", None]],
+        }
+    }
+    result["rescan_coverage"] = {"ssh_host_fixed_fixed": classification == "fixed"}
+    return result
+
+
+def test_the_comparison_reads_the_rescans_exactly_and_ignores_their_time():
+    compare = _load("compare_live_scans")
+    before = _with_rescans()
+    assert compare.compare(before, _with_rescans(elapsed=95.0)) == []
+    changed = compare.compare(before, _with_rescans(classification="not_assessed"))
+    assert any(line.startswith("rescan ssh_host_fixed comparison:") for line in changed)
+    assert any(line.startswith("rescan_coverage") for line in changed)
+    one_sided = _with_rescans()
+    del one_sided["rescans"]
+    assert compare.compare(before, one_sided) == ["rescans: missing from after"]
+    # Results from before G3 carry no rescans and still compare.
+    old = _with_credentialed()
+    assert compare.compare(old, _with_credentialed()) == []
+    assert any(
+        line.startswith("rescan ssh_host_fixed:") for line in compare.summary(before)
+    )

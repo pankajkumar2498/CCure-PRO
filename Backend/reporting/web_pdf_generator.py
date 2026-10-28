@@ -38,7 +38,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-from scan_helpers import make_pdf_cve_paragraph
+from reporting.report_helpers import make_pdf_cve_paragraph
 
 # ── Reuse brand palette from pdf_generator ────────────────────────────────────
 

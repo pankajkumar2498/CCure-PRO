@@ -116,7 +116,8 @@ def test_groups_whose_tests_import_a_module_are_selected_with_it():
 
 def test_patch_strings_count_as_references():
     refs, _ = sel._test_references()
-    assert any(n.startswith("core.tasks") for names in refs.values() for n in names)
+    # e.g. tests/scans/test_tasks.py's patch("scans.tasks.phases.SessionLocal")
+    assert any(n.startswith("scans.tasks.") for names in refs.values() for n in names)
 
 
 def test_openapi_contract_change_is_not_a_full_run():

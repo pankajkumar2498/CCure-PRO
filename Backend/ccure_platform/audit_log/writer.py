@@ -25,7 +25,7 @@ Two rules follow, and both are load-bearing:
 2. **Never call it from an ``except`` handler where raising would replace the
    error being handled.** A caller that must audit an outcome it is about to
    fail on needs its own session and its own ``try``/``except``; see
-   ``routers/compliance._audit_refusal``, which swallows deliberately so the
+   ``routers/compliance_common._audit_refusal``, which swallows deliberately so the
    HTTPException it was about to raise still reaches the client.
 
 **Do not open a second ``SessionLocal()`` to write an audit event while the

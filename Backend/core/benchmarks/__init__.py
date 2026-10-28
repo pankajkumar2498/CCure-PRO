@@ -32,9 +32,14 @@ Module map
 ``loader``     writing a pack into the tables the compliance engine already has
 ``selection``  which benchmark checks apply to a scan, read from those tables
 
+``loader`` and ``selection`` are compliance's catalogue code, and since G4 they
+live in ``core/compliance_catalogue/``; the two names here are aliases of those
+modules, kept for existing imports.
+
 The package exports the ``pack`` names only. ``loader`` and ``selection`` need
-the database, so they are imported by name (``from core.benchmarks.loader
-import load_pack_into_db``). Re-exporting the loader here made every import of
+the database, so they are imported by name (``from
+core.compliance_catalogue.benchmark_loader import load_pack_into_db``).
+Re-exporting the loader here made every import of
 the package load SQLAlchemy and the model registry, the SCAP compiler's
 included, since importing ``core.benchmarks.pack`` runs this file first (B4,
 docs/architecture/MODULAR_REFACTORING_LOG.md §6).

@@ -370,9 +370,9 @@ def _dispatch_network(
 def _dispatch_credentialed(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
+    from core import credential_vault
     from core.celery_app import registered_task
     from core.task_names import RUN_CREDENTIALED_SCAN
-    from db.models import ComplianceCredential
     from scans.db_helpers import create_scan
 
     if not schedule.credential_id:
@@ -385,19 +385,17 @@ def _dispatch_credentialed(
             "deleted); a credentialed scan cannot run unauthenticated"
         )
 
-    credential = (
-        db.query(ComplianceCredential)
-        .filter(
-            ComplianceCredential.id == schedule.credential_id,
-            ComplianceCredential.tenant_id == schedule.org_id,
+    # Through the credential vault, which owns the table (G2): the same lookup,
+    # scoped to the schedule's own organisation.
+    try:
+        credential = credential_vault.get_for_org(
+            db, schedule.org_id, schedule.credential_id
         )
-        .first()
-    )
-    if credential is None:
+    except credential_vault.CredentialNotFound:
         raise ScheduleDispatchError(
             f"credential {schedule.credential_id} does not exist for this "
             "organisation"
-        )
+        ) from None
 
     effective, options = _schedule_policy_options(
         db, schedule, scan_kind=SCAN_KIND_CREDENTIALED

@@ -425,24 +425,20 @@ def _validate_frameworks(
     installation somebody has to perform. Collapsing them into "framework not
     available" is how an operator spends an afternoon on the wrong one.
     """
-    from core.compliance_frameworks import is_active as is_active_framework
-    from db.models.compliance import ComplianceFramework, ComplianceTenantFramework
+    # The catalogue is compliance's, and it answers through its read module
+    # (G4); validation queries no compliance table itself.
+    import core.compliance_catalogue.reads as catalogue
 
     named = set(policy.framework_ids)
 
-    existing = {
-        row[0]
-        for row in db.query(ComplianceFramework.id)
-        .filter(ComplianceFramework.id.in_(named))
-        .all()
-    }
+    existing = catalogue.existing_framework_ids(db, named)
     missing = sorted(named - existing)
     if missing:
         result.add_error(
             "framework(s) not present in this installation: " + ", ".join(missing)
         )
 
-    parked = sorted(f for f in (named & existing) if not is_active_framework(f))
+    parked = sorted(f for f in (named & existing) if not catalogue.is_offered(f))
     if parked:
         result.add_error(
             "framework(s) shipped but not active in this installation: "
@@ -451,16 +447,7 @@ def _validate_frameworks(
             "would assess nothing against it."
         )
 
-    installed = {
-        row[0]
-        for row in db.query(ComplianceTenantFramework.framework_id)
-        .filter(
-            ComplianceTenantFramework.tenant_id == org_id,
-            ComplianceTenantFramework.framework_id.in_(named),
-            ComplianceTenantFramework.is_enabled.is_(True),
-        )
-        .all()
-    }
+    installed = catalogue.installed_framework_ids(db, org_id, named)
     not_installed = sorted((named & existing) - set(parked) - installed)
     if not_installed:
         result.add_error(
@@ -486,28 +473,9 @@ def _warn_on_empty_frameworks(
     result: PolicyValidationResult,
 ) -> None:
     """Warn where a selected framework resolves to no executable check."""
-    from db.models.compliance import (
-        ComplianceControl,
-        ComplianceRule,
-        ComplianceRuleControl,
-    )
+    import core.compliance_catalogue.reads as catalogue
 
-    rows = (
-        db.query(ComplianceControl.framework_id, ComplianceRule.id)
-        .join(ComplianceRuleControl, ComplianceRuleControl.rule_id == ComplianceRule.id)
-        .join(
-            ComplianceControl,
-            ComplianceControl.id == ComplianceRuleControl.control_id,
-        )
-        .filter(
-            ComplianceControl.framework_id.in_(list(framework_ids)),
-            ComplianceRule.status == "active",
-        )
-        .all()
-    )
-    seen: Dict[str, int] = {fid: 0 for fid in framework_ids}
-    for framework_id, _rule_id in rows:
-        seen[framework_id] = seen.get(framework_id, 0) + 1
+    seen = catalogue.active_rule_link_counts(db, framework_ids)
 
     empty = sorted(fid for fid, count in seen.items() if count == 0)
     if empty:

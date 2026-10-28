@@ -27,7 +27,7 @@ import pytest
 from core.security_crypto import decrypt_credential, encrypt_credential
 from db.base import gen_compliance_credential_id
 from db.models import ComplianceCredential, Organization
-from db.models.compliance import (
+from db.models.credentials import (
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,
     CREDENTIAL_TYPE_SSH,
@@ -152,7 +152,7 @@ class TestCredentialModel:
         attempted with None — failing as "authentication rejected" for a
         credential that was never actually sent.
         """
-        from core.tasks import _resolve_stored_credential
+        from scans.tasks.credentialed import _resolve_stored_credential
 
         for method in ("ntlm", "kerberos"):
             cred = ComplianceCredential(
@@ -180,7 +180,7 @@ class TestCredentialModel:
 
     def test_auth_material_sets_cover_every_method(self):
         """A method in neither set resolves no material and can never work."""
-        from db.models.compliance import AUTH_METHODS
+        from db.models.credentials import AUTH_METHODS
 
         covered = set(AUTH_REQUIRES_PASSWORD) | set(AUTH_REQUIRES_KEY)
         assert set(AUTH_METHODS) == covered
@@ -519,7 +519,7 @@ class TestCredentialAPI:
         the usable set, the loop there would keep passing while the capability
         silently disappeared.
         """
-        from db.models.compliance import (
+        from db.models.credentials import (
             CREDENTIAL_TYPE_DATABASE,
             CREDENTIAL_TYPES,
             USABLE_CREDENTIAL_TYPES,

@@ -409,6 +409,7 @@ def to_pack(
     source_url: str = "",
     notes: str = "",
     cci_index: Optional[Mapping[str, Sequence[str]]] = None,
+    nist_controls: Optional[Sequence[str]] = None,
     max_controls: int = 5000,
 ) -> Tuple[BenchmarkPack, ConversionReport]:
     """
@@ -425,6 +426,10 @@ def to_pack(
     platforms. An operator running the RHEL 9 STIG against a rebuild such as
     Rocky supplies it deliberately; nothing here infers that two distributions
     are interchangeable.
+
+    *nist_controls* is the NIST SP 800-53 catalogue's control numbers, which
+    every crosswalk entry is checked against (``crosswalk_entries``). The STIG
+    loader supplies the compliance catalogue's; none supplied checks nothing.
     """
     benchmark = content.benchmark
     report = ConversionReport()
@@ -494,7 +499,10 @@ def to_pack(
             "remediation": rule.fixtext,
             "references": rule.reference_labels,
             "crosswalk": crosswalk_entries(
-                rule.idents, rule.references, cci_index=cci_index
+                rule.idents,
+                rule.references,
+                cci_index=cci_index,
+                nist_controls=nist_controls,
             ),
         }
 

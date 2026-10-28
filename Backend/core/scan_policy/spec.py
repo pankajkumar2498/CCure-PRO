@@ -78,10 +78,14 @@ from db.scan_policy_kinds import (  # noqa: E402,F401  (re-export)
     POLICY_SCAN_KINDS,
 )
 
-#: Severity vocabulary, weakest first. This is ``ConfigCheck.severity``'s own
-#: vocabulary — read from the checks rather than restated — so a floor of
-#: "high" means exactly what the check rows mean by it.
-SEVERITY_ORDER: Tuple[str, ...] = ("info", "low", "medium", "high", "critical")
+#: Severity vocabulary, weakest first, and the floor comparison over it —
+#: defined in the check kernel (G4), because benchmark selection applies a
+#: policy's floor too and must not import scan policy. Re-exported here
+#: unchanged, so everything that reads them from the spec still does.
+from core.checks.contract import (  # noqa: E402,F401  (re-export)
+    SEVERITY_ORDER,
+    severity_at_least,
+)
 
 #: A "check family" is a ``ConfigCheck.domain``, and the vocabulary is
 #: **imported, never restated**. ``ConfigCheck.__post_init__`` raises SpecError
@@ -96,29 +100,6 @@ SEVERITY_ORDER: Tuple[str, ...] = ("info", "low", "medium", "high", "critical")
 from core.checks.contract import CHECK_DOMAINS  # noqa: E402
 
 CHECK_FAMILIES: Tuple[str, ...] = tuple(CHECK_DOMAINS)
-
-
-def severity_at_least(severity: str, floor: Optional[str]) -> bool:
-    """
-    Whether *severity* clears *floor*.
-
-    An unrecognised severity **passes** every floor. That direction is
-    deliberate: a check whose severity this build does not recognise has not
-    been established to be below the threshold, and dropping it would remove a
-    check from a scan on the strength of a string nobody defined. The same
-    reading ``core.checks.normalize_severity`` gives ``unscored``.
-    """
-    if not floor:
-        return True
-    try:
-        floor_index = SEVERITY_ORDER.index(str(floor).strip().lower())
-    except ValueError:
-        return True
-    try:
-        value_index = SEVERITY_ORDER.index(str(severity).strip().lower())
-    except ValueError:
-        return True
-    return value_index >= floor_index
 
 
 def next_version_number(existing: Sequence[int]) -> int:

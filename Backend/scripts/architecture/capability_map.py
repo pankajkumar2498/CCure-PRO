@@ -108,14 +108,21 @@ CAPABILITIES: dict[str, tuple[int, str]] = {
     "policy_pro": (3, "Policy Pro module slot"),
     "rank": (3, "Rank module slot"),
     "assets": (4, "Asset registry, correlation, AMT, MAC vendors"),
-    "findings": (4, "Findings store, scan comparison, fix state"),
-    "remediation": (4, "Remediation workflow, SLA, verification"),
+    # D-6 (G3): remediation is part of findings. Its state is a second column
+    # on asset_vulnerabilities, and verification consumes the comparison.
+    "findings": (
+        4,
+        "Findings store and writer, scan comparison, fix state; "
+        "remediation workflow, SLA, verification",
+    ),
     "credential_vault": (4, "Stored credentials"),
     "scan_policy": (4, "Reusable scan policies and snapshots"),
     "scheduling": (4, "Recurring scans"),
     "compliance": (4, "Frameworks, rules, evaluation, attestation, evidence"),
     "scans": (5, "Scan records, phase persistence, scan API, orchestration"),
-    "task_hub": (5, "core/tasks.py: the Celery tasks of every scan phase"),
+    # "task_hub" (core/tasks.py, every scan phase's Celery tasks) was dissolved
+    # by G1: C1 took every import of it out of the routers, C2 split it into
+    # scans/tasks/, the scans capability's orchestration.
     "reporting": (6, "Report and export read side"),
     "dashboard": (6, "Dashboard read model"),
     "audit_boundary": (6, "ccure_audit: read services, contract adapter"),
@@ -155,6 +162,8 @@ PREFIXES: dict[str, str] = {
     "db.audit_hardening": "infra",
     "db.email_canonical": "infra",
     "db.fork_safety": "infra",
+    # G2 (C5): the CHECK-constraint SQL helper both model modules share.
+    "db.constraint_sql": "infra",
     "core.celery_app": "infra",
     "core.redis_client": "infra",
     "core.rate_limit_middleware": "infra",
@@ -182,6 +191,8 @@ PREFIXES: dict[str, str] = {
     # platform-owned scan scope, used by scans, credentialed audit, scheduling
     # and policy alike — a kernel service, not the scans capability's own.
     "core.scan_scope": "scan_kernel",
+    # C6 (G5): what one network-scan phase hands the next.
+    "core.phase_handoff": "scan_kernel",
     # check kernel (scans.cvss / scans.finding_normalizer are its aliases)
     "core.checks": "check_kernel",
     "scans.cvss": "check_kernel",
@@ -223,10 +234,16 @@ PREFIXES: dict[str, str] = {
     "reporting.report_helpers": "renderers",
     "reporting.availability": "renderers",
     "reporting.host_assessment": "renderers",
+    # G6 (C8): the compliance reports' renderers, out of routers/compliance.py.
+    "reporting.compliance": "renderers",
     "ccure_policy": "policy_pro",
     "ccure_rank": "rank",
     # domain stores
     "core.asset_correlation": "assets",
+    # G4 (C4): what compliance's evidence reads from the asset record.
+    "core.asset_evidence": "assets",
+    # G6 (C7): the asset registry's answer to the findings side's host port.
+    "core.asset_hosts": "assets",
     "core.amt_reconciliation": "assets",
     # Ambiguous: both are used by the scan engines, but the vendor lookup reads
     # the assets capability's mac_vendor_cache and the classifier decides what
@@ -241,9 +258,11 @@ PREFIXES: dict[str, str] = {
     "core.findings": "findings",
     "routers.findings": "findings",
     "db.models.findings": "findings",
-    "core.remediation": "remediation",
-    "routers.remediation": "remediation",
+    "core.remediation": "findings",
+    "routers.remediation": "findings",
     "core.credential_vault": "credential_vault",
+    # G2 (C5): the vault's model, moved out of db/models/compliance.py.
+    "db.models.credentials": "credential_vault",
     "routers.credentials": "credential_vault",
     "core.scan_policy": "scan_policy",
     "routers.scan_policies": "scan_policy",
@@ -252,6 +271,12 @@ PREFIXES: dict[str, str] = {
     "core.scheduling": "scheduling",
     "routers.scan_schedules": "scheduling",
     "db.models.scan_schedules": "scheduling",
+    # G4 (C4): the compliance catalogue's own code — the benchmark loader and
+    # selection moved here from core/benchmarks — and the two old paths, which
+    # are aliases of those modules.
+    "core.compliance_catalogue": "compliance",
+    "core.benchmarks.loader": "compliance",
+    "core.benchmarks.selection": "compliance",
     "core.compliance_evidence": "compliance",
     "core.compliance_sync": "compliance",
     "core.compliance_frameworks": "compliance",
@@ -260,6 +285,15 @@ PREFIXES: dict[str, str] = {
     "core.nist_csf": "compliance",
     "core.nist_csf_catalogue": "compliance",
     "routers.compliance": "compliance",
+    # G6 (C8): the compliance router's parts, mounted by routers.compliance.
+    "routers.compliance_assessment": "compliance",
+    "routers.compliance_attestation": "compliance",
+    "routers.compliance_catalogue": "compliance",
+    "routers.compliance_common": "compliance",
+    "routers.compliance_framework_reports": "compliance",
+    "routers.compliance_remediation": "compliance",
+    "routers.compliance_reports": "compliance",
+    "routers.compliance_schedules": "compliance",
     "db.models.compliance": "compliance",
     # orchestration
     "scans.db_helpers": "scans",
@@ -270,6 +304,11 @@ PREFIXES: dict[str, str] = {
     "scans.progress": "scans",
     "scans.report_inputs": "scans",
     "scans.scan_access": "scans",
+    # G1 (C1): creates the scan record a request starts, for the credentialed
+    # route, which used to assemble it from four of this capability's internals.
+    "scans.scan_creation": "scans",
+    # C6 (G5): the network pipeline's one definition and its hand-over.
+    "scans.pipeline": "scans",
     "scan_helpers": "scans",
     "orchestrator.scan_orchestrator": "scans",
     # B8: the enrichment the port and discovery engines used to compose by
@@ -286,7 +325,10 @@ PREFIXES: dict[str, str] = {
     # The service root: its body is the scanner runtime's own report.
     "routers.health": "scans",
     "db.models.scans": "scans",
-    "core.tasks": "task_hub",
+    # G1 (C2): the scan tasks, one module per area, and the facade that
+    # re-exports them under the hub's old name.
+    "scans.tasks": "scans",
+    "core.tasks": "scans",
     # read side
     "reporting.exports": "reporting",
     "routers.reports": "reporting",
@@ -772,24 +814,85 @@ CEILINGS = {
     # 22 and 13 when introduced; B7 (the renderers take their engine inputs
     # from the payload) split the 22 into 16, 4 and 2, and took the renderers
     # out of the top-level cycle; B8 (the orchestrator composes the engines'
-    # enrichment) took the port inventory out of the 16.
-    "largest_cycle": 15,
-    "largest_cycle_top_level": 12,
+    # enrichment) took the port inventory out of the 16. G1's C1 (the routers
+    # dispatch by name) took the task hub out of both. G3's D-6 (findings and
+    # remediation one capability) made it 13: a merge, not a decoupling. G4
+    # (C4) took configuration audit out: it imports nothing above it. G6 took
+    # web DAST out: its PDF renderer takes the CVE paragraph from the
+    # renderers (reporting.report_helpers), not from scan_helpers.
+    "largest_cycle": 11,
+    # G2's model move (the credential vault's model out of the compliance
+    # file) broke the top-level cycle into 5, 2 and 2. G4 (C4) broke the
+    # compliance and configuration-audit pair: [5, 2].
+    "largest_cycle_top_level": 5,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
     # network checks register their plugins with the check kernel) removed 2;
-    # B8 removed the port engine's import of the device classifier.
-    "upward_edges": 37,
+    # B8 removed the port engine's import of the device classifier. G1's C1
+    # removed six of the credentialed router's (the hub, the orchestrator,
+    # scan_helpers, the persistence helpers, the policy binding) and the
+    # assets and credentials routers' imports of the hub, and added one: the
+    # credentialed router asks scans.scan_creation for its scan record.
+    # G4 (C4): benchmark selection's import of scan policy, for the severity
+    # floor (now the check kernel's); the benchmark pack's import of the
+    # compliance frameworks, for the framework-id prefix (now the pack's), and
+    # the CCI crosswalk's of the compliance seeds (the STIG loader passes the
+    # NIST catalogue in). Then the benchmark loader and selection became
+    # compliance's catalogue code (core/compliance_catalogue): their nine
+    # imports of the compliance models and frameworks are internal.
+    # G6: the web PDF renderer's import of scan_helpers, for the CVE paragraph.
+    "upward_edges": 18,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web
     # module's sslyze wrapper (now the shared engines.tls); B10 the database
     # collector's and the SCAP evaluator's imports of the credentialed engines
-    # (the executor and the version comparator are injected).
-    "lateral_edges": 67,
-    # 80 when introduced; B2 moved the web_scans settler out of scans.
-    "foreign_table_references": 79,
-    "foreign_table_writes": 17,
+    # (the executor and the version comparator are injected). G1's C1 the
+    # phase-scan and traditional-scan routers' imports of the hub. G1's C2
+    # (the hub split into scans/tasks/, the scans capability) made its six
+    # imports of scans internals internal: a reclassification, not a change.
+    # G2 (C5) the credential vault's read of scan_schedules (scheduling counts
+    # its own references now). G3 (C3): the asset syncer's eight imports of the
+    # findings capability (its models, comparison, fix state and credentialed
+    # scope) became one, of the findings writer. D-6 made remediation's six
+    # edges into findings, and findings' one into remediation, internal.
+    # G4 (C4): scan-policy validation's six imports of the compliance models
+    # and frameworks became one, of compliance's catalogue reads; the
+    # compliance evidence module's six imports of the asset and findings
+    # models went with its adapters (the producers' evidence providers,
+    # registered by ccure_audit/evidence_providers.py).
+    # G6 (C7): the findings and remediation routers' and the remediation
+    # report's imports of the asset model went (they read hosts through the
+    # findings side's port, core.findings.hosts), and the assets router's four
+    # of the findings models became two, of the findings reads and their
+    # package; the asset registry's answer to the port imports its column list.
+    "lateral_edges": 29,
+    # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
+    # the hub's read of compliance_credentials (the vault decrypts its own rows).
+    # G1's C2 made the hub's scans and scan_phases references internal, and
+    # its other table access the scans capability's (a reclassification).
+    # G2 (C5): compliance, the credentialed audit and scheduling stopped
+    # reading compliance_credentials, and the vault scan_schedules. G3 (C3):
+    # the asset syncer stopped naming vulnerability_definitions. D-6:
+    # remediation's references to asset_vulnerabilities and assets became the
+    # findings capability's (internal, and one it already made). G4 (C4): the
+    # configuration audit's five, through the benchmark loader and selection,
+    # now compliance's own; scan policy's five, through validation, asked of
+    # compliance's catalogue reads; compliance's six evidence tables
+    # (asset_vulnerabilities, vulnerability_definitions, tls_details,
+    # network_links, web_scans, web_findings), read by their owners' providers.
+    # G6 (C7): the findings capability's reads of assets (it joins hosts
+    # through its port), and the assets router's of asset_vulnerabilities,
+    # services and tls_details (it asks the findings reads).
+    "foreign_table_references": 46,
+    # 17 when introduced; G1's C2 made the hub's writes to scans internal.
+    # G3 (C3): the asset syncer's writes to services, tls_details,
+    # vulnerability_definitions and asset_vulnerabilities moved to the
+    # findings writer; then the credentialed sync's writes to
+    # asset_vulnerabilities and vulnerability_definitions, and Audit's purge
+    # hook's to asset_vulnerabilities. G4 (C4): the benchmark loader's four,
+    # to the compliance catalogue it now belongs to.
+    "foreign_table_writes": 5,
 }
 
 _BASELINE_KEYS = (

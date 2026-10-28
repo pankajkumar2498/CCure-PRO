@@ -267,8 +267,9 @@ const TEMPLATES = [
   },
   {
     id: "cred",
-    title: "Credential Validation",
-    desc: "Scanning Hosts with Credentials.",
+    title: "Host Security Assessment",
+    subtitle: "(Authenticated)",
+    desc: "Assess host vulnerabilities through authentication.",
     Icon: IcoLock,
     tone: "warning",
     mapped: true,
@@ -313,7 +314,7 @@ const TEMPLATES = [
    content, and a heading inside a control announces as a heading, not as the
    control's name. */
 function ScanCard({ tpl, onClick }) {
-  const { Icon, title, desc, tone, mapped, beta, badge } = tpl;
+  const { Icon, title, subtitle, desc, tone, mapped, beta, badge } = tpl;
   return (
     <CcureButton
       variant="ghost"
@@ -327,7 +328,16 @@ function ScanCard({ tpl, onClick }) {
       <span className={`tpl-icon tpl-icon--${tone}`} aria-hidden="true">
         <Icon s={32} />
       </span>
-      <span className="tpl-card-title">{title}</span>
+      <span className="tpl-card-title">
+        {title}
+        {subtitle && (
+          <>
+            {" "}
+            <br />
+            {subtitle}
+          </>
+        )}
+      </span>
       <span className="tpl-card-desc">{desc}</span>
       <span className="tpl-card-badges">
         {beta && <CcureBadge variant="info">Beta</CcureBadge>}
@@ -349,17 +359,21 @@ export default function Dashboard() {
   const { setPipelineMode, resetScan } = useScan();
   const [search, setSearch] = useState("");
 
+  // Keep upcoming template definitions for future implementation, but only
+  // expose templates with a working route in the grid and search results.
   const filtered = TEMPLATES.filter(
     (t) =>
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.desc.toLowerCase().includes(search.toLowerCase()),
+      t.mapped &&
+      (t.title.toLowerCase().includes(search.toLowerCase()) ||
+        t.subtitle?.toLowerCase().includes(search.toLowerCase()) ||
+        t.desc.toLowerCase().includes(search.toLowerCase())),
   );
 
   /**
    * handleCard — the single routing handler for all scan cards.
    *
    * Logic:
-   *  1. Cards with `directRoute` (e.g. Credential Validation) navigate directly.
+   *  1. Cards with `directRoute` (e.g. Host Security Assessment) navigate directly.
    *  2. Cards with `pipelineMode` use the SCAN_PIPELINES config:
    *     - Sets pipelineMode in context so downstream phases know the pipeline.
    *     - Resets scan state (all three modes always start fresh via /scan).

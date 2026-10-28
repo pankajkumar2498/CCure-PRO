@@ -14,7 +14,7 @@ unit test of the resolver could never have caught:
 """
 
 import pytest
-from db.models.compliance import (
+from db.models.credentials import (
     CREDENTIAL_TYPE_DATABASE,
     CREDENTIAL_TYPE_SSH,
     CREDENTIAL_TYPE_WINDOWS,
@@ -62,7 +62,7 @@ def enrichment(monkeypatch):
     own post-processing — asset sync, risk, coverage — stays out of the way of
     what these assert, which is the arguments it was handed.
     """
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     calls = []
 
@@ -265,7 +265,7 @@ def test_open_ports_that_are_not_the_transport_are_never_authenticated_to(enrich
 @pytest.fixture()
 def audit_calls(monkeypatch):
     """Capture what ``_audit_host_over_transport`` attempts, in order."""
-    import core.tasks as tasks_mod
+    import scans.tasks.credentialed as tasks_mod
 
     calls = []
 
@@ -468,7 +468,7 @@ def test_the_resolved_tls_setting_reaches_the_retry(audit_calls, monkeypatch):
     ],
 )
 def test_transport_failures_are_told_apart_from_rejections(message, is_transport):
-    from core.tasks import _is_transport_failure
+    from scans.tasks.credentialed import _is_transport_failure
 
     assert _is_transport_failure(RuntimeError(message)) is is_transport
 
@@ -504,7 +504,8 @@ def stored_credential(db_session, test_org):
 @pytest.fixture()
 def queued_scan(monkeypatch):
     """Stand the pre-flight socket down and capture what the task was given."""
-    import routers.credentialed as credentialed_router
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from engines.credentialed.ssh_scanner import SSHScanner
 
     monkeypatch.setattr(SSHScanner, "test_connectivity", lambda *a, **k: True)
@@ -517,9 +518,8 @@ def queued_scan(monkeypatch):
         captured.update(kwargs)
         return _Task()
 
-    monkeypatch.setattr(
-        credentialed_router.run_credentialed_scan_task, "delay", _fake_delay
-    )
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_CREDENTIALED_SCAN), "delay", _fake_delay)
     return captured
 
 

@@ -843,7 +843,7 @@ def test_asset_discovery_dns_hostname_populates_fqdn_without_replacing_credentia
 def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Session):
     import uuid
 
-    from core.tasks import _sync_credentialed_asset_identity
+    from scans.tasks.credentialed_sync import _sync_credentialed_asset_identity
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
@@ -934,7 +934,7 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
 
 
 def test_credentialed_short_hostname_is_not_treated_as_fqdn():
-    from core.tasks import _extract_credentialed_identity_names
+    from scans.tasks.credentialed_sync import _extract_credentialed_identity_names
 
     hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(
         {
@@ -980,7 +980,7 @@ def test_credentialed_windows_interface_parser_extracts_target_mac():
 
 
 def test_credentialed_scan_always_collects_identity_sections():
-    from core.tasks import _credentialed_sections_with_identity
+    from scans.tasks.credentialed_sync import _credentialed_sections_with_identity
 
     sections = _credentialed_sections_with_identity(["packages"])
 
@@ -991,7 +991,7 @@ def test_credentialed_scan_always_collects_identity_sections():
 def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
     import uuid
 
-    from core.tasks import _sync_credentialed_asset_identity
+    from scans.tasks.credentialed_sync import _sync_credentialed_asset_identity
 
     org_id = f"org_test_{uuid.uuid4().hex[:8]}"
     org = Organization(
@@ -1339,7 +1339,7 @@ def test_host_discovery_endpoint(
 
 
 def _run_host_discovery_assertions(client, auth_headers, db_session, mock_orch):
-    with patch("core.tasks._new_orchestrator", return_value=mock_orch):
+    with patch("scans.tasks.phases._new_orchestrator", return_value=mock_orch):
         response = client.post(
             "/scan/host-discovery",
             headers=auth_headers,

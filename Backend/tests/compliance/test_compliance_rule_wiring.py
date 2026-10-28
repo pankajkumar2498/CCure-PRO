@@ -14,29 +14,35 @@ Each check here is mechanical and would have failed on the pre-fix catalogue.
 from testpaths import BACKEND_ROOT
 
 import ast
+import importlib
 import inspect
 import textwrap
 
 import pytest
 from core import compliance_evidence
-from core.compliance_evidence import (
-    VALID_RULE_EVIDENCE_SOURCES,
-    ComplianceEvidenceProvider,
-)
+from core.compliance_evidence import VALID_RULE_EVIDENCE_SOURCES
 
 SEED_RULES = BACKEND_ROOT / "scripts" / "seed_real_rules.py"
 
-# Evidence source -> the adapter method that serves it.
+# Evidence source -> the function that builds its payload. Since G4 these live
+# with the tables they read, and Audit's composition root registers them
+# (ccure_audit/evidence_providers.py); two sources are composed there from two
+# producers, so the function named here is the one holding the dict literal.
 _ADAPTERS = {
-    "vulnerability_audit": "_adapt_vulnerability_audit",
-    "malware_scan": "_adapt_malware_scan",
-    "services_ports": "_adapt_services_ports",
-    "tls_certificates": "_adapt_tls_certificates",
-    "network_topology": "_adapt_network_topology",
-    "credential_validation": "_adapt_credential_validation",
-    "offline_configuration": "_adapt_offline_configuration",
-    "web_vulnerability_audit": "_adapt_web_vulnerability_audit",
+    "vulnerability_audit": "core.findings.evidence:vulnerability_audit",
+    "malware_scan": "core.asset_evidence:malware_scan",
+    "services_ports": "core.findings.evidence:services_ports",
+    "tls_certificates": "core.findings.evidence:tls_certificates",
+    "network_topology": "core.topology.evidence:network_topology",
+    "credential_validation": "core.asset_evidence:credential_validation",
+    "offline_configuration": "core.asset_evidence:offline_configuration",
+    "web_vulnerability_audit": "core.web.evidence:web_vulnerability_audit",
 }
+
+
+def _adapter(source: str):
+    module, name = _ADAPTERS[source].split(":")
+    return getattr(importlib.import_module(module), name)
 
 
 def _seeded_rules() -> list:
@@ -67,8 +73,7 @@ def _seeded_rules() -> list:
 
 def _adapter_keys(source: str) -> set:
     """Keys the adapter for `source` can return, read from its return literals."""
-    method = getattr(ComplianceEvidenceProvider, _ADAPTERS[source])
-    tree = ast.parse(textwrap.dedent(inspect.getsource(method)))
+    tree = ast.parse(textwrap.dedent(inspect.getsource(_adapter(source))))
     keys: set = set()
     for node in ast.walk(tree):
         # Both `return {...}` and `payload = {...}; return {k: v ...}` shapes.
@@ -147,30 +152,36 @@ def test_manual_rules_are_not_given_evaluable_criteria():
     ), f"manual rules carry evaluable criteria that will never run: {offenders}"
 
 
-def test_evidence_sources_constant_matches_the_dispatcher():
-    """EVIDENCE_SOURCES must list exactly what _fetch_and_translate handles.
+def test_evidence_sources_constant_matches_the_registered_providers():
+    """EVIDENCE_SOURCES must list exactly the sources that have a provider.
 
     Cache invalidation iterates this constant to build its keys. It used to
     carry three names that were not evidence sources at all
     (`active_services`, `tls_ssl_configuration`, `network_link_topology`), so
     the flush deleted keys that never existed and left the real cached evidence
-    in place.
+    in place. Since G4 the providers are registered (the dispatcher this test
+    used to read is the registry), so the comparison is with what is
+    registered, and with this file's table of who builds each payload.
     """
-    source = inspect.getsource(ComplianceEvidenceProvider._fetch_and_translate)
-    dispatched = {
-        node.comparators[0].value
-        for node in ast.walk(ast.parse(textwrap.dedent(source)))
-        if isinstance(node, ast.Compare)
-        and isinstance(node.comparators[0], ast.Constant)
-        and isinstance(node.comparators[0].value, str)
-    }
-    assert dispatched == set(compliance_evidence.EVIDENCE_SOURCES), (
-        "EVIDENCE_SOURCES disagrees with the dispatcher. "
-        f"Only in constant: {set(compliance_evidence.EVIDENCE_SOURCES) - dispatched}. "
-        f"Only in dispatcher: {dispatched - set(compliance_evidence.EVIDENCE_SOURCES)}"
+    from ccure_audit import evidence_providers
+
+    sources = set(compliance_evidence.EVIDENCE_SOURCES)
+    assert set(evidence_providers.PROVIDERS) == sources
+    assert compliance_evidence.registered_evidence_sources() == (
+        compliance_evidence.EVIDENCE_SOURCES
     )
+    assert set(_ADAPTERS) == sources
 
 
 @pytest.mark.parametrize("source", sorted(_ADAPTERS))
-def test_every_declared_source_has_an_adapter_method(source):
-    assert hasattr(ComplianceEvidenceProvider, _ADAPTERS[source])
+def test_every_declared_source_has_an_adapter_function(source):
+    assert callable(_adapter(source))
+
+
+@pytest.mark.parametrize(
+    "source", sorted(set(_ADAPTERS) - {"malware_scan", "web_vulnerability_audit"})
+)
+def test_a_registered_provider_is_the_function_named_here(source):
+    """The two composed sources aside, what compliance calls is the function
+    whose keys this file reads, not a copy of it."""
+    assert compliance_evidence.evidence_provider(source) is _adapter(source)

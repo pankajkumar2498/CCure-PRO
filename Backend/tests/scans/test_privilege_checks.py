@@ -661,7 +661,7 @@ class TestPrivilegeChecksInTheRealScanPath:
             return FakeResult(stderr="not stubbed", exit_code=1, success=False)
 
     def _audit(self, table, os_type="windows"):
-        from core.tasks import _run_configuration_audit
+        from scans.tasks.credentialed import _run_configuration_audit
 
         return _run_configuration_audit(
             executor=self._Executor(table),

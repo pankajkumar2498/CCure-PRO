@@ -29,7 +29,8 @@ from starlette.requests import Request
 from ccure_platform.rbac.dependencies import has_permission
 from db.base import gen_user_id, utcnow
 from db.models import Organization, Scan, User
-from routers import phase_scans
+from core.celery_app import registered_task
+from core.task_names import RUN_ASSET_DISCOVERY, RUN_VULNERABILITY_AUDIT
 from routers.phase_scans import (
     AssetDiscoveryRequest,
     VulnerabilityAuditRequest,
@@ -56,8 +57,9 @@ class _Dispatched:
 @pytest.fixture
 def dispatched(monkeypatch):
     phase2, phase3 = _Dispatched(), _Dispatched()
-    monkeypatch.setattr(phase_scans.run_asset_discovery_task, "delay", phase2)
-    monkeypatch.setattr(phase_scans.run_vulnerability_audit_task, "delay", phase3)
+    # The routes dispatch by registered name (G1); these are the tasks they find.
+    monkeypatch.setattr(registered_task(RUN_ASSET_DISCOVERY), "delay", phase2)
+    monkeypatch.setattr(registered_task(RUN_VULNERABILITY_AUDIT), "delay", phase3)
     return phase2, phase3
 
 

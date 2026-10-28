@@ -55,6 +55,8 @@ DATABASE_LAYER = (
     "db.models.compliance",
     "core.benchmarks.loader",
     "core.benchmarks.selection",
+    "core.compliance_catalogue.benchmark_loader",
+    "core.compliance_catalogue.benchmark_selection",
 )
 
 
@@ -71,6 +73,21 @@ def test_the_package_imports_nothing_but_the_pack_module():
         for alias in node.names
     }
     assert imported == {"__future__", "core.benchmarks.pack"}
+
+
+def test_the_loader_and_selection_paths_are_the_compliance_modules():
+    """
+    G4: the loader and selection are compliance's catalogue code, in
+    ``core/compliance_catalogue/``. The old names are aliases of the same
+    module objects, so an import or a patch through either reaches one module.
+    """
+    import core.benchmarks.selection as old_selection
+    import core.compliance_catalogue.benchmark_loader as new_loader
+    import core.compliance_catalogue.benchmark_selection as new_selection
+
+    assert loader is new_loader
+    assert old_selection is new_selection
+    assert new_loader.__name__ == "core.compliance_catalogue.benchmark_loader"
 
 
 def test_the_package_exports_the_pack_api_as_the_same_objects():

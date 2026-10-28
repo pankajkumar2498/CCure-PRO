@@ -30,7 +30,9 @@ from rbac_testing import system_role_id
 @pytest.fixture
 def registered(client: TestClient, db_session: Session, self_registration_enabled):
     """Register one account and hand back (user, plaintext_token)."""
-    with patch("core.tasks.send_verification_email_task.delay") as delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+    ) as delay:
         res = client.post(
             "/auth/register",
             json={
@@ -145,7 +147,9 @@ def test_resend_does_not_kill_the_earlier_link(
     """
     user, first_token = registered
 
-    with patch("core.tasks.send_verification_email_task.delay") as delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+    ) as delay:
         client.post("/auth/resend-verification", json={"email": "vera@test.com"})
     second_token = delay.call_args[0][2].split("token=")[1]
     assert second_token != first_token
@@ -169,7 +173,9 @@ def test_a_newer_link_also_works_after_an_older_one_was_used(
     other into an error page. Verification is idempotent.
     """
     user, first_token = registered
-    with patch("core.tasks.send_verification_email_task.delay") as delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+    ) as delay:
         client.post("/auth/resend-verification", json={"email": "vera@test.com"})
     second_token = delay.call_args[0][2].split("token=")[1]
 
@@ -194,7 +200,9 @@ def test_live_token_count_is_bounded(
 
     user, _ = registered
     for _ in range(6):
-        with patch("core.tasks.send_verification_email_task.delay"):
+        with patch(
+            "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+        ):
             client.post("/auth/resend-verification", json={"email": "vera@test.com"})
 
     live = (
@@ -228,7 +236,7 @@ def test_expired_tokens_are_pruned_on_reissue(
     db_session.commit()
     stale_id = row.id
 
-    with patch("core.tasks.send_verification_email_task.delay"):
+    with patch("ccure_platform.identity.mail_tasks.send_verification_email_task.delay"):
         client.post("/auth/resend-verification", json={"email": "vera@test.com"})
 
     assert (
@@ -255,7 +263,9 @@ def test_superseded_token_beyond_the_cap_is_rejected(
 
     # Push the original token out of the window.
     for _ in range(MAX_LIVE_VERIFICATION_TOKENS):
-        with patch("core.tasks.send_verification_email_task.delay") as delay:
+        with patch(
+            "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+        ) as delay:
             res = client.post(
                 "/auth/resend-verification", json={"email": "vera@test.com"}
             )
@@ -312,7 +322,9 @@ def test_resend_does_not_reveal_whether_an_account_exists(
 def test_resend_sends_nothing_for_an_unknown_address(
     client: TestClient, self_registration_enabled
 ):
-    with patch("core.tasks.send_verification_email_task.delay") as delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+    ) as delay:
         client.post("/auth/resend-verification", json={"email": "nobody@nowhere.test"})
     delay.assert_not_called()
 
@@ -397,7 +409,9 @@ def test_approval_emails_the_account_holder(
     user.org_id = test_user.org_id
     db_session.commit()
 
-    with patch("core.tasks.send_account_approved_email_task.delay") as delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_account_approved_email_task.delay"
+    ) as delay:
         res = client.post(f"/admin/users/{user.id}/approve", headers=auth_headers)
     assert res.status_code == 200, res.text
     delay.assert_called_once()
@@ -424,7 +438,7 @@ def test_approval_failure_to_email_does_not_undo_the_approval(
     db_session.commit()
 
     with patch(
-        "core.tasks.send_account_approved_email_task.delay",
+        "ccure_platform.identity.mail_tasks.send_account_approved_email_task.delay",
         side_effect=RuntimeError("broker down"),
     ):
         res = client.post(f"/admin/users/{user.id}/approve", headers=auth_headers)

@@ -2278,25 +2278,1428 @@ most of them; the full run covers it.
   MAC-vendor lookup as scan kernel, so on its terms discovery and the network checks would
   already be out.
 
+### Before Phase C: the credentialed live harness (T0)
+
+Commit `4ee2abc`, tooling only, on top of `3541224`. It is the first group of the Phase C plan
+proposed on 22 Oct 2026 (T0, then G1–G6). C2, C3 and C6 need a live check, and analysis §11 asks
+that it run "concurrent credentialed and unauthenticated scans". Until T0 the harness ran no
+credentialed scan at all. The application is unchanged.
+
+**What changed.** All of it is in `scripts/validation/`, plus its tests.
+
+- **Two audit accounts on the targets.**
+  - **The SSH target** gains `ccure-audit`: created locked (password field `!`), with sudo that
+    asks for the password (no `NOPASSWD`). The image also installs `iproute2`, for `ss`. The
+    image tag is now `ccure-validation-ssh:ubuntu-24.04-audit`, and `targets.sh up` replaces a
+    target running any other image.
+  - **The PostgreSQL target** gains the role `ccure_audit`, made by the first run with
+    `pg_read_all_settings` and `pg_read_all_stats`, and `NOLOGIN` outside a run.
+  - **Nothing can log in outside a run.** `targets.sh status` prints both accounts' state.
+- **Throwaway credentials per run** (`live_scan.sh`).
+  - **Made and granted.** Two random passwords, held in unexported shell variables and given
+    only to `printf`, so they are in no process's arguments. They are granted over
+    `docker exec -i` stdin, the role's in a session with statement logging off.
+  - **Handed over.** They reach the harness as one JSON line on its stdin.
+  - **Searched for.** After the scans, the run's output, every container's log since the run
+    began, the scanner's configuration and a dump of the throwaway database are searched for
+    them. A find is exit 3, and the message names where, never what.
+  - **Revoked.** On exit, whatever happened, both are revoked and read back from the targets. An
+    unconfirmed revocation is exit 4.
+- **Four scans at once, then the stop** (`live_scan_harness.py`).
+  - **Credentials are stored as production stores them:** through `core.credential_vault`,
+    encrypted. The harness keeps only the ids.
+  - **The scans,** each dispatched as its route dispatches it:
+    - the unauthenticated vulnerability audit, as before;
+    - a vulnerability audit carrying the SSH credential in `options.credentials` (the pipeline's
+      Phase 3.5);
+    - the standalone credentialed host audit;
+    - the standalone database audit.
+  - **They run concurrently,** one thread each; the cancel run then runs alone.
+  - **What is recorded:** each credentialed scan's verdicts, read as the export reads them, and
+    the organisation's assets, services and findings once after the four.
+  - **A run whose credentialed scans did not authenticate exits 5**, after writing its result.
+- **The comparison** reads the new runs, the shared end state and the authentication record. It
+  ignores the send time the credentialed task stamps on its frames.
+
+**Verification.**
+
+| Check                                                      | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/repo/test_live_scan_tooling.py`, the tree committed | 53 passed: the 37 before and 16 new (the audit account; where a credential may go; the non-logging role session; revocation on every exit; the leak check, three planted and one clean; credentials read from stdin; the credentialed dispatch pinned to the route; storage encrypted; the Phase 3.5 plan merged as the route merges it; the authentication refusal and its exit 5; the comparison of the credentialed runs; `up` replacing another image)                  |
+| Mutations                                                  | 13 of 13 caught, each by the one test aimed at it (1 failed, 52 passed): a password in the scanner's environment, or exported; the role session logging statements; cleanup not revoking; the leak check skipping the database dump, or a target's log; the authentication check ignoring verdicts; the harness not exiting 5; a password stored beside the ciphertext; the comparison ignoring verdicts, or comparing send times; `NOPASSWD` sudo; `up` ignoring the image |
+| Smoke run, `3541224`                                       | Exit 0. full: 7 findings, 313.7 s. credentialed (Phase 3.5): 86 verdicts, 228 s. host: 86 verdicts, 7.8 s. database: 49 verdicts, 1.0 s. After the four: 4 assets, 5 services, 13 findings. Every authentication check true                                                                                                                                                                                                                                                 |
+| During a run                                               | The account read `P` and the role `login`                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| After each run                                             | The account locked (`!`), no process of it; the role `NOLOGIN`, no password, no session. No `ccure-live-*` container or network, no work directory left. The targets publish no port                                                                                                                                                                                                                                                                                        |
+| Secret check                                               | Passed on every run: neither password in any place searched                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Two consecutive runs, `3541224`, the same targets          | Both exit 0. **Identical apart from time**, with nothing tolerated; `--strict` agrees. Each: full 7 findings (323.5 s, 309.2 s); credentialed 86 verdicts (263 s); host 86; database 49; after the four, the same 4 assets, 5 services and 13 findings. Against the smoke run, run 1 differs in one row: the `.env` template (below)                                                                                                                                        |
+
+**What the credentialed runs found.** These are pre-existing product behaviour, not caused by
+T0. All but the last are in §7.
+
+- **Port 22's service is named `0.0.0.0:*` after a credentialed audit.**
+  - **The defect:** `engines/credentialed/linux_collector._parse_ss_output` takes the last column
+    of `ss -tlnp` as the process.
+  - **When it bites:** if the scanning account cannot see process names, that column is empty and
+    the last one is the peer address.
+  - **What it costs:** the audit's record replaces the port scan's `ssh`/`OpenSSH`.
+- **Nuclei's corroborated `.env` finding is stored under whichever template Nuclei printed first.**
+  - **The defect:** `nuclei_probe._collapse_corroborating` merges the templates that matched one
+    URL and keeps `max(group, key=severity)`. On a tie that is the first in Nuclei's output order.
+  - **What varies:** `codeigniter-env` and `laravel-env` are both high. Every run from B3 to B10
+    stored `CCURE-CHK-NUCLEI-CODEIGNITER-ENV`, and so did T0's smoke run. Both runs of T0's pair
+    stored `…-LARAVEL-ENV`. Run 2's stored evidence names all three templates
+    (`codeigniter-env,generic-env,laravel-env`) as matching, and its id is Laravel's, so the
+    choice among them is what varied.
+  - **Why now:** this is the first time it has varied, in runs where four scans load the host at
+    once. The comparison reports it as a difference, as it does the Redis template variation.
+- **The network-path evidence links a minted id to NVD.** The stored `.env` finding's evidence
+  ends `Reference : https://nvd.nist.gov/vuln/detail/CCURE-CHK-NUCLEI-…`, a page that does not
+  exist. `scans/asset_syncer.py` writes that line for any identifier, while the credentialed
+  writer in `core/tasks.py` writes it only for a real CVE. CLAUDE.md ("Network checks") says a
+  minted id must never carry an NVD link.
+- **The two SSH scans file the same configuration findings differently.** The Phase 3.5 pipeline
+  records them as `credentialed_package` and the standalone audit as `config_check`. Each scan
+  keeps its own rows (the key includes `scan_id`), so these are not duplicates. Whether the two
+  paths should agree is not settled here.
+- **The host audit records Docker's embedded DNS listener** (`127.0.0.11`, a port chosen when the
+  container starts) as a host-only service. It is a real socket, so it is not a defect, but it
+  makes a `down` and `up` between a before and an after a difference. The guide says to compare
+  against the same targets.
+
+**What T0 does not cover.**
+
+- **Credentialed coverage is Linux over SSH and PostgreSQL only.** There is no WinRM, SMB, MySQL
+  or SQL Server target.
+- **No CVE matching.** There is no vulnerability feed, so credentialed package matching reports
+  "not assessed".
+- **No process-level isolation.** The four scans are threads in one process; the worker runs them
+  in separate processes.
+
+The image the SSH target used before T0, `ccure-validation-ssh:ubuntu-24.04`, is no longer used.
+It is kept until its removal is approved.
+
+### G1 — C1 and C2: the routers dispatch by name, and the task hub becomes `scans/tasks/`
+
+Commits `b2c4303` (C1), `9c47298` (C2) and `57b4d04` (a test the mutation check called for), on top of
+`92c224c`. G1 is the first code group of
+Phase C, approved by the owner on 22 Oct 2026 with the grouping proposed that day (T0, G1–G6, F).
+Phase C's record continues in this section, so that §7 keeps its number.
+
+**The scope** (analysis §10):
+
+- **C1.** "Dispatch by name everywhere. Routers stop importing `core.tasks` (`phase_scans`,
+  `traditional_scans`, `credentialed`, `assets`, `credentials`). A scan-creation service in the
+  scans capability replaces the credentialed router's use of `scan_orchestrator`, `db_helpers` and
+  `policy_binding`." Unlocks: "No capability imports the hub".
+- **C2.** "Split `core/tasks.py` into per-capability task modules … Every `name=` is kept; the
+  `include` list is updated." Unlocks: "Hub gone".
+- **The owner's terms (22 Oct):**
+  - keep every task name, queue, limit and beat entry, every API and permission, and scan
+    behaviour;
+  - retarget the 66 test patches, and guard against patching the facade's re-exports;
+  - run the full suite, show the task registry and the API interfaces unchanged, and compare
+    credentialed and unauthenticated live scans on the same target instances.
+
+#### C1 — `b2c4303`: the routers dispatch by name
+
+- **By-name dispatch.** `core/task_names.py` gains the four tasks the routers start: asset
+  discovery, the vulnerability audit, the traditional scan and AMT reconciliation. The hub
+  registers them under the constants, with their names unchanged.
+  - **The routers:** `phase_scans`, `traditional_scans`, `credentialed` and `assets` call
+    `registered_task(NAME).delay(...)`.
+  - **What that returns:** the registered task itself, so queues, limits, eager execution and a
+    patched `.delay` behave as before.
+- **Loading the task modules.** `main.py` loads the worker's task modules once at start-up
+  through Celery's loader: the include list a worker loads.
+  - **Why:** with no router importing them, the first by-name dispatch would otherwise import
+    the scan pipeline inside a request.
+  - **No static edge:** the loader takes module names as strings, so this adds no import edge
+    and does not undo the decoupling.
+- **The scan-creation service** (`scans/scan_creation.py`). It holds the credentialed route's
+  target expansion, the target ceiling (`MAX_CREDENTIALED_TARGETS`, moved from the hub) and the
+  scan row with its policy snapshot, all moved unchanged.
+  - **The route** no longer imports the orchestrator, `scan_helpers`, the persistence helpers or
+    the policy binding.
+  - **Logging** stays under the `ccure.api` logger.
+- **The credential vault decrypts its own rows.** `core.credential_vault.resolve()` and
+  `connection_material()` hold what the hub's `_resolve_stored_credential` did.
+  - **The hub's wrapper** reads the scan's organisation and delegates. The vault sits below the
+    scans capability, so it does not read the `scans` table.
+  - **The credentials route's validate call** uses the row it already found in its organisation,
+    instead of looking it up again unscoped.
+- **The layer rule.** `task-hub-is-a-leaf` now covers `routers`, `main` and `ccure_audit`.
+- **The interface probe.** `interface_snapshot` now records each task's queue, time limits,
+  retry and acknowledgement options and signature, and the beat entries' options and arguments.
+  - **The pin:** `scripts/architecture/task_registry.json` was written from `92c224c`.
+  - **The test:** `tests/repo/test_task_registry.py` compares the live registry with the pin.
+- **The live harness** (`4ee2abc`) follows the routes. It dispatches by name, and takes the
+  credentialed scan record from `scans.scan_creation` on a commit that has it and from the old
+  helpers on one that does not. So a before and an after run each exercise their own route.
+
+#### C2 — `9c47298`: `core/tasks.py` split into `scans/tasks/`
+
+| Module              | Lines | Tasks | Contents                                                                       |
+| ------------------- | ----: | ----: | ------------------------------------------------------------------------------ |
+| `common`            |   224 |     0 | the scoped orchestrator, cancellation, task ids, settling a failure            |
+| `credentialed_sync` |   814 |     0 | writing a credentialed audit's identity, services and findings                 |
+| `credentialed`      | 2,948 |     1 | the credentialed scan, host and database audits, configuration audit, 3.5      |
+| `topology`          |   234 |     1 | SNMP topology mapping and when a scan chains it                                |
+| `phases`            |   930 |     7 | host and asset discovery, the vulnerability audit, the sync tasks, traditional |
+| `maintenance`       |   135 |     3 | risk-acceptance expiry, AMT reconciliation, MAC vendors                        |
+| `schedules`         |   114 |     1 | recurring scans that are due                                                   |
+| `reapers`           |   362 |     2 | settling scans nothing is working on                                           |
+
+- **Moved verbatim.** Every one of the 55 definitions is AST-identical to the hub's.
+  - **The one exception:** the two lazy self-imports that chained phase 2 and phase 3 are
+    gone. The chained task is now a global of the same module.
+  - **Logging:** every module logs under `ccure.tasks`.
+  - **Imports:** each module has only the imports its own code reads.
+  - **Direction:** the modules import one another one way only, with `common` at the bottom and
+    `phases` at the top. The import-cycle ratchet holds.
+- **The worker.** It loads the six modules that define tasks (`core/celery_app.py`'s include
+  list) and no longer loads `core/tasks.py`.
+- **The facade** (`core/tasks.py`, 144 lines).
+  - **What it offers:** every name the hub defined (62, including the mail tasks and
+    `MAX_CREDENTIALED_TARGETS`), as the same objects.
+  - **What it refuses:** setting or deleting an attribute raises `AttributeError`. The message
+    names the module to patch.
+- **The layer rules.** `task-hub-is-a-leaf`, `services-do-not-speak-contracts` and
+  `reporting-below-http` forbid `scans.tasks` as they forbid `core.tasks`.
+- **The capability map.** `task_hub` is gone, and `core.tasks` and `scans.tasks` are the scans
+  capability.
+
+**The 66 patches.**
+
+- **45 are retargeted to the module whose code reads the name.**
+  - **Where one function calls another:** `mark_scan_failed` is read inside `_settle_failure`,
+    in `common`, so the four patches of it go there. The task that fails reaches it only through
+    that call.
+- **19 patch the mail tasks' `.delay`.** They now name `ccure_platform.identity.mail_tasks`.
+- **2 are removed.** In `tests/scans/test_tasks.py` both patched `create_completed_scan`, which
+  `run_host_discovery_task` never reads. They replaced nothing before the split. After it they
+  would raise, because `scans.tasks.phases` does not hold the name.
+
+**What else the tests needed.**
+
+- **Tests that read the hub's source.** These read it by path or with `inspect.getsource`, and
+  now read the `scans/tasks` modules.
+  - **Those that assert absence:** two of them, and the status-vocabulary check, which is a
+    subset test, would otherwise have passed silently on the facade.
+  - **Equivalence:** the option reads and status writes across the modules equal the old hub's.
+- **Imports.** Test imports name the defining module.
+  - **Why:** the CI selector chooses test groups by the names tests import and patch. A test
+    importing through the facade would not be selected when `scans/tasks/` changes.
+- **Indirect module references.** The end-to-end credentialed tests name the module they patch
+  themselves, instead of taking it from a fixture, which the static check cannot follow.
+
+**The guards** (`tests/repo/test_task_modules.py`):
+
+- **No patch through the facade,** in any form: a string target, a module alias in the
+  function's scope, or a direct assignment.
+- **Every patch on a task module replaces a name that module's own code reads.** A name a
+  module only re-exports is the hazard.
+- **The scan's forms are pinned** against a fixture, so a blind scanner cannot pass.
+- **The facade refuses at run time,** and offers all 62 names as their own objects.
+- **The worker loads the six task modules and not the facade.**
+
+#### Verification
+
+| Check                                                                                                                         | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full suite, C1 as first committed (`0b030a7`)                                                                                 | 8,055 passed, **2 failed**, 211 skipped. Both failures were the RBAC migration inventory: it was regenerated before black re-wrapped two routers in the commit hook, so its line numbers were stale. C1 was amended with the regenerated file (`b2c4303`; the only difference, `git diff --stat`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `tests/rbac` and `tests/repo`, `b2c4303`                                                                                      | 1,416 passed, 2 skipped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Full suite, `9c47298` (C2, the whole of G1), a clean worktree                                                                 | **8,069 passed, 0 failed, 211 skipped** (15 min 47 s). The skips are the same environment-dependent ones as every full run on this branch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Interfaces, `interface_snapshot --compare` against `92c224c`                                                                  | Identical after C1 and after C2: routes, limiter keys, the OpenAPI digest, every task's queue, limits, options and signature, the beat schedule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| The task registry against its pin                                                                                             | Byte-identical after C1 and after C2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| A worker started from the backend image (`celery inspect registered` with queue, limits and options), `92c224c` and `9c47298` | The same 36 tasks with the same attributes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| The split, statically                                                                                                         | All 55 definitions AST-identical to the hub's (the two self-imports aside)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Live, credentialed and unauthenticated, `92c224c` against `9c47298`, the same target instances                                | Both exit 0; the secret check passed and the credentials were revoked and confirmed after each. **Identical apart from time**, with nothing tolerated; `--strict` agrees. Each: the unauthenticated audit 7 findings; the Phase 3.5 and standalone host audits 86 verdicts each; the database audit 49; the stopped sweep cancelled; after the four, 4 assets, 5 services, 13 findings. The four targets kept the same container ids from before the first run to after the second                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Mutations                                                                                                                     | 15 mutations of `9c47298`, each in its own worktree, against `tests/repo` and the five test files with the most patches. **14 caught**: a patch through the facade, as a string (M1) or through an alias (M3); a patch on a module whose code does not read the name (M2); the facade accepting a patch (M4) or dropping a name (M5); the worker loading the facade (M6) or missing a task module (M7, caught by the worker test and the include-list pin, not by the registry test, because that test's process had already imported the module another way); a time limit (M8), a signature default (M9) or a beat entry (M10) changing; a router importing a task module (M11) or the orchestrator again (M12); the vault returning an NTLM hash as a password (M14); a task module importing the facade back (M15, a cycle). **Survived:** M13, the credentialed route's section fallback dropped from the service. Nothing tested it, before C1 moved it or after. `57b4d04` adds `tests/scans/test_scan_creation.py`, which catches it |
+
+#### Coupling and load profiles
+
+| Measure                           |     `92c224c` | C1 `b2c4303` | C2 `9c47298` |
+| --------------------------------- | ------------: | -----------: | -----------: |
+| Capability cycle, all imports     | 15 (and 4, 2) |           14 |           14 |
+| Capability cycle, top-level       |    12 (and 2) |           11 |           11 |
+| Upward edges                      |            37 |           31 |           31 |
+| Lateral edges                     |            67 |           65 |           59 |
+| Foreign-table references / writes |       79 / 17 |      78 / 17 |      73 / 16 |
+
+- **What C1 changed:** dependencies.
+  - **Upward edges:** the credentialed router's six into the scans capability's internals
+    went, and so did the assets and credentials routers' imports of the hub. One edge is new,
+    the credentialed router's call of `scans.scan_creation`.
+  - **Lateral edges:** the phase-scan and traditional-scan routers' imports of the hub.
+  - **Foreign references:** the hub's read of `compliance_credentials`.
+  - **The cycle:** the task hub left it.
+- **What C2 changed:** classification only. The hub became part of the scans capability, so
+  its six imports of scans internals and its reads of `scans` and `scan_phases` became
+  internal. Its other table access is now the scans capability's, so the baseline records
+  `scans -> web_scans` and writes to `assets` and the two findings tables, which were the hub's.
+  No dependency changed.
+
+Import cost (first-party / all modules):
+
+| Module                                                        |   `92c224c` |                                                         `9c47298` |
+| ------------------------------------------------------------- | ----------: | ----------------------------------------------------------------: |
+| `routers.credentialed`                                        | 149 / 1,591 |                 75 / 1,011: no Scapy, nmap, ReportLab or psycopg2 |
+| `routers.phase_scans`                                         | 149 / 1,466 | 143 / 1,455 (still loads the orchestrator through `scan_helpers`) |
+| `routers.traditional_scans`                                   | 142 / 1,458 |                                                       126 / 1,437 |
+| `main`                                                        | 283 / 1,946 |        301 / 1,967: the worker's task modules, loaded at start-up |
+| `core.tasks`                                                  | 140 / 1,456 |                  150 / 1,466 (the facade loads every task module) |
+| `scans.tasks.maintenance`, `.schedules`, `.reapers`           |           — |                                   13–14 / 484–485: no scan engine |
+| `scans.tasks.credentialed_sync`                               |           — |                                                          69 / 639 |
+| `scans.tasks.common`, `.topology`, `.credentialed`, `.phases` |           — |                                             127–142 / 1,217–1,453 |
+
+#### What G1 leaves, and what it found
+
+- **Credentialed audit is still in the capability cycle, through one edge.**
+  - **The edge:** `routers.credentialed -> scans.scan_creation`. The capability map (A2) puts
+    the router in the credentialed-audit capability, an engine layer, so its call into the
+    scans capability points up.
+  - **What the router is:** it serves one route, `POST /scan/credentialed`, which creates a
+    scan, as `routers.phase_scans` does in the scans capability.
+  - **What reclassifying it would do,** measured, not committed: credentialed audit leaves the
+    cycle (14 -> 13, top-level 11 -> 10), and upward edges fall 31 -> 29.
+  - **Decision:** a classification decision for the owner (§7). G1 leaves the map as A2 set it.
+- **The plan's "credentialed audit gets an application service of its own" is
+  `scans.tasks.credentialed`,** in the scans capability's orchestration layer.
+  - **Why there:** placed in the credentialed-audit capability, an engine layer, its writes to
+    findings and assets and its use of the scans internals would all be upward edges.
+- **`scans.tasks.common` imports the orchestrator at module level,** verbatim from the hub.
+  - **The effect:** the topology, credentialed and phase modules load the scan engines (Scapy,
+    nmap) at import.
+  - **Not affected:** the housekeeping modules do not import `common` and load 13–14 modules.
+  - **The fix:** importing it inside `_new_orchestrator` and `_bind_scan_scope` would let the
+    credentialed and topology modules load without them. A small follow-up (§7).
+- **`core.tasks.MAX_CREDENTIALED_TARGETS`** was absent at C1 alone, because the facade did not
+  exist yet. Nothing in the repository read it there: the live harness reads it from where it
+  lives. C2 restores it.
+- **Test selection follows the split.** `scripts/ci/select_tests.py` maps a change in
+  `scans/tasks/` to the groups whose tests import or patch that module: for example
+  `credentialed_sync.py` selects assets and topology, and `reapers.py` selects web. A change in
+  `core/tasks.py` used to select twelve groups.
+- **CLAUDE.md still names `core/tasks.py`** where it describes the scan pipeline. Every name
+  still resolves through the facade, read-only. The file is the owner's to revise.
+- **The old SSH validation image** (`ccure-validation-ssh:ubuntu-24.04`) was removed on the
+  owner's approval (22 Oct 2026).
+
+### G2 — C5: the credential vault becomes a capability of its own
+
+Commits `123cc33` (the model) and `c1192d1` (resolution through the vault), on top of `9c96582`.
+
+**The scope** (analysis §10, C5): "Credential vault capability. Model out of
+`db/models/compliance.py` (same table, alias kept); one API; `resolve()` used by credentialed
+audit, scheduling and compliance remediation." Unlocks: "Credentialed audit stops depending on
+compliance's model file".
+
+**The owner's terms (22 Oct):**
+
+- keep the encrypted records, the APIs, the permissions and scan behaviour unchanged;
+- keep the old model import paths as compatibility aliases, and route credential resolution
+  through the vault service;
+- run the credential API tests, the related regression tests, the architecture guards and a
+  credentialed live smoke test, and update `CLAUDE.md` where needed.
+
+"One API" was already true at the service level: S2 made both HTTP surfaces, `/credentials`
+and `/compliance/credentials`, adapters over `core.credential_vault`. G2 adds no route and
+removes none. Whether the legacy surface is retired is still D-3.
+
+#### The model — `123cc33`
+
+- **The move.** `db/models/credentials.py` holds `ComplianceCredential` and the 27
+  vocabularies its CHECK constraints are rendered from.
+  - **Verbatim:** all 28 definitions are AST-identical to the originals.
+  - **The data is untouched:** the same table, constraints and encrypted rows, and no
+    migration.
+- **The old import paths still work.**
+  - **The alias:** `db/models/compliance.py` re-exports all 28 names.
+  - **The registry:** it imports the class from its new module.
+  - **The test:** every old path resolves to the same object
+    (`tests/repo/test_credential_vault_boundary.py`).
+- **A shared helper.** `_sql_in_list`, used by both model files' constraints, moved to
+  `db/constraint_sql.py`, so neither model module imports the other for it.
+- **Imports.** Imports of the moved names name `db.models.credentials`, in the application,
+  its scripts and the tests.
+- **The platform rule.** `platform-is-shared-foundation` forbids the new model module to the
+  platform, as it forbids every Audit model; the identity-boundary test requires every model
+  module to be classified.
+
+#### Resolution through the vault — `c1192d1`
+
+| Reader                                     | Before                                          | After                               |
+| ------------------------------------------ | ----------------------------------------------- | ----------------------------------- |
+| The credentialed route                     | queried the table by id and organisation        | `credential_vault.get_for_org`      |
+| The two compliance remediation routes      | the same                                        | `get_for_org`                       |
+| The schedule dispatcher                    | the same                                        | `get_for_org`                       |
+| Compliance remediation's stored credential | queried by id and decrypted both secrets itself | `credential_vault.stored_secrets`   |
+| A credential's deletion                    | the vault counted `scan_schedules` rows itself  | scheduling's own registered counter |
+
+- **The three `get_for_org` callers.** The query is unchanged, scoped to the same
+  organisation, and each answers a missing credential as it did: the two 404s and the
+  dispatch error.
+- **`stored_secrets`** is the form remediation has always used, moved unchanged:
+
+  - the username as stored, not `principal()`;
+  - every secret the row holds, whatever the auth method, so a key credential that also
+    stores a sudo password keeps it;
+  - looked up by id alone. The routes check the organisation first.
+
+  The collectors' `connection_material` differs on all three. Choosing one is a decision
+  (§7).
+
+- **The reference counters.**
+  - **The registry:** the vault keeps one, the user-purge hook pattern.
+  - **Scheduling's answer:** `core/scheduling/credential_references.py`, imported by
+    `main.py`, registers the count the vault used to run.
+  - **Unchanged:** the API's `schedules_affected` and the audit event.
+  - **Newly tested:** nothing tested that figure before; a test now deletes a credential
+    through the API and finds the schedule's reference cleared.
+- **The live harness** reads the credential through `get_for_org`, as the route does. It
+  exists on every commit since S2.
+
+**The guards** (`tests/repo/test_credential_vault_boundary.py`):
+
+- **Only the vault's modules import the credential model,** lazily or not. The two
+  re-exporters are the exception.
+- **The vault depends on nothing beside or above it.**
+- **The application registers scheduling's counter,** and a counter cannot be replaced under
+  its name.
+
+#### Verification
+
+| Check                                                                                                                            | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The model move's nearest groups (`repo`, `security`, `credentialed`, `compliance`, the schedule and database-content scan tests) | 2,362 passed, **2 failed**. The new model module needed classifying for the platform rule; the RBAC inventory test had run before the commit hook re-formatted two routers, and the regenerated inventory matched `HEAD`. After both: the failed tests and the boundary tests, 95 passed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Commit B's nearest groups (the same, and `rbac`)                                                                                 | 2,990 passed, 2 skipped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Full suite, `c1192d1`, a clean worktree                                                                                          | **8,082 passed, 0 failed, 211 skipped** (15 min 58 s)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Interfaces against `9c96582`                                                                                                     | Identical after each commit: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| The model move, statically                                                                                                       | 28 of 28 definitions AST-identical                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Credentialed live pair, `9c96582` against `c1192d1`, the same target instances                                                   | Four runs, two of each commit in alternation; each exited 0 and authenticated, the secret check passed, and the credentials were revoked and confirmed. **Every stored result is identical across all four:** scan rows, phases, task results, the verdicts (86, 86, 49) and the 4 assets, 5 services and 13 findings. The comparison reported one difference in three pairings, including **both same-commit pairings**: two of the host audit's progress frames, "Collected Software Inventory" and "Collected Login Events" (both 45 %), in either order. Both orders occur on both commits. The Linux collector runs its sections in a thread pool and reports each as it finishes, so this is timing, not G2. The fourth pairing (`9c96582` against the second `c1192d1`) is identical apart from time. Recorded as a known variation in the validation guide; the comparison still reports it |
+| Mutations                                                                                                                        | 6 of 6 caught, each in its own worktree of `c1192d1`: a router importing the credential model again (boundary test and ratchet); the vault reading `scan_schedules` again (the lower-layers test and ratchet); scheduling's counter not registered (the registration test, and the API deletion reporting 0 schedules); a key credential losing its stored password in `stored_secrets` (remediation test); the dispatcher looking the credential up in another organisation (the scheduled-dispatch test); the alias dropping a name (alias test)                                                                                                                                                                                                                                                                                                                                                  |
+
+#### Coupling
+
+| Measure                           | `9c96582` |    `123cc33` | `c1192d1` |
+| --------------------------------- | --------: | -----------: | --------: |
+| Capability cycle, all imports     |        14 |           14 |        14 |
+| Capability cycle, top-level       |        11 | 5 (and 2, 2) |         5 |
+| Upward edges                      |        31 |           31 |        31 |
+| Lateral edges                     |        59 |           59 |        58 |
+| Foreign-table references / writes |   73 / 16 |      73 / 16 |   69 / 16 |
+
+- **What the model move changed.**
+  - **The vault and its router** no longer import the compliance model file.
+  - **The compatibility alias** adds the compliance model file's import of the vault's: the
+    direction compliance already depended in.
+  - **The top-level capability cycle** falls 11 → 5, because the vault's top-level
+    dependency on compliance is gone.
+- **What routing through the vault changed.**
+  - **Foreign-table references (four gone):** compliance's, the credentialed audit's and
+    scheduling's reads of `compliance_credentials`, and the vault's of `scan_schedules`.
+  - **Edges:** each former reader now has an edge to `core.credential_vault`, replacing its
+    edge to the model.
+- **The vault now depends only on lower layers:** the platform, infrastructure, the scan
+  kernel's scope admission, and the credentialed engines it tests a credential with.
+- **It is still in the capability cycle.** That's not its own doing: `routers.credentialed`
+  (the credentialed audit's) reaches up into it and into the scans capability. Classifying
+  that router as the scans capability's API, the decision G1 recorded, would take the vault
+  and the credentialed audit out of the cycle (14 → 12, upward edges 31 → 29), measured.
+
+**Import cost** rises slightly (first-party modules, `9c96582` → `c1192d1`):
+
+| Module                       | Before | After |
+| ---------------------------- | -----: | ----: |
+| `core.credential_vault`      |     63 |    65 |
+| `routers.credentials`        |     66 |    68 |
+| `core.scheduling.dispatcher` |     34 |    36 |
+| `core.compliance_tasks`      |     61 |    63 |
+| `routers.credentialed`       |     75 |    79 |
+
+The two new modules account for this. Importing any `db.models.*` module runs the model
+registry, which loads every model, so moving the credential model is a structural
+decoupling, not an import-time saving.
+
+#### What G2 leaves, and what it found
+
+- **The vault's cycle membership:** see Coupling, and §7.
+- **Two credential forms.** Remediation authenticates with every secret the row stores and
+  the username as stored. The collectors use `principal()` and only the secret their method
+  needs. G2 kept both, in the vault, side by side (§7).
+- **Remediation copies ciphertext out of the vault's table.**
+  - **What happens:** the maker-checker routes copy a stored credential's _encrypted_
+    password and key into `compliance_remediation_requests`, and into the task's arguments
+    for an emergency bypass.
+  - **The consequence:** a second copy of the secret, which outlives the credential's
+    deletion.
+  - **Status:** pre-existing and unchanged (§7).
+- **The load-profile ratchet** records that the topology engine and the web-scan router now
+  load the vault's model module. Both load the model registry, and the class was already
+  loaded as part of the compliance file, so this is a reclassification.
+- **Line endings.** `tests/compliance/test_compliance_remediation.py` is CRLF in this
+  working tree. Git stores it LF, before and after, and the commit's diff is the added lines
+  only.
+
+### G3 — C3: one writer of the findings tables
+
+Commits, on top of `595f068`:
+
+- **The code:** `39700ab` (the pipeline's writes), `b05aea4` (the credentialed sync's),
+  `ed29279` (the purge hook's), `49d09b5` (D-6);
+- **The tooling:** `a160fd2` and `833c351` (the findings golden), `38b28c6` (the
+  rescans).
+
+**The scope** (analysis §10, C3): "One findings writer. A findings service owns writes to
+`services`, `tls_details`, `http_security_details`, `asset_vulnerabilities` and
+`vulnerability_definitions`. `asset_syncer` keeps asset identity only; the hub's credentialed sync
+calls the service. Merge remediation into the same capability (D-6)." Unlocks: "Findings and assets
+leave each other's cycle; one place for the fixed-sweep rules".
+
+**The owner's terms (22 Oct):**
+
+- centralise the findings writes in a findings service, covering the asset syncer, the
+  credentialed task hub and Audit's purge hook;
+- apply D-6 with metadata changes only and no migration;
+- validate against a restored database copy: replay stored payloads, with identical rows,
+  byte-identical exports and identical comparison and verification outcomes;
+- run the full suite, then live credentialed and unauthenticated scans plus a rescan covering
+  fixed, reappeared and not-assessed findings, after confirming no live scan is in progress;
+- small commits, behaviour preserved, and not G4.
+
+#### Before the change: a replay golden and live rescans
+
+- **The findings golden** (`Backend/scripts/verification/findings_golden/`, `a160fd2`,
+  extended in `833c351`).
+  - **The data:** the full dump of 22 Oct 2026, 20:17, restored into a throwaway PostgreSQL 18
+    on an internal network: 11 scans, six of them vulnerability audits, four of whose hosts
+    carried a credentialed report. With it goes a frozen subset of `vuln_intel`: the rows for
+    the 3,706 CVEs the payloads name, read once, read-only.
+  - **The code:** one commit's, in the backend image, against fresh copies of the restored
+    database.
+  - **Three modes:**
+    - `asis`: the restored rows' exports and comparisons, plus each audit's verification and
+      Audit's purge hook, each rolled back;
+    - `on_top`: every stored phase payload replayed in time order over the restored rows;
+    - `from_empty`: the same replay after the organisation's assets, and every findings row
+      with them, are deleted.
+  - **What the replay runs:**
+    - each vulnerability audit's comparison and `verify_scan`;
+    - for every credentialed host, three synthetic standalone credentialed scans: every
+      finding, then four in five, then every finding again. These run the standalone sweep's
+      fix and the reopen.
+  - **What it captures:**
+    - every table hashed, and the findings tables in full;
+    - every scan's workbook, export JSON and CSVs and legacy CSV, rendered as the routes do;
+    - every comparison and verification outcome.
+  - **Determinism.** The clock, `random`, `secrets`, `uuid4`, the ZIP entry times and the hash
+    seed are fixed, and autovacuum and parallel plans are off on the throwaway server.
+  - **One exception, the change log's `id`.** It is compared without that column: a sweep logs
+    each finding it retires from a query with no `ORDER BY`, all at one timestamp, so which row
+    gets which sequence number is PostgreSQL's choice. Two captures of `595f068` paired 738 ids
+    with different findings, every other column equal.
+  - **What the replay reaches:** new, still-open, fixed, reappeared and not-assessed findings;
+    verification that verifies, withholds and reopens; the pipeline's sweep (5,230 fixed and
+    5,902 reopened in `on_top`); the standalone sweep (2,874 fixed in each replay mode).
+- **The rescans** (`38b28c6`; "The rescans" in `docs/ci/LIVE_SCAN_VALIDATION.md`). Ten
+  rescans, one at a time, change the targets between them, so findings are fixed, reappear and
+  go unassessed on the scans' own terms:
+
+  - **the pipeline's credentialed pass:** fixed, then reappeared;
+  - **the standalone audit:** fixed with verification verifying, then reappeared with
+    verification reopening;
+  - **an unauthenticated rescan of credentialed findings:** not assessed;
+  - **the web target's removed exposures:** not assessed, then still open.
+
+  The first version expected the web exposures fixed and then reappeared. The first run on
+  `595f068` refused itself (exit 6) for that alone. The pipeline retires a network finding only
+  after a complete plugin run, and some probe always reports unsupported here (§7).
+
+#### The writer — `core/findings/writer.py`
+
+| Commit    | From                               | Moved                                                                                                                                                                                                                                                                | Verbatim                                                                                                                   |
+| --------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `39700ab` | `scans/asset_syncer.py`            | the services a port scan or a credentialed pass observed; each host's catalogue rows, findings and the sweep of those the scan retired (`write_host_findings`, the per-host block of `sync_vulnerability_audit`); the TLS reading; the asset risk from open findings | 29 definitions and both blocks (14 statements, and the TLS block) AST-identical, apart from three renames and the callback |
+| `b05aea4` | `scans/tasks/credentialed_sync.py` | the standalone audit's catalogue rows and findings (`_sync_credentialed_vulnerabilities`), and its sweep (`sweep_credentialed_findings`)                                                                                                                             | 4 definitions and the 8-statement sweep AST-identical, apart from the callback and the asset's id in place of the row      |
+| `ed29279` | `ccure_audit/offboarding.py`       | clearing a purged account from `accepted_by` (`detach_user_from_findings`)                                                                                                                                                                                           | the one statement, unchanged                                                                                               |
+
+- **The callers keep what is theirs.**
+  - **The asset:** its identity, change log, risk columns and last-seen record. A finding that
+    reopens, is retired or is ruled out goes into the asset's change log through the
+    `record_change` callback the caller passes. The writer imports no asset or scan model.
+  - **The scan:** what it assessed is recorded on its row
+    (`record_assessment_scope`, into `scans.options`). The caller writes it, from what
+    `write_host_findings` and `sweep_credentialed_findings` return.
+  - **The intel enrichment** stays in the asset syncer: seven tests patch
+    `asset_syncer._enrich_findings_with_intel`, and the sync calls it before any host.
+- **Order.** Each caller calls the writer exactly where the code was, so every statement runs in
+  the order it did, the change log's entries included.
+- **Names.** Three functions other capabilities call became public:
+  - `upsert_network_service`, was `_upsert_network_service`;
+  - `service_identity_from_process`, was `_service_identity_from_process`;
+  - `risk_from_open_findings`, was `_recalculate_asset_risk`.
+- **Unchanged otherwise:**
+  - **Loggers:** `scans.asset_syncer` for the pipeline's code, `ccure.tasks` for the standalone
+    audit's, as before.
+  - **The facade:** `core/tasks.py` still offers the three moved hub names, as the same objects,
+    now from the writer.
+  - **Tests:** seven test files import a moved name from the writer, and no test patched one.
+- **Two things the writer could not carry verbatim:**
+  - the credentialed function's `asset: Asset` annotation (only the row's id is read);
+  - its lazy import of the writer's own helpers.
+- **Copies.** The writer keeps copies of five helpers its callers still use:
+
+  - the asset syncer's placeholder vocabulary, value test, text cleaner and source-name
+    normaliser;
+  - the credentialed sync's `_clean_text`.
+
+  Tests hold each copy equal to its original. The writer's `_clean` is the asset syncer's
+  _second_ definition, which replaces the first at import and is the one the moved code always
+  called (§7).
+
+#### D-6 — `49d09b5`
+
+Metadata only. The capability registry has no `remediation`: `core.remediation` and
+`routers.remediation` belong to `findings`, and `table_ownership.yaml` files
+`finding_remediation_events` under it.
+
+**The guards** (`tests/repo/test_findings_writer.py`):
+
+- **The registry holds the merge.** The findings capability owns the six findings tables.
+- **No ORM write from outside.** No module outside the capability writes a findings table by
+  model construction or a bulk insert, update or delete.
+- **No SQL write from outside either.** The capability map counts SQL text as a reference
+  only, so this test reads it separately. The one exception is `scans.nvd_sync`, the NVD feed
+  sync, which loads the CVE catalogue; it is recorded with its reason (§7).
+- **The writer depends only downward.** It has no upward or lateral edge, and imports no asset
+  or scan model and not the asset syncer.
+
+#### Verification
+
+| Check                                                                          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No live scan in progress                                                       | Confirmed before each golden and the live pair: the 11 scans complete or unreachable, no web scan running, both workers idle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| The moves, statically                                                          | `39700ab` 29 definitions and both blocks, `b05aea4` 4 definitions and the sweep: AST-identical apart from the stated renames                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Each commit's selected groups                                                  | `39700ab`: eight groups, 6,044 passed, 1 skipped. `b05aea4`: ten groups, 6,715 passed, 2 skipped. `ed29279`: eleven groups, `rbac` and `audit` added for the purge, 7,092 passed, 210 skipped (the audit chain's and retention's DBA bootstrap). `49d09b5`: `tests/repo`, 830 passed, 1 skipped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Full suite, `49d09b5`, a clean worktree                                        | **8,088 passed, 0 failed, 211 skipped** (18 min 22 s); the 211 are the environment skips G2 also had                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Interfaces, `595f068` against `49d09b5`                                        | Identical: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Golden, before the extension (316 files)                                       | Two captures of `595f068` byte-identical; `39700ab`, `b05aea4` and `49d09b5` each byte-identical to them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Golden, extended (412 files)                                                   | Two captures of `595f068` byte-identical; `49d09b5` byte-identical to them: every row, every export file (workbooks, export JSON and CSVs, legacy CSVs), every comparison and every verification outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Mutations, each in its own worktree of `49d09b5`                               | 11 of 12 caught. Six guard mutations: a findings write back in the asset syncer, a SQL write in a router, the writer importing the asset syncer, a copied helper drifting, remediation leaving the capability, the facade losing a moved name. Six golden mutations: the pipeline's evidence text, the standalone sweep keeping every package CVE, the purge hook clearing nothing, a reopen going unrecorded, and a TLS rescan losing its cipher, all caught. The sixth, a TLS first insert losing its cipher, survived: every TLS host here is rescanned, and the rescan's upsert writes the cipher back, so on this data it changes nothing                                                                                                                                                                                                             |
+| Live pair with rescans, `595f068` against `49d09b5`, the same target instances | Both runs exited 0. Each authenticated, passed the secret check, and had its credentials revoked and confirmed and its targets restored. **Every stored result is identical:** scan rows, phases, task results, the verdicts (86, 86, 49), the 4 assets, 5 services and 13 findings, and for each of the ten rescans its row, comparison, remediation events (4 verified, 2 reopened), verification preview and the target's findings; rescan coverage complete on both. One difference, the known variation (G2): the host audit's "Collected Login Events" and "Collected Software Inventory" frames, both 45 %, in either order. A first attempt was stopped when an unrelated commit on this branch (12:24) stashed and restored the then-uncommitted harness and dropped its scripts' execute bit; the pair was re-run once the harness was committed |
+
+#### Coupling
+
+| Measure                           | `595f068` | `39700ab` | `b05aea4` | `ed29279` | `49d09b5` |
+| --------------------------------- | --------: | --------: | --------: | --------: | --------: |
+| Capability cycle, all imports     |        14 |        14 |        14 |        14 |        13 |
+| Capability cycle, top-level       |         5 |         5 |         5 |         5 |         5 |
+| Upward edges                      |        31 |        31 |        31 |        31 |        31 |
+| Lateral edges                     |        58 |        51 |        51 |        51 |        44 |
+| Foreign-table references / writes |   69 / 16 |   68 / 12 |   68 / 10 |    68 / 9 |    66 / 9 |
+
+- **One writer.** Outside the findings capability, seven ORM writes to findings tables
+  were the asset syncer's four, the credentialed sync's two and the purge hook's one. None
+  remain. The remaining nine foreign writes are to other capabilities' tables.
+- **One place for the fixed-sweep rules.** Both sweeps, the pipeline's and the standalone
+  audit's, are in the writer.
+- **Findings and assets have not left each other's cycle.** The writes go one way now (the
+  asset syncer calls the writer), but the reads go both ways:
+
+  - findings → assets: `routers.findings`, `routers.remediation` and
+    `core.remediation.reporting` read the asset model;
+  - assets → findings: `routers.assets` reads the findings models, and the asset syncer
+    calls `core.findings` (the scope record) and the writer.
+
+  The reads are routers and a report. The analysis puts them in C7 (§7).
+
+- **D-6 is a reclassification.** Remediation's six edges into findings and the one back become
+  internal, and the cycle counts one member fewer because two merged.
+
+**Import cost** (first-party modules, `595f068` → `49d09b5`):
+
+| Module                          | Before | After |
+| ------------------------------- | -----: | ----: |
+| `scans.asset_syncer`            |     50 |    51 |
+| `scans.tasks.credentialed_sync` |     71 |    81 |
+| `ccure_audit.offboarding`       |     67 |    82 |
+| `core.findings.writer`          |      — |    48 |
+
+- **The modules added:** the writer's top-level imports, the check kernel, the CVSS module, the
+  credentialed coverage module and the findings helpers.
+- **Why they are new here:** the credentialed sync used to reach that code through lazy
+  imports, and the purge hook not at all.
+- **What is not added:** any heavy package.
+
+#### What G3 leaves, and what it found
+
+- **The cycle:** see Coupling, and §7.
+- **The NVD sync writes the catalogue in SQL** (`scans.nvd_sync`, the vulnerability-intel
+  capability). It is the feed's ingest, not a scan's finding, and G3 left it, recorded in the
+  guard with its reason (§7).
+- **The purge hook's other three statements** (asset notes, asset tags, scans) are other
+  capabilities' tables, outside G3.
+- **Found by the golden: open findings marked verified fixed.**
+  - **What it measured:** after the `from_empty` replay, 3,000 findings have `status = open`
+    and `remediation_state = verified_fixed`.
+  - **Which findings:** the pipeline's credentialed rows, which carry pipeline-shaped ids.
+  - **How:** a standalone credentialed scan writes its findings under its own ids, so its
+    comparison reads the pipeline's rows as absent, classifies them fixed, and verification
+    confirms them. Its own sweep correctly leaves them open, because it reports the same CVEs.
+  - **Who is affected:** any host audited both ways. The live database holds none, because no
+    standalone scan has run since the reset.
+  - **Status:** pre-existing, and preserved by G3 as a refactoring must (§7).
+- **Pipeline scans never verify.** Only the standalone credentialed task calls
+  `verify_from_comparison`. A pipeline rescan that shows a fix leaves the finding's remediation
+  state where it was. Pre-existing (§7).
+- **The asset syncer defines `_clean` twice.** The second replaces the first at import, so the
+  code calls the placeholder-aware one. `upsert_credentialed_services` therefore raises
+  `TypeError` on a listener with no service, name or process: `_clean("unknown")` is `None`.
+  The writer keeps that behaviour (§7).
+
+### G4 — C4: compliance consumes evidence providers and owns its catalogue code
+
+Commits, on top of `f00056c`:
+
+- **The code:** `1e6f93c` (the severity floor), `0201d79` (benchmark content reads nothing of
+  compliance), `d763203` (the benchmark loader and selection), `4d27190` (scan policy's
+  catalogue reads), `3d89365` (the evidence providers);
+- **The tooling:** `2c5c5df` (the compliance golden).
+
+**The scope** (analysis §10, C4): "Producers register providers for their sources.
+`core/compliance_evidence.py` becomes a registry. The benchmark loader and selection become
+compliance's catalogue writer. Scan-policy validation reads the catalogue through
+`ComplianceCatalogueService`." Unlocks: "Compliance stops querying five capabilities' tables;
+config audit depends on nothing above it". Risk: "scores must not move; compare full compliance
+runs before and after".
+
+**The owner's terms (23 Oct):**
+
+- G4 / C4 only, preserving assessment results, evidence, APIs and exports;
+- targeted compliance evidence and catalogue tests, the architecture guards, and a before/after
+  compliance comparison on a restored database copy;
+- a short live smoke if needed;
+- the full suite only if the targeted tests show unexpected failures or the change proves
+  broader;
+- stop after verification, and not G5.
+
+#### Before the change: a compliance golden
+
+`Backend/scripts/verification/compliance_golden/` (`2c5c5df`), on the pattern of G3's findings
+golden.
+
+- **The copy.** `run.sh up` restores a full dump into a throwaway PostgreSQL 18 on an internal
+  network. It never connects to the live server: `up` reads the dump file only.
+- **The inputs.** The development installation has three assets, no web scan, no network link
+  and two installed catalogues, too little to exercise most adapters. `setup.sql` adds, once and
+  before any capture:
+  - every catalogue installed for `org_development`, and a policy for each that had none
+    (19 policies, 2,293 policy rules);
+  - three assets: a Windows host whose attributes answer every evidence key, a Linux host
+    answering some (an unparseable date, a NULL, an empty list), and an unauthenticated host
+    with no OS;
+  - services in every state, TLS details, anti-malware names under a port and a process;
+  - copies of real findings, some with no severity or score of their own;
+  - network links;
+  - web scans matched by address and by host name, superseded, failed and deleted, with
+    findings in every status.
+- **What it captures, each step at its own frozen time.** The code is loaded as the worker
+  loads it (Celery's `import_default_modules()`), then:
+  - every asset's evidence for every source and for an undeclared one, translated and through
+    the cache (miss, hit, the cached value);
+  - two rounds of compliance scans of all 19 catalogues, and four scoped scans (asset ids, tags,
+    a CDE scope, an empty scope);
+  - re-verification of every asset-level finding of an automated rule;
+  - scan-policy validation of ten policies in both organisations, with and without a
+    credential;
+  - benchmark selection for every narrowing argument;
+  - both shipped benchmark packs loaded twice;
+  - `scripts/benchmarks/load_stig.py` over the SCAP fixture, with and without a CCI list, as an
+    operator runs it;
+  - every table's digest, and every `compliance_*` table in full.
+- **Determinism.**
+  - The clock is frozen, `random` seeded and `PYTHONHASHSEED` fixed.
+  - `secrets` and `uuid4` are counters spread over every digit. The tool's first version used
+    plain counters, as the findings golden does. Compliance history ids are
+    `uuid4().hex[:24]`, all zeros for a small counter, so every history insert collided and
+    every finding was skipped. A capture of one finding showed it before anything was compared.
+  - The evidence cache is emptied before each step that reads it.
+- **Measured.** Two captures of `f00056c` were byte-identical (38 files). The tool then changed
+  once, to load the code through `import_default_modules()` and to log the module list instead
+  of writing it. A third capture of `f00056c` with that version differs from the first two only
+  in `summary.json`, by that list. The comparisons below are against the third.
+
+#### Configuration audit imports nothing above it — `1e6f93c`, `0201d79`, `d763203`
+
+- **The severity floor** (`1e6f93c`).
+  - **What moved.** `SEVERITY_ORDER` and `severity_at_least` moved verbatim from
+    `core/scan_policy/spec.py` to `core/checks/contract.py`, and the spec re-exports both as the
+    same objects.
+  - **Why.** Benchmark selection imported them from scan policy. Once selection was
+    compliance's, that import and validation's reads would have joined compliance and scan
+    policy in a cycle.
+  - **Why the kernel and not the configuration-audit spec.** The scan-policy resolver's pinned
+    load profile holds the kernel already, and would have gained configuration audit.
+- **The framework-id prefix** (`0201d79`).
+  - `BENCHMARK_FRAMEWORK_PREFIX` is defined with the pack format, which names the framework a
+    pack becomes.
+  - `core.compliance_frameworks.is_benchmark_framework` reads it in the function, so importing
+    that module still loads only the standard library.
+- **The NIST catalogue** (`0201d79`).
+  - **The move.** The CCI crosswalk read the seeded NIST SP 800-53 catalogue through
+    `core.compliance_seeds`. Its reader moved verbatim to
+    `core.compliance_seeds.nist_800_53_control_numbers`, with the same cache and the same
+    warning under the same logger.
+  - **The parameter.** `crosswalk_entries` and `to_pack` take `nist_controls`, and the STIG
+    loader passes it.
+  - **Behaviour.** When the catalogue is supplied, the result is unchanged. When none is
+    supplied, nothing is checked, which is what an unreadable seed did before.
+  - **A pre-existing discrepancy, not changed.** The reader's docstring says an unreadable seed
+    yields no crosswalk at all; the code has always emitted unchecked entries (§7).
+- **The loader and selection** (`d763203`).
+  - **Where they went.** Both moved unchanged, apart from their docstring headers, to
+    `core/compliance_catalogue/benchmark_loader.py` and `benchmark_selection.py`.
+  - **The old paths** are `sys.modules` aliases of the same module objects, the pattern
+    `scans.cvss` uses. Module code imports the new paths, and a guard refuses an import of the
+    old ones.
+  - **Unchanged.** Logger names, the scripts' command lines, the pack format.
+
+#### Scan policy reads the catalogue through compliance — `4d27190`
+
+- **What moved.** Validation's queries of five compliance tables, and its call to
+  `compliance_frameworks.is_active`, moved unchanged to `core/compliance_catalogue/reads.py`.
+- **What it answers.** Plain values: the framework ids that exist, whether one is offered, the
+  ids an organisation installed, and the active rule links per framework.
+- **Unchanged.** Validation's messages and its warning.
+- **A difference from the plan.** The plan names `ComplianceCatalogueService`. It is in
+  `ccure_audit` (the audit boundary, layer 6), and `core` may not import it
+  (`foundations-do-not-import-audit-module`). So the reads are in the compliance capability,
+  where that service could read them too (§7).
+
+#### The evidence providers — `3d89365`
+
+- **The registry.** `core/compliance_evidence.py` keeps the declared sources, the cache and its
+  keys, and the answer for an undeclared source. Its eight adapters are gone. It has
+  `register_evidence_provider`, which refuses an undeclared source and a second provider for one
+  source.
+- **The providers**, moved body for body to the tables they read:
+
+  | Capability   | Module                      | Sources                                                                    |
+  | ------------ | --------------------------- | -------------------------------------------------------------------------- |
+  | Findings     | `core/findings/evidence.py` | `vulnerability_audit`, `services_ports`, `tls_certificates`; service names |
+  | Assets       | `core/asset_evidence.py`    | `credential_validation`, `offline_configuration`, `malware_scan`; identity |
+  | Topology     | `core/topology/evidence.py` | `network_topology`                                                         |
+  | Web scanning | `core/web/evidence.py`      | `web_vulnerability_audit`                                                  |
+
+- **The two mixed sources.** Each read two capabilities' tables, and now takes the other
+  capability's part as an argument:
+
+  - `malware_scan` is handed the service names, in the order its own query returned them;
+  - `web_vulnerability_audit` is handed the asset's identity (organisation, address, host name)
+    instead of the row.
+
+  An AST comparison with the old adapters shows only those two seams.
+
+- **Who registers them: Audit's composition root**, `ccure_audit/evidence_providers.py`, which
+  also composes the two mixed sources.
+  - **A difference from the plan.** Principle 6 says each producer registers. A producer
+    importing compliance's registry would be a lateral edge (findings, assets) or an upward one
+    (topology and web scanning sit a layer below compliance). So the producers declare and the
+    composition root registers (§7).
+- **Every process registers them.** Celery's `imports` names the module, so the worker loads it
+  at start-up, and `main.py` loads it through `import_default_modules()`. The task `include`
+  list, pinned to task modules, is unchanged.
+- **One behaviour change, in a misconfigured process only.** A declared source with no provider
+  raises `EvidenceProviderMissing`. Otherwise a process that evaluated compliance without its
+  providers would score every automated rule as not assessed, which looks like a quiet host.
+
+#### Verification
+
+| Check                                                           | Result                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No live scan in progress                                        | None running or queued before the dump. The golden and the smoke used a throwaway server restored from it                                                                                                                                                                                                                                                                                                                         |
+| The moves, statically                                           | Loader and selection identical apart from the docstring header; the eight adapters AST-identical apart from the two seams; the severity floor verbatim                                                                                                                                                                                                                                                                            |
+| Stage 1: the changed code's tests and `tests/repo` (27 targets) | **1,517 passed, 0 failed, 1 skipped** (the Alembic rehearsal, which skips on an activated `alembic.ini`), 6 min 18 s                                                                                                                                                                                                                                                                                                              |
+| Stage 2: the selector's groups                                  | 13 groups (`assets`, `audit`, `audit_boundary`, `auth`, `compliance`, `credentialed`, `modules`, `repo`, `reports`, `scans`, `security`, `topology`, `web`): **7,503 passed, 0 failed, 210 skipped**, 16 min 5 s. The skips are the environment ones: the audit chain's and retention's DBA bootstrap, the Alembic rehearsal, the live OSV feed                                                                                   |
+| Full suite                                                      | Not run. The selector reports `full` only because `main.py` changed, and that change is a comment; without it the selector names the 13 groups above. Nothing in either stage failed                                                                                                                                                                                                                                              |
+| Interfaces, `f00056c` against `3d89365`                         | Identical: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                                                 |
+| Compliance golden, `f00056c` against `3d89365`                  | **Byte-identical, 38 files.** That covers the evidence of 7 assets for 9 sources; 42 scan runs; 8,049 findings (2,988 pass, 1,273 fail, 3,704 manual review, 84 not applicable); 11,145 history rows; 270 scores; 7,200 re-verifications (1,306 pass, 631 fail, 1,159 manual review, 4,104 refused for a parked framework); 10 policies validated; 21 selection cases (955 checks by default); 2 packs loaded twice; 2 STIG loads |
+| Live smoke, `f00056c` against `3d89365`                         | A real worker, started with `docker-compose.yml`'s command (prefork, the three queues), on a fresh copy, given `compliance.run_scan` by name for ISO 27001 and NIST CSF. Both runs completed at both commits; the 1,146 findings (asset, control, rule, status) and 25 score rows are identical; no `EvidenceProviderMissing`. Importing `main.py`, as the API does, registered all eight sources at `3d89365`                    |
+
+#### Coupling
+
+| Measure                           | `f00056c` | `1e6f93c` | `0201d79` | `d763203` | `4d27190` | `3d89365` |
+| --------------------------------- | --------: | --------: | --------: | --------: | --------: | --------: |
+| Capability cycle, all imports     |        13 |        13 |        13 |        12 |        12 |        12 |
+| Capability cycles, top-level      |   5, 2, 2 |   5, 2, 2 |   5, 2, 2 |      5, 2 |      5, 2 |      5, 2 |
+| Upward edges                      |        31 |        30 |        28 |        19 |        19 |        19 |
+| Lateral edges                     |        44 |        44 |        44 |        44 |        39 |        33 |
+| Foreign-table references / writes |    66 / 9 |    66 / 9 |    66 / 9 |    61 / 5 |    56 / 5 |    50 / 5 |
+
+- **Configuration audit depends on nothing above it.** No configuration-audit module imports a
+  higher layer, and the capability has left both cycles; its top-level pair with compliance is
+  gone.
+- **Compliance.**
+
+  - **The evidence path queries nothing outside compliance.** Compliance's foreign references
+    fell from eight tables to two, and it has no foreign write.
+  - **What is left, outside the evidence path:**
+
+    - the compliance scan reads `assets` for its scope, prerequisites and platform;
+    - the remediation executor sets `services.state` and an asset attribute by assignment, which
+      the ratchet counts as references;
+    - the router joins `assets`.
+
+    The analysis's target for compliance is no foreign table, so it is not met yet (§7).
+
+- **Scan policy names no compliance table.** One lateral edge remains, to compliance's reads.
+- **Unchanged.** The audit boundary's `ComplianceCatalogueService` still reads the five catalogue
+  tables (§7).
+
+**Import cost** (first-party modules / all modules, `f00056c` → `3d89365`):
+
+| Module                                                                                                                                            |    Before |     After |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | --------: | --------: |
+| `core.compliance_evidence`                                                                                                                        |  35 / 395 |   4 / 335 |
+| `core.benchmarks.selection` (now an alias)                                                                                                        |  63 / 377 |  60 / 374 |
+| `core.benchmarks.loader` (now an alias)                                                                                                           |  58 / 372 |  60 / 374 |
+| `core.compliance_tasks`, `core.scan_policy.validation`, `core.benchmarks.pack`, `core.scap`, `core.compliance_frameworks`, `ccure_audit.services` | unchanged | unchanged |
+
+#### What G4 leaves, and what it found
+
+- **Compliance's remaining reads of assets and services**, outside the evidence path (Coupling,
+  §7).
+- **`ComplianceCatalogueService` and the reads** (§7).
+- **Principle 6's wording**, against a composition root that registers the providers (§7).
+- **Found by the golden's inputs: Windows Defender is not recognised as anti-malware.**
+  - **What the collector stores.** The Windows collector records the Defender service as name
+    `WinDefend` and description "Microsoft Defender Antivirus Service".
+  - **What the evidence reads.** The name first. It matches `defender`, which `windefend` does
+    not contain.
+  - **The effect.** A Windows host protected only by Defender fails `crl_malware_agent_v1` and
+    ISO A.8.16's `crl_iso_monitor_agent_v1`.
+  - **Status.** Pre-existing, and preserved (§7).
+- **Found reading the SCAP crosswalk: an unreadable NIST seed is documented as emitting no
+  crosswalk, and emits an unchecked one.** Pre-existing, and preserved (§7).
+
+### G5 — C6: a typed phase hand-off, and one pipeline definition
+
+Commits, on top of `4b77625`:
+
+- **The code:** `f533e61` (the hand-off and the pipeline, defined), `c011844` (the phase
+  tasks hand over through the pipeline), `ec415b7` (the browser's continuation too);
+- **The tooling:** `07bd679` and `518777a` (the phase-pipeline golden).
+
+**The scope** (analysis §10, C6): "Typed phase hand-off. `HostRecord` and `ServiceInventory`
+between phases; one pipeline definition instead of each task starting the next." Unlocks: "The
+network pipeline becomes composable". Risk: Medium–High.
+
+**The owner's terms (24 Oct):**
+
+- G5 / C6 only;
+- inspect the plan's phase hand-off before editing, and replace the untyped hand-off with the
+  typed contract, changing only the producers, consumers and tests that need it;
+- validate phase payload compatibility, ordering and failure propagation, with targeted
+  orchestration tests and the architecture guards first, and broader tests only if those
+  expose a regression;
+- stop after verification, and not G6.
+
+#### What crossed between phases before C6
+
+- **The hand-off.** Host discovery dispatched asset discovery, and asset discovery the
+  vulnerability audit, by calling the next task's `.delay()` with `hosts=` a list of dicts.
+  - **Which hosts:** the active ones, picked with `h.get("is_active")`.
+  - **Whether to continue:** from `get_terminal_phase` and the interactive setting.
+- **The identity merge.** The vulnerability audit restored the hosts' identity from what it was
+  handed (`_merge_host_identity`), in its own module.
+- **The browser's continuation.** `POST /scan/asset-discovery` and `/scan/vulnerability-audit`
+  dispatched the same tasks by registered name, with the records the browser posted.
+- **The records** are projections of `core.models.HostResult`:
+
+  - phase 1 hands over `to_phase1_dict()` or `to_basic_dict()`;
+  - phase 2 hands over `to_clean_dict()`.
+
+  The stored phase payloads carry exactly those key sets, which was read off the live database
+  before the change.
+
+- **The aliasing that matters.** The receiving phase gives the dicts to its engines, which add
+  to them and edit their port records in place. Phase 3's merge reads those edits back from the
+  dicts it was handed: Nmap's pre-enrichment of the ports reaches the stored payload only that
+  way.
+
+#### The hand-off — `core/phase_handoff.py` (`f533e61`)
+
+In the scan kernel; it imports only the standard library.
+
+- **`HostRecord`** is one host: its address (`ip_address`, or `ip` where only that is written),
+  whether it answered, the services found on it (`ServiceRecord`, read from `open_ports`), and
+  the record itself.
+- **`ServiceInventory`** is what asset discovery hands the audit: the hosts in order, `active()`,
+  and `restore_identity`, the merge moved verbatim as `merge_host_identity`. Its key list is
+  `HOST_IDENTITY_FIELDS`.
+- **The wire form is unchanged, deliberately.**
+  - **Why it must be:** Celery carries JSON; the tasks' signatures are pinned; the browser posts
+    back the records it was shown; and a message queued before a deploy is read after it.
+  - **How:** a record crosses as its producer's dict, every key in order. `HostRecord.wire()`
+    returns that dict itself, not a copy, so the in-place edits and the merge keep working.
+- **One change in behaviour, in a malformed hand-off only.** A record that is not a mapping is
+  refused with `HandoffError` when the receiving phase reads it. Before, it failed inside that
+  phase's engines. Either way the phase fails and the scan is settled as failed.
+
+#### The pipeline — `scans/pipeline.py` (`f533e61`, `c011844`, `ec415b7`)
+
+- **One definition.**
+  - **The table:** which phases each mode runs, moved verbatim from `scan_helpers.py`.
+    `scan_helpers` re-exports the same objects, under the same logger.
+  - **The phases:** the three network phases and their registered task names.
+  - **`next_phase`:** the rule each phase task applied before. A phase continues to the next
+    unless it is the mode's terminal phase, or the scan is interactive.
+  - **`hand_over`:** dispatches a phase by registered name, with its hosts as their own dicts.
+- **No phase task starts another** (`c011844`):
+  - host discovery hands asset discovery the `HostRecord`s that answered;
+  - asset discovery hands the audit the active part of its `ServiceInventory`;
+  - each reads its input as the typed hand-off, and the audit restores identity through the
+    inventory;
+  - `_merge_host_identity` stays a name of the task module, because `core/tasks.py` offers it.
+- **The browser's continuation hands over through the pipeline too** (`ec415b7`). The request
+  models, the checks before dispatch and the response are unchanged.
+- **The task names, queues, limits and signatures are unchanged**, and so is what each task
+  receives.
+- **The guard is `tests/repo/test_phase_pipeline_boundary.py`.** It refuses:
+  - a read of asset discovery's or the audit's registered name outside their definition, their
+    task module and the pipeline;
+  - a direct `.delay` or `.apply_async` of either task;
+  - a hand-off module importing beyond the standard library.
+
+#### Before the change: a phase-pipeline golden
+
+`Backend/scripts/verification/pipeline_golden/` (`07bd679`, `518777a`).
+
+- **Where it runs.** On the findings golden's restored server (`findings_golden/run.sh up`), on a
+  fresh copy of its template, Celery eager, with one commit's code.
+- **What runs for real.** The phase tasks, the scan-phase writers, the asset syncer, the
+  findings writer, the credentialed enrichment and the topology check are the commit's own code.
+- **What is replaced.** Only the orchestrator, by a recorder. It takes each phase's input as the
+  task hands it over and answers from the phase results the restored database stores. Like the
+  real phase 3, it edits the port records it was handed in place and returns hosts without open
+  ports, hostname or vendor, which the task then restores.
+- **Sixteen scenarios**, each started by dispatching host discovery by name (two start a later
+  phase directly):
+  - the three pipeline modes;
+  - options forwarded from the request and from the scan record, and explicit ports;
+  - no active host;
+  - an interactive scan continued with the browser's records (extra keys, an address under
+    `ip`, a truthy non-boolean `is_active`);
+  - a phase reporting failure, one raising, two cancelled between phases;
+  - a broker refusing phase 2, and one refusing phase 3;
+  - asset discovery started with a host that did not answer;
+  - a phase-3 hand-off with records that carry no address.
+- **What it records:**
+  - every dispatch's name and arguments as the broker carries them;
+  - every orchestrator call's arguments;
+  - every progress frame and each result;
+  - every table's digest, and the `scans` and `scan_phases` rows in full.
+- **Determinism.** The clock is frozen; `secrets`, `uuid4` and the Celery task ids are counters.
+  `audit_chain_heads.updated_at`, which PostgreSQL stamps itself, is left out of that row.
+
+#### Verification
+
+| Check                                                                                                                                                                          | Result                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No live scan in progress                                                                                                                                                       | None running or queued before the dump; the golden used a throwaway server restored from it                                                                                                                                                                                                                                                                                                               |
+| The hand-off as before, statically                                                                                                                                             | The merge's body and key list equal to the pre-C6 one; the pipeline table and helpers moved verbatim and re-exported as the same objects; every dispatch passes the same keyword arguments                                                                                                                                                                                                                |
+| New tests (`test_phase_handoff`, `test_scan_pipeline`, `test_phase_pipeline_boundary`)                                                                                         | Records cross as the same dicts, key order kept, edits downstream visible; `is_active` read for truth as before; the merge equal to the pre-C6 one over six shapes, key order included; `next_phase` equal to the pre-C6 rule for every mode, phase and interactive setting (48 cases); a refused dispatch raises; the boundary                                                                           |
+| Quick set (the new tests, the phase tasks, the continuation route, the task, registry and capability guards)                                                                   | 200 passed, uncommitted tree                                                                                                                                                                                                                                                                                                                                                                              |
+| Stage 1, `ec415b7`, clean worktree: `tests/repo` and the 27 pipeline-touching files of `tests/scans`, the three rate-limit inventories, two report tests and one topology test | **1,335 passed, 0 failed, 1 skipped** (the Alembic rehearsal, an environment skip), 6 min 6 s                                                                                                                                                                                                                                                                                                             |
+| Broader tests                                                                                                                                                                  | Not run. The selector names 9 groups (targeted, not full); stage 1 showed no regression, so the owner's terms did not call for them                                                                                                                                                                                                                                                                       |
+| Interfaces, `4b77625` against `ec415b7`                                                                                                                                        | Identical: routes, limiter keys, OpenAPI, the task registry, beat                                                                                                                                                                                                                                                                                                                                         |
+| Pipeline golden, first version (15 scenarios)                                                                                                                                  | Two captures of `4b77625` identical (19 files); `c011844` and `ec415b7` identical to them                                                                                                                                                                                                                                                                                                                 |
+| Pipeline golden, final version (16 scenarios)                                                                                                                                  | Two captures of `4b77625` identical (20 files); `ec415b7` identical                                                                                                                                                                                                                                                                                                                                       |
+| Golden mutations, each committed in a scratch worktree, never on a branch                                                                                                      | 4 of 4 caught: records copied at hand-over (the stored phase-3 payloads differ); asset discovery handing on hosts that did not answer (caught once the sixteenth scenario existed: in the automatic pipeline phase 1 had already dropped them, so the first version compared it identical); interactive mode ignored (9 files); a refused dispatch swallowed (the two broker scenarios and the scan rows) |
+| Guard mutations                                                                                                                                                                | A phase task dispatching the audit directly, and the router dispatching it by name: each caught by two of the boundary tests                                                                                                                                                                                                                                                                              |
+
+#### Coupling
+
+Unchanged: capability cycles 12 and 5, 2 (top-level); upward edges 19; lateral 33;
+foreign-table references 50 and writes 5. The new modules belong to the scan kernel (the
+hand-off) and the scans capability (the pipeline), and every edge they add points down.
+
+**Import cost** (first-party modules, `4b77625` → `ec415b7`):
+
+| Module                | Before | After |
+| --------------------- | -----: | ----: |
+| `scans.tasks.phases`  |    145 |   147 |
+| `routers.phase_scans` |    146 |   148 |
+| `scan_helpers`        |     93 |    96 |
+| `core.phase_handoff`  |      — |     2 |
+| `scans.pipeline`      |      — |     5 |
+
+#### Differences from the plan
+
+- **The hand-off is typed at the phase boundary, and the engines still work on the dicts.** The
+  plan's interface table gives the engines `discover(…) → list[HostRecord]` and
+  `inventory(hosts, …) → ServiceInventory`. That is an engine refactor:
+
+  - the engines read and edit the records in place, and phase 3 depends on it;
+  - C6 asks for the hand-off "between phases".
+
+  So the records cross as their own dicts, with the typed fields read beside them (§7).
+
+- **§12's target for `scans`, "imports engines only through the pipeline definition", is not
+  met.** C6 moved the chaining; the orchestrator, in the scans capability, still imports the
+  engines itself (§7).
+- **No live scan.** §11 asks for live validation of C6, and the owner's terms asked for targeted
+  tests first and broader validation only on a regression; there was none.
+  - **Why the golden stands in:** the live harness runs Celery eager too, and C6 changes neither
+    the orchestrator nor an engine.
+  - **What neither exercises:** a real broker's JSON round trip of the hand-off. It carries the
+    same dicts with the same keyword arguments, under the same task names and queues, so it is
+    unchanged by construction, and it was not measured.
+- **Host discovery is still dispatched by the routes and the scheduler.** It starts a scan from
+  a request; nothing is handed to it.
+
+#### What G5 leaves, and what it found
+
+- **A phase run beyond its mode's terminal phase still chains on.** For example, asset
+  discovery in a basic scan dispatches the audit. That was the rule, and `next_phase` keeps it.
+  The routes refuse a phase outside the scan's mode, so only a direct task call reaches it (§7).
+- **Found by the golden: a continued scan's posted records reach the stored phase-3 payload key
+  for key.**
+  - **How:** the identity merge starts from the record the audit was handed and lays the audit's
+    own record over it.
+  - **The effect:** a key the browser posted that the audit does not itself write is stored as a
+    scan result.
+  - **Who can do it:** a person with `audit.scan.run`, continuing their own scan, for hosts its
+    scope admits.
+  - **Status:** pre-existing, and preserved (§7).
+- **The engines' own record type** (§7), and the scans capability's direct engine imports (§7).
+
+### G6 — C7 and C8: findings and assets read each other through their own modules, and the compliance router is mounted from its parts
+
+Commits, on top of `b6ae9bf`:
+
+- **C7:** `1ee36b5` (the findings side reads hosts through a port), `bf7390d` (the assets router
+  reads findings through the findings reads);
+- **B10's follow-up:** `604157e` (the CVE paragraph is a renderer's helper);
+- **C8:** `125da93` (the 20 generators become renderers), `5222695` (the router mounted from its
+  parts);
+- **The tooling:** `a324220` (the API golden).
+
+**The scope:**
+
+- **C7** (analysis §10): "Read side. Dashboard and reports consume read services … instead of
+  querying tables." Unlocks: "Read models stop coupling to storage". With it, this log's §7 row
+  from G3: `routers.findings`, `routers.remediation` and `core.remediation.reporting` read the
+  asset model, and `routers.assets` reads the findings models.
+- **C8:** "Split `routers/compliance.py`: catalogue, assessment, attestation and evidence,
+  schedules, remediation, reports. The 20 PDF/DOCX generators move to `reporting/compliance/`."
+  Unlocks: "Compliance reports become renderers".
+- **This log's §7 row from B10:** move `make_pdf_cve_paragraph` out of `scan_helpers` into the
+  renderers.
+
+**The owner's terms (24 Oct):**
+
+- G6 / C7 + C8 only, following the plan;
+- decouple the remaining findings/assets read paths in the routers and the remediation report,
+  split the compliance router as planned, and move `make_pdf_cve_paragraph` to its owner;
+- keep to those items; targeted tests, the architecture guards and the relevant golden
+  comparisons;
+- validate the real broker JSON round trip if the changed paths affect it, otherwise record it as
+  unverified;
+- update this log, stop after G6, and not F1–F3.
+
+#### C7 — findings and the asset registry
+
+**What read what before.**
+
+- **Findings read assets.** The findings and remediation routers and the remediation report
+  joined `Asset` to scope a finding by its organisation, and the findings list and detail to
+  label and search it by its host. After a person changed a finding's status, the findings
+  router also wrote the asset's open-finding counts, risk score and risk level. The ratchet
+  counts an assignment to a loaded row's attribute as a reference, not a write, so it had
+  recorded that write as a read.
+- **Assets read findings.** The assets router queried `services`, `tls_details` and
+  `asset_vulnerabilities` through the findings models: each asset's open-service count, an
+  asset's services and findings, and the estate's certificate, service and service-host
+  listings.
+
+**The direction.** G3 settled it: the asset syncer hands a scan's findings to the findings writer,
+and the writer imports no asset model. So the asset registry may depend on findings, and findings
+may not depend on the asset registry.
+
+**The port — `core/findings/hosts.py`** (`1ee36b5`). The findings side names the host columns it
+reads (`HOST_COLUMNS`) and keeps a registry for one directory:
+
+- `hosts()` is a subquery of exactly those columns, to join findings to;
+- `record_open_findings(db, asset_id, counts)` hands the asset write over.
+
+The asset registry answers it in `core/asset_hosts.py`. The counts-and-risk write moved there
+verbatim. Audit's composition root registers it (`ccure_audit/host_directory.py`), named in
+Celery's `imports` beside G4's evidence providers. So the worker loads it, for the remediation
+section of a credentialed report, and so does the API (through `import_default_modules`). A read
+with none registered raises `HostDirectoryMissing`.
+
+**The SQL is one statement, as before.** PostgreSQL pulls a plain subquery up into the join. The
+golden's `EXPLAIN` of every findings, grouped, detail, remediation and asset query is identical to
+the direct join's (122 statement sets), so the order of rows that tie under a sort is unchanged.
+Scoping is still by the asset's organisation; §7 records the alternative.
+
+**The findings reads — `core/findings/reads.py`** (`bf7390d`). The assets router asks it for all
+six reads and gets plain values back; the queries and the rows they make moved verbatim. The router
+keeps its routes, permissions, asset checks, the port-risk table and the response envelopes.
+
+The three estate listings join hosts through the port and select the host's columns. Before, they
+loaded the asset through `Service.asset`, an eager outer join. With the host inner-joined, every
+value is the one the relationship gave.
+
+**A defect the golden found before the commit.** In the first version of `bf7390d`, the
+certificate listing could not be built. Its `join(Service)` relied on inference, and once the
+host's columns were added SQLAlchemy re-inferred it against two candidate left sides. All 17
+certificate requests raised `InvalidRequestError`, and no test reached that route. The ON clause
+is named now (the one inference chose before), and `tests/scans/test_findings_reads_for_assets.py`
+runs the listing with every sort, in two organisations.
+
+#### B10's follow-up — the CVE paragraph (`604157e`)
+
+`make_pdf_cve_paragraph` moved, unchanged, to `reporting/report_helpers.py`, and the web scan's
+PDF renderer imports it from there. `scan_helpers` keeps the name through a module `__getattr__`,
+imported on first use, so loading `scan_helpers` still loads no ReportLab.
+
+That was the one edge holding web DAST in the capability cycle, and it leaves the cycle. The
+renderer now loads 3 first-party modules, not 97, and no longer FastAPI, SQLAlchemy, Redis, Scapy
+or nmap.
+
+#### C8 — the compliance router
+
+**The renderers** (`125da93`). The 20 generators (2,563 lines) moved, unchanged, to
+`reporting/compliance/`:
+
+- one module per document family: `soa`, `nist_csf`, `pci_dss`, `privacy`, `nist_800_53`,
+  `iec_62443`, `nist_800_82`, `nerc_cip`, `nis2`;
+- `common` holds the verdict accessor four of them share.
+
+A renderer takes the controls and rolled-up verdicts its route read and returns the document. It
+imports nothing of compliance, no model and no database code.
+
+**One signature changed.** The NIST CSF pair grouped the controls themselves with `_csf_group`,
+which orders by `core.nist_csf`, compliance's catalogue knowledge. The route now groups them and
+hands the groups over. `_csf_group` is pure, and nothing between the verdict read and the generator
+call can raise, so the document is the same.
+
+**The parts** (`5222695`), moved unchanged. Seven parts against the plan's six: the report routes
+are in two modules, to keep every file under the analysis's 1,500-line target.
+
+| Module                         | Lines | Sections                                                  |
+| ------------------------------ | ----: | --------------------------------------------------------- |
+| `compliance_catalogue`         |   774 | the marketplace; policy baselines and rules; the register |
+| `compliance_assessment`        |   816 | starting a scan; its findings; its runs; the summary      |
+| `compliance_attestation`       |   715 | attestation; evidence files; exception waivers            |
+| `compliance_schedules`         |   231 | recurring scans                                           |
+| `compliance_remediation`       |   833 | credentials; applying a fix; the maker-checker queue      |
+| `compliance_reports`           |   625 | the SoA, the executive report, gap analysis, NIST CSF     |
+| `compliance_framework_reports` |   943 | the other eleven framework reports                        |
+| `compliance_common`            |   336 | what they share                                           |
+| `compliance` (the router)      |   261 | the sections mounted in order; the old module's names     |
+
+**The API is the one it was.**
+
+- **The route order is kept.** Each section is a router of its own, and `routers/compliance.py`
+  mounts the 15 sections in the order the routes were always listed. The gateway's committed route
+  policy pins that order and each route's endpoint name.
+- **The names are kept.** Each part sets its `__name__` to `routers.compliance`, as the platform's
+  moved modules adopt their legacy names. So the limiter keys, the gateway policy's endpoints and
+  the models' module stay `routers.compliance.<name>`.
+- **No patch through the router.** `routers/compliance.py` re-exports every name the old module
+  defined and, like `core/tasks.py`, refuses a patch, naming the part to patch. Eight test patches
+  in three files moved to the parts that read the names: the evidence path's to
+  `compliance_attestation`, the refusal audit's to `compliance_common`.
+- **One change that is not a move.** Compliance's two reads of the asset model are written once,
+  in `compliance_common`, instead of in the two parts that use them. They are the findings list's
+  join and the remediation queue's label lookup. Otherwise the split would count compliance's one
+  existing dependency on assets twice, and the lateral-edge ceiling, which may only be lowered,
+  would have to rise. The SQL is the same.
+
+The guard is `tests/repo/test_compliance_router_split.py`. It pins:
+
+- the routes' module, and the order of the sections;
+- the limiter keys, and the refusal of a patch;
+- the old module's names;
+- the renderers' imports and the twenty generators;
+- the 1,500-line target.
+
+#### Before the change: an API golden
+
+`Backend/scripts/verification/api_golden/` (`a324220`) runs on the compliance golden's restored
+server: the 24 Oct 13:16 full dump with that golden's `setup.sql`. It works on a fresh copy of the
+template, with one commit's code, and drives 450 requests through `main.app`:
+
+- **Findings:** the list, groups and detail under every filter and sort, in both organisations
+  (the golden adds a host with services, TLS and findings to the second one).
+- **Remediation:** the summary, the queues and the history.
+- **Assets:** the list and detail, an asset's services and findings, the estate's certificates
+  and services under every sort, and the hosts of every service signature.
+- **Writes:** the findings and remediation writes.
+- **Compliance:** every compliance route. All 14 catalogues are activated, so all 13 report routes
+  render, as PDF and DOCX, for every installed catalogue. Also the evidence upload, attestation,
+  schedules, policies, credentials and exceptions, and the four remediation paths.
+
+What it captures:
+
+- every response: JSON as rendered, a PDF as its SHA-256 (ReportLab invariant), a DOCX as each
+  member's SHA-256;
+- `EXPLAIN (COSTS OFF)` of every SELECT the findings, remediation and asset reads ran;
+- every broker message;
+- every table's digest, and the touched tables in full.
+
+**The broker is real.** Celery is not eager: kombu serialises each dispatch to the Redis beside
+the database. After each request every queue is read back and decoded with kombu's own
+deserialiser, which is what a worker receives. Each record holds:
+
+- the task, arguments, keyword arguments and routing;
+- the headers that do not name the run (task ids are counters; the origin host is dropped).
+
+A compliance scan's message is then run in-process from the decoded arguments, as a worker runs
+it. A remediation's is recorded and not run: it would open a session to a host. Its encrypted
+credential is recorded as whether it decrypts to the posted placeholder, never as text.
+
+**Who is signed in.** The restored platform administrator, by overriding the identity dependency.
+The RBAC engine still decides every permission.
+
+#### Verification
+
+| Check                                                                     | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Interfaces, `b6ae9bf` against `5222695`                                   | The route table in order (288 routes, with each route's module, name, tags, status code, response model and dependencies), every limiter key and the OpenAPI document as generated (key order kept) identical at C8a and C8b. The interface snapshot names five differences, all expected: the new parts hold the canonical limiter                                                                                                                                         |
+| API golden, determinism                                                   | Two captures of `b6ae9bf` identical (654 files)                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| API golden, C7 (`bf7390d`)                                                | Every response, broker message and table identical. 63 plan files differ, all the certificate and service-host listings: the redundant second (eager) join to `assets` is gone, and the driving joins are unchanged. The other 122 plans are identical                                                                                                                                                                                                                      |
+| API golden, C7's first version                                            | 17 certificate requests raised `InvalidRequestError`; fixed before commit (above)                                                                                                                                                                                                                                                                                                                                                                                           |
+| API golden, `604157e`, `125da93`, `5222695`                               | Each byte-identical to C7's capture, plans included: all 47 compliance routes' responses, every PDF digest and DOCX member, the broker record, the tables                                                                                                                                                                                                                                                                                                                   |
+| Broker round trip, the four moved compliance dispatches                   | 23 messages on the `compliance` queue, identical at every commit: 20 `compliance.run_scan` (each then run from its decoded arguments) and the three `compliance.run_remediation` paths (an emergency bypass, an approval by someone other than the requester, a bypass rollback). The bypass's credential decrypts to the posted value                                                                                                                                      |
+| Guard mutations, each in a scratch copy                                   | 7 of 7 caught: the findings router importing the asset model again; the assets router importing a findings model again; the worker not loading the host directory (2 tests); the web PDF renderer back on `scan_helpers` (2 tests: the edge, and web DAST back in the cycle); a part without the router's name; two sections mounted out of order; a renderer importing compliance (2 tests)                                                                                |
+| Golden mutations, each committed in a scratch worktree, never on a branch | 3 caught, 1 not: the moved rollback route dispatching with `is_rollback` flipped (`broker.jsonl`); the findings list without its tenant filter (9 responses, 21 plans); a rendered NIST CSF label, "Non-compliant" (4 report responses, PDF and DOCX). Not caught: the label of a _passing_ CSF control. No NIST CSF control passes in the restored data (26 fail, 80 not assessed), so that label is never drawn and the golden does not exercise the branch (§7)          |
+| Targeted tests, `5222695` from a clean worktree, throwaway containers     | The selector's 14 groups (assets, audit, audit_boundary, auth, compliance, credentialed, modules, rbac, repo, reports, scans, security, topology, web): **8,247 passed, 0 failed, 211 skipped**, 19 min. The skips are environment ones: 165 need the DBA-installed audit chain and 44 audit retention, one the live OSV feed, one the Alembic rehearsal. The gateway route-policy drift test ran and passed. Not run: the rest of the suite (the selector did not name it) |
+| Live scan                                                                 | Not run: neither C7 nor C8 touches a scan path; the compliance scans ran from real broker messages in the golden                                                                                                                                                                                                                                                                                                                                                            |
+
+#### Coupling
+
+`b6ae9bf` → `5222695`:
+
+| Figure                                  | Before | After |
+| --------------------------------------- | -----: | ----: |
+| Capability cycle, all imports (largest) |     12 |    11 |
+| Capability cycle, top-level (largest)   |      5 |     5 |
+| Upward edges                            |     19 |    18 |
+| Lateral edges                           |     33 |    29 |
+| Foreign-table references                |     50 |    46 |
+| Foreign-table writes                    |      5 |     5 |
+
+- **Web DAST left the cycle**, through the paragraph's move.
+- **Findings and assets are out of each other's cycle.** No findings module imports the asset
+  registry or names its table. The asset router reads findings through `core.findings.reads`,
+  and the syncer calls the writer, both in the direction G3 set.
+- **Foreign-table writes stay at 5.** The uncounted findings → assets write is gone (above).
+
+**Import cost** (first-party modules, `b6ae9bf` → `5222695`):
+
+| Module                        | Before | After |
+| ----------------------------- | -----: | ----: |
+| `reporting.web_pdf_generator` |     97 |     3 |
+| `routers.compliance`          |     72 |    92 |
+| `routers.assets`              |     69 |    73 |
+| `routers.findings`            |     79 |    82 |
+| `routers.remediation`         |     74 |    75 |
+| `core.remediation.reporting`  |     41 |    41 |
+| `scan_helpers`                |     96 |    96 |
+
+The compliance router loads its eight parts and ten renderer modules.
+
+#### Differences from the plan
+
+- **C7 named the dashboard and the reports API; G6 did the read paths the owner named.** Those
+  are the findings, remediation and asset routers and the remediation report. The dashboard (11
+  foreign tables) and `routers.reports`' direct reads are unchanged (§7).
+- **Hosts are read through a port, not through `ccure_audit/services`.** A findings router is a
+  layer-4 module, and the audit boundary is layer 6. A read service there would be an upward
+  edge, so the asset registry's answer is registered at the composition root instead, as G4 did
+  for evidence.
+- **The port carries a SQL projection, not plain values.** That keeps every query one statement
+  with the same plan. The coupling to the asset table is now a declared contract (`HOST_COLUMNS`,
+  checked at registration) rather than an import (§7).
+- **Eight modules where the plan named six parts.** The report routes are split in two, and
+  `compliance_common` holds what the parts share.
+- **The executive compliance report still draws its PDF inline.** It is not one of the 20
+  generators (§7).
+
+#### What G6 leaves, and what it found
+
+- **Found: the findings router wrote the asset row.** Counts, risk score and risk level, after a
+  status change: a cross-capability write the ratchet recorded only as a reference. The asset
+  registry writes it now, through the port.
+- **Found by the golden: the certificate listing's broken first version.** Fixed before commit;
+  the route had no test.
+- **`/assets/services/assets` pages with no `ORDER BY`.** Pre-existing: which rows a page holds is
+  whatever the plan returns (§7).
+- **Findings is still in the capability cycle,** through edges outside C7: the comparison reads
+  the scan model; the writer imports the credentialed coverage and the router the distribution
+  version comparator; the credentialed scope reads configuration-audit findings; the comparison
+  imports scan policy (§7).
+- **Compliance's reads of assets and services outside the evidence path** stand, as G4 recorded,
+  now in `compliance_common` and the scan task.
+- **The network pipeline's broker round trip** (G5's §7 row) is still unverified: G6 measured the
+  compliance dispatches only.
+
 ## 7. Decisions awaiting the project owner
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                         | From                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                          | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
-| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                 | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
-| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                          | analysis §13                                                       |
-| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                             | S2                                                                 |
-| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                              | S1                                                                 |
-| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                          | S2                                                                 |
-| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                                                                                                                                           | S2b, §4                                                            |
-| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                                                                                                                                                | S2b, §4                                                            |
-| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                                                                                                                                                    | B2, §6                                                             |
-| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import                                                                                                                        | B3, §6                                                             |
-| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                             | B3, §6                                                             |
-| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                                                                                                                                                    | B3, §6                                                             |
-| new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                                                                                                                                          | B6, §6                                                             |
-| new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                    | B7, §6                                                             |
-| new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                            | B7, §6                                                             |
-| new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models | B8, §6                                                             |
-| new | Take the network checks and web DAST out of the capability cycle. After B9 each is held by one upward edge: `engines.vulnerability.vulnerability_engine` imports `core.device_classifier` (assets; the analysis's target grouping puts the classifier in the scan kernel), and `reporting.web_pdf_generator` imports `scan_helpers` (scans)                                                      | B9, §6                                                             |
-| new | Move `make_pdf_cve_paragraph` out of `scan_helpers` into the renderers. `reporting.web_pdf_generator` imports it from there, which is the one edge holding web DAST in the capability cycle at the end of Phase B                                                                                                                                                                                | B10, §6                                                            |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| D-4 | Approve the worker privilege split (S3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | [`WORKER_PRIVILEGE_SEPARATION.md`](WORKER_PRIVILEGE_SEPARATION.md) |
+| D-5 | Push every GitLab merge to `github`, or register a GitLab runner                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [`../ci/LOCAL_ENFORCEMENT.md`](../ci/LOCAL_ENFORCEMENT.md)         |
+| D-9 | Commit the September baseline and plan rev 4 under `docs/archive/architecture/`, or not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | analysis §13                                                       |
+| new | Retire or repurpose `audit.compliance.manage_integrations`, which now gates no route                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | S2                                                                 |
+| new | Rewrite the three NIS2 remediations that pipe into sudo as `sudo sh -c '…'` (seeded catalogue data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | S1                                                                 |
+| new | Align the compliance workspace's credential buttons (gated on `manage_frameworks`) and the scan pickers' error handling with the credential permissions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | S2                                                                 |
+| new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                                                                                                                                                                                                                                                                                                                                                                                         | S2b, §4                                                            |
+| new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | S2b, §4                                                            |
+| new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                                                                                                                                                                                                                                                                                                                                                                                                  | B2, §6                                                             |
+| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import                                                                                                                                                                                                                                                                                                                                                                      | B3, §6                                                             |
+| new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                                                                                                                                                                                                                                                                           | B3, §6                                                             |
+| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | B3, §6                                                             |
+| new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                                                                                                                                                                                                                                                                                                                                                                                        | B6, §6                                                             |
+| new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                                                                                                                                                                                                                                                                  | B7, §6                                                             |
+| new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                                                                                                                                                                                                                                                                          | B7, §6                                                             |
+| new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models                                                                                                                                                                                                                                               | B8, §6                                                             |
+| new | Take the network checks and web DAST out of the capability cycle. After B9 each is held by one upward edge: `engines.vulnerability.vulnerability_engine` imports `core.device_classifier` (assets; the analysis's target grouping puts the classifier in the scan kernel), and `reporting.web_pdf_generator` imports `scan_helpers` (scans)                                                                                                                                                                                                                                                                                                    | B9, §6                                                             |
+| new | **Done in G6** (§6, `604157e`): moved to `reporting/report_helpers.py`; web DAST is out of the capability cycle. Was: move `make_pdf_cve_paragraph` out of `scan_helpers` into the renderers. `reporting.web_pdf_generator` imports it from there, which is the one edge holding web DAST in the capability cycle at the end of Phase B                                                                                                                                                                                                                                                                                                        | B10, §6                                                            |
+| new | Fix the Linux collector's `ss` parser (a pre-existing defect). When the scanning account cannot see process names, `_parse_ss_output` takes the peer address (`0.0.0.0:*`) as the process, and a credentialed audit renames port 22's `ssh`/`OpenSSH` with it                                                                                                                                                                                                                                                                                                                                                                                  | T0, §6                                                             |
+| new | Give the Nuclei probe's corroboration merge a deterministic tie-break, for example severity and then template id. Today a severity tie keeps whichever template Nuclei printed first, so the stored finding's id can change between runs of the same code                                                                                                                                                                                                                                                                                                                                                                                      | T0, §6                                                             |
+| new | Write the evidence's NVD reference only for a real CVE in `core/findings/writer.py`'s `_build_finding_evidence` (the pipeline's, moved from `scans/asset_syncer.py` in G3), as the standalone audit's already does. Today every network-check and Nuclei finding's evidence links its minted `CCURE-CHK-…` id to an NVD page that does not exist                                                                                                                                                                                                                                                                                               | T0, §6                                                             |
+| new | Whether the Phase 3.5 pipeline and the standalone credentialed audit should record a configuration finding under the same detection method. Today one files it as `credentialed_package` and the other as `config_check`                                                                                                                                                                                                                                                                                                                                                                                                                       | T0, §6                                                             |
+| new | Classify `routers.credentialed` as the scans capability's API, as `routers.phase_scans` is. It serves one route, `POST /scan/credentialed`, which creates a scan. Measured, not committed: after G2, the credentialed audit and the credential vault both leave the capability cycle (14 → 12) and upward edges fall 31 → 29                                                                                                                                                                                                                                                                                                                   | G1, G2, §6                                                         |
+| new | Import the orchestrator inside `scans.tasks.common`'s two functions that use it, so the credentialed and topology task modules load without the scan engines (Scapy, nmap). Today `common` imports it at module level, as the hub did                                                                                                                                                                                                                                                                                                                                                                                                          | G1, §6                                                             |
+| new | Choose one credential form. Compliance remediation authenticates with every secret a credential row stores and the username as stored (`credential_vault.stored_secrets`); the collectors use `principal()` and only the secret their auth method needs (`connection_material`). G2 kept both                                                                                                                                                                                                                                                                                                                                                  | G2, §6                                                             |
+| new | Whether a remediation request should keep copying a stored credential's encrypted password and key into `compliance_remediation_requests`, and into the task's arguments for an emergency bypass. The copy outlives the credential's deletion; referring to the credential by id, as scans and schedules do, would not                                                                                                                                                                                                                                                                                                                         | G2, §6                                                             |
+| new | Teach `compare_live_scans.py` to tolerate the credentialed collector's section frames in either order (consecutive collection frames at one percentage), as B3 taught it discovery's sampled frames. Measured in G2: two runs of the same commit differ only in that order. Until then the comparison reports it, and a pair is repeated to place it                                                                                                                                                                                                                                                                                           | G2, §6                                                             |
+| new | Stop a standalone credentialed scan verifying the pipeline's open credentialed findings as fixed. The two paths file one CVE on one host under different finding ids (the pipeline's carry `network_service` in the id, the standalone audit's `credentialed_package`), so the standalone comparison reads the pipeline's rows as absent and verification marks them `verified_fixed` while their status stays `open`: 3,000 such rows after the G3 golden's `from_empty` replay, none in the live database. Options: one finding id per CVE per host whichever path writes it, or a comparison that counts a CVE the scan reported as present | G3, §6                                                             |
+| new | Whether the vulnerability-audit pipeline verifies remediation, as the standalone credentialed task does. Today a pipeline rescan that shows a finding fixed leaves its remediation state where it was                                                                                                                                                                                                                                                                                                                                                                                                                                          | G3, §6                                                             |
+| new | Decide which of the asset syncer's two `_clean` definitions is meant. The second replaces the first at import, so `upsert_credentialed_services` (in the findings writer since G3) raises `TypeError` on a listener with no service, name or process. The writer keeps the behaviour, and a test holds its copy equal to the syncer's                                                                                                                                                                                                                                                                                                          | G3, §6                                                             |
+| new | **Done in G6** (§6, `1ee36b5`, `bf7390d`): findings read hosts through `core.findings.hosts`, the assets router reads findings through `core.findings.reads`. Was: take findings and assets out of each other's cycle (C7). After G3 the writes go one way, but `routers.findings`, `routers.remediation` and `core.remediation.reporting` read the asset model, and `routers.assets` reads the findings models                                                                                                                                                                                                                                | G3, §6                                                             |
+| new | Whether an unsupported probe should leave a network assessment incomplete. The pipeline retires a network finding only when every plugin outcome is complete, and some probe reports unsupported on every host measured (`default_creds` on a host with no Basic challenge, `heartbleed_probe` where the server refuses a legacy handshake), so a network finding is never fixed by a rescan: on the G3 rescans, removing the web target's `.env` and `.git` read as not assessed. Safe in direction (absence is not remediation), but no network finding is ever retired by a rescan                                                          | G3, §6                                                             |
+| new | Whether the NVD sync's SQL writes to `vulnerability_definitions` go through the findings writer, or the catalogue's ingest stays the vulnerability-intel capability's. It is the one recorded exception in the findings-writer guard                                                                                                                                                                                                                                                                                                                                                                                                           | G3, §6                                                             |
+| new | Recognise Windows Defender as anti-malware. The Windows collector records the service as name `WinDefend`, description "Microsoft Defender Antivirus Service"; the `malware_scan` evidence reads the name first and matches `defender`, which `windefend` does not contain. A Windows host protected only by Defender therefore fails `crl_malware_agent_v1` and ISO A.8.16's `crl_iso_monitor_agent_v1`. Options: match the service names (`WinDefend`, `MsMpEng`, `Sense`), or read the description as well as the name                                                                                                                      | G4, §6                                                             |
+| new | Decide what an unreadable NIST SP 800-53 seed does to a STIG crosswalk. The reader's docstring says no crosswalk is emitted; the code (`if catalogue: controls &= catalogue`) has always emitted the entries unchecked, and since G4 a caller that passes no catalogue gets the same. Options: emit nothing without a catalogue, as documented, or correct the docstring                                                                                                                                                                                                                                                                       | G4, §6                                                             |
+| new | Take compliance's remaining reads and writes of other capabilities' tables through their services, to meet the analysis's target of no foreign table. After G4: the compliance scan reads `assets` for its scope, prerequisites and platform (`core.compliance_tasks`); the remediation executor sets `services.state` and `network_reachable`, and an asset's `reboot_pending`; the router joins `assets` for its findings list and remediation requests. Options: an asset read service, and the findings writer and an asset service for the writes                                                                                         | G4, §6                                                             |
+| new | Whether `ComplianceCatalogueService` (`ccure_audit`, the audit boundary) reads the catalogue through `core.compliance_catalogue.reads` too. C4 named that service for scan policy's reads, which `core` may not import; it still queries the five catalogue tables itself                                                                                                                                                                                                                                                                                                                                                                      | G4, §6                                                             |
+| new | Confirm or amend principle 6 ("each producing capability registers a provider"). Since G4 the producers declare their providers and Audit's composition root (`ccure_audit/evidence_providers.py`) registers them, because a producer importing compliance would be a lateral or upward edge, and two sources compose two producers                                                                                                                                                                                                                                                                                                            | G4, §6                                                             |
+| new | Whether a continued scan's posted host records should reach the stored results. The vulnerability audit's identity merge starts from the record it was handed and lays its own over it, so a key the browser posted to `/scan/vulnerability-audit` that the audit does not itself write is stored in the phase-3 payload as a scan result. The person needs `audit.scan.run` and their own scan, and the hosts must be in its scope. Options: merge only `HOST_IDENTITY_FIELDS` from the handed-over record, or validate the posted records against the phase's own projection (`HostResult`)                                                  | G5, §6                                                             |
+| new | Whether a phase run beyond its pipeline mode's terminal phase should chain onward. Asset discovery in a basic scan dispatches the audit, as each phase task did before C6 and `scans.pipeline.next_phase` still does. The routes refuse a phase outside the scan's mode, so only a direct task call reaches it. Option: stop at the mode's own phases (`PIPELINE_PHASES`)                                                                                                                                                                                                                                                                      | G5, §6                                                             |
+| new | Give the engines the typed records (the analysis's `discover(…) → list[HostRecord]`, `inventory(hosts, …) → ServiceInventory`). C6 typed the hand-off between phases; the engines still read and edit the records as dicts in place, and phase 3's identity merge depends on those edits                                                                                                                                                                                                                                                                                                                                                       | G5, §6                                                             |
+| new | Take the scans capability's direct engine imports through the pipeline definition (§12's target for `scans`). The orchestrator still imports the discovery, port and vulnerability engines itself                                                                                                                                                                                                                                                                                                                                                                                                                                              | G5, §6                                                             |
+| new | Run C6's live validation (§11) if wanted: about two hours for a before/after pair. The phase-pipeline golden covers the hand-off with the tasks' own code; the live harness runs Celery eager too, so neither exercises a real broker's JSON round trip, which C6 leaves unchanged by construction                                                                                                                                                                                                                                                                                                                                             | G5, §6                                                             |
+| new | The read side C7 names that G6 did not change: the dashboard (`routers/dashboard.py`, 11 foreign tables) and `routers.reports`' direct reads of findings and vulnerability intelligence. Both are layer-6 read models, so they may read through the capabilities' read modules (`core.findings.reads`, the host port) or `ccure_audit/services`                                                                                                                                                                                                                                                                                                | G6, §6                                                             |
+| new | Scope findings by their own `org_id` and drop the host join where only scoping needs it (the remediation routes and report). The finding's column is written from its asset's organisation and agrees on every row today (0 of 3,854), but no constraint enforces it; a composite foreign key `(asset_id, org_id)` → `assets(id, org_id)` would, and needs a unique key on `assets` first                                                                                                                                                                                                                                                      | G6, §6                                                             |
+| new | Whether the findings side's host port should carry plain values instead of a SQL projection. G6 chose the projection so that every query stays one statement with the same plan; the findings capability is then coupled to the asset table's columns by a declared contract (`HOST_COLUMNS`) rather than by an import                                                                                                                                                                                                                                                                                                                         | G6, §6                                                             |
+| new | Give `/assets/services/assets` an `ORDER BY`. The service-host listing pages with none, so which hosts a page holds is whatever the plan returns (pre-existing; G6 kept the query as it was)                                                                                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
+| new | Move the executive compliance report's inline PDF (`download_executive_compliance_report`, `routers/compliance_reports.py`) into `reporting/compliance/` like the 20 generators                                                                                                                                                                                                                                                                                                                                                                                                                                                                | G6, §6                                                             |
+| new | Take findings out of the capability cycle: it reaches the scan model (the comparison), the credentialed audit (the writer's coverage import, the router's version comparator), configuration audit (the credentialed scope) and scan policy (the comparison)                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
+| new | Whether the compliance router's parts keep `routers.compliance` as their `__name__` or take their own. Renaming changes every compliance limiter key and the gateway route policy's endpoints, so it needs the policy regenerated and the gateway rebuilt in the same release                                                                                                                                                                                                                                                                                                                                                                  | G6, §6                                                             |
+| new | Give the API golden a passing NIST CSF control. In the restored data no CSF control passes (26 fail, 80 not assessed), so the renderer's label for a pass is never drawn and a change to it went uncaught (G6's golden mutations); `setup.sql` could add a passing attestation                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |

@@ -20,7 +20,9 @@ def test_forgot_password_unregistered_email_success(
     client: TestClient, db_session: Session
 ):
     """Test that requesting reset for an unregistered email returns 200 (prevents enumeration)."""
-    with patch("core.tasks.send_password_reset_email_task.delay") as mock_delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_password_reset_email_task.delay"
+    ) as mock_delay:
         response = client.post(
             "/auth/forgot-password", json={"email": "nonexistent@test.com"}
         )
@@ -52,7 +54,9 @@ def test_forgot_password_registered_email_success(
     db_session.add(user)
     db_session.commit()
 
-    with patch("core.tasks.send_password_reset_email_task.delay") as mock_delay:
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_password_reset_email_task.delay"
+    ) as mock_delay:
         response = client.post(
             "/auth/forgot-password", json={"email": "testuser@test.com"}
         )

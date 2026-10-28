@@ -393,8 +393,8 @@ def test_d09_invalid_targets_fail_before_any_plugin_dispatch(monkeypatch, target
     ],
 )
 def test_d13_supplied_invalid_scope_is_rejected_before_secrets(monkeypatch, targets):
-    from core import tasks
     from routers.phase_scans import HostDiscoveryRequest
+    from scans.tasks import credentialed as tasks  # the module reading the resolver
 
     raw = [{"credential_id": "fixture", "targets": targets}]
     with pytest.raises(ValueError):
@@ -409,7 +409,7 @@ def test_d13_supplied_invalid_scope_is_rejected_before_secrets(monkeypatch, targ
 
 
 def test_d13_valid_and_omitted_scopes_preserve_intended_matching(monkeypatch):
-    from core import tasks
+    from scans.tasks import credentialed as tasks  # the module reading the resolver
 
     monkeypatch.setattr(
         tasks, "_resolve_stored_credential", lambda *a: {"username": "fixture"}

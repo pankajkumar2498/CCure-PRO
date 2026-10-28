@@ -384,7 +384,14 @@ def test_celery_carries_exactly_its_previous_task_modules_and_queues():
     from core.celery_app import celery_app
 
     assert list(celery_app.conf.include) == [
-        "core.tasks",
+        # G1 split core.tasks into these; core/tasks.py is a facade the worker
+        # does not load. tests/repo/test_task_registry.py pins their tasks.
+        "scans.tasks.phases",
+        "scans.tasks.topology",
+        "scans.tasks.credentialed",
+        "scans.tasks.maintenance",
+        "scans.tasks.schedules",
+        "scans.tasks.reapers",
         "core.web.tasks",
         "core.compliance_tasks",
         "core.email_security_tasks",

@@ -343,7 +343,9 @@ def test_password_reset_ends_every_session(
     )
     db_session.commit()
 
-    with patch("core.tasks.send_password_reset_email_task.delay"):
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_password_reset_email_task.delay"
+    ):
         response = client.post(
             "/auth/reset-password",
             json={"token": token, "password": "CompletelyNew1!"},

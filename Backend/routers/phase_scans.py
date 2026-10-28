@@ -17,11 +17,14 @@ from ccure_platform.api import (
     require_authorized,
     resolve_active_organisation,
 )
-from core.tasks import (
-    run_asset_discovery_task,
-    run_host_discovery_task,
-    run_traditional_scan_task,
-    run_vulnerability_audit_task,
+
+# Dispatched by registered name (G1): importing a task module from a router
+# loaded the whole scan pipeline into every process that serves HTTP.
+from core.celery_app import registered_task
+from core.phase_handoff import host_records
+from core.task_names import (
+    RUN_HOST_DISCOVERY,
+    RUN_TRADITIONAL_SCAN,
 )
 from db.base import get_db
 from db.models import Scan
@@ -40,6 +43,10 @@ from scan_helpers import (
 from scans.db_helpers import (
     create_scan,
 )
+
+# A continued scan's next phase is handed its hosts the way the pipeline hands
+# them on (C6): the typed hand-off, by the phase's registered name.
+from scans.pipeline import ASSET_DISCOVERY, VULNERABILITY_AUDIT, hand_over
 from scans.policy_binding import (
     reapply_policy_snapshot as _reapply_policy_snapshot,
     resolve_scan_policy as _resolve_scan_policy,
@@ -498,7 +505,7 @@ async def scan_host_discovery(
     scan_no = scan.scan_no
 
     # Dispatch to Celery
-    task = run_host_discovery_task.delay(
+    task = registered_task(RUN_HOST_DISCOVERY).delay(
         user_id=str(user.id),
         targets=targets,
         scan_type=req.scan_type,
@@ -603,9 +610,10 @@ async def scan_asset_discovery(
 
     validate_custom_ports(req.custom_ports)
 
-    task = run_asset_discovery_task.delay(
+    task = hand_over(
+        ASSET_DISCOVERY,
+        host_records(req.hosts),
         user_id=str(user.id),
-        hosts=req.hosts,
         intensity=req.intensity,
         scan_id=req.scan_id,
         pipeline_mode=req.pipeline_mode,
@@ -670,9 +678,10 @@ async def scan_vulnerability_audit(
 
     _assert_hosts_admitted(db, scan, req.hosts)
 
-    task = run_vulnerability_audit_task.delay(
+    task = hand_over(
+        VULNERABILITY_AUDIT,
+        host_records(req.hosts),
         user_id=str(user.id),
-        hosts=req.hosts,
         scan_id=req.scan_id,
         pipeline_mode=req.pipeline_mode,
         exclude_ot_from_nmap=req.exclude_ot_from_nmap,
@@ -707,7 +716,7 @@ async def scan_phases(
     targets = validate_scan_targets(
         req.targets, scope=_org_scope(db, str(current_user.org_id))
     )
-    task = run_traditional_scan_task.delay(
+    task = registered_task(RUN_TRADITIONAL_SCAN).delay(
         user_id=str(current_user.id),
         targets=targets,
         phases=req.phases,

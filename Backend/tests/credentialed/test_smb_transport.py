@@ -500,7 +500,7 @@ def test_remote_registry_state_is_unknown_until_it_is_measured():
 
 
 def test_smb_is_a_usable_transport_for_a_windows_credential():
-    from db.models.compliance import (
+    from db.models.credentials import (
         CREDENTIAL_TYPE_WINDOWS,
         TRANSPORT_SMB,
         USABLE_TRANSPORTS,
@@ -517,7 +517,7 @@ def test_winrm_remains_the_default_windows_transport():
     every check, where SMB drives the subset readable from WMI and the registry.
     Neither is a superset, and the default must stay the deeper one.
     """
-    from db.models.compliance import CREDENTIAL_TYPE_WINDOWS, TRANSPORT_WINRM
+    from db.models.credentials import CREDENTIAL_TYPE_WINDOWS, TRANSPORT_WINRM
     from routers.credentials import TYPE_DEFAULTS
 
     assert TYPE_DEFAULTS[CREDENTIAL_TYPE_WINDOWS]["transport"] == TRANSPORT_WINRM
@@ -609,7 +609,7 @@ def test_a_domain_qualified_principal_is_split_for_ntlm():
 # every host this transport touched.
 #
 # These walk the whole path rather than the executor alone:
-#   SMBExecutor -> WindowsCollector -> registry_hardening -> compliance_evidence
+#   SMBExecutor -> WindowsCollector -> registry_hardening -> asset_evidence
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -678,11 +678,13 @@ def test_the_registry_hardening_block_carries_absence_through():
     to ``False``, which asserts the *insecure* state — the same defect pointing
     the other way, and a FAIL nothing established.
     """
-    import inspect
+    # The hub's code, split into scans/tasks/ by G1; core/tasks.py is a facade.
+    from testpaths import BACKEND_ROOT
 
-    import core.tasks as tasks_mod
-
-    source = inspect.getsource(tasks_mod)
+    source = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((BACKEND_ROOT / "scans" / "tasks").glob("*.py"))
+    )
     for key in _POSTURE_KEYS:
         assert 'system_data.get("%s", False)' % key not in source, key
         assert 'system_data.get("%s")' % key in source, key
@@ -696,9 +698,9 @@ def test_the_evidence_adapter_drops_an_unassessed_key():
     """
     import inspect
 
-    from core import compliance_evidence
+    from core import asset_evidence
 
-    source = inspect.getsource(compliance_evidence)
+    source = inspect.getsource(asset_evidence)
     for key in (
         "smbv1_disabled",
         "netbios_disabled",
@@ -714,7 +716,7 @@ def test_a_hardening_row_for_an_unread_setting_is_not_assessed():
     Fourth leg: the report. A row printing PASS or FAIL for a control nothing
     examined is worse than one saying the scan looked at less.
     """
-    from core.tasks import _credentialed_hardening_audits
+    from scans.tasks.credentialed import _credentialed_hardening_audits
 
     audits = _credentialed_hardening_audits({"security_issues": []}, "windows")
     for name in ("smbv1", "netbios", "legacy_tls", "telnet"):
@@ -723,7 +725,7 @@ def test_a_hardening_row_for_an_unread_setting_is_not_assessed():
 
 
 def test_a_hardening_row_for_a_read_setting_still_reports_a_verdict():
-    from core.tasks import _credentialed_hardening_audits
+    from scans.tasks.credentialed import _credentialed_hardening_audits
 
     audits = _credentialed_hardening_audits(
         {"security_issues": [], "telnet_disabled": True, "smbv1_disabled": False},
@@ -738,7 +740,7 @@ def test_rdp_off_still_satisfies_nla_without_reading_the_setting():
     A host with RDP switched off passes whatever NLA says, so that answer needs
     no reading and must not become NOT_ASSESSED.
     """
-    from core.tasks import _credentialed_hardening_audits
+    from scans.tasks.credentialed import _credentialed_hardening_audits
 
     audits = _credentialed_hardening_audits(
         {"security_issues": [], "rdp_enabled": False}, "windows"

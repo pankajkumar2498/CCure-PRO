@@ -50,60 +50,19 @@ def get_api() -> HostDiscoveryAPI:
     return _api_instance
 
 
-# ─── Pipeline configuration (mirrors Frontend/src/modules/audit/config/scanConfig.js)
-# Phase 4 (topology_mapping) is eligible to run at the end of any pipeline.
-# It is only executed if SNMP credentials are provided in scan.options.
-PIPELINE_PHASES: dict[str, list[int]] = {
-    "basic": [1, 4],
-    "asset": [1, 2, 4],
-    "vulnerability_audit": [1, 2, 3, 4],
-    # A standalone credentialed audit runs no discovery and no port scan. It
-    # was previously recorded as "vulnerability_audit", which claimed three
-    # phases it never executed — the scan record has to describe what ran.
-    "credentialed": [3],
-}
-
-VALID_PIPELINE_MODES = set(PIPELINE_PHASES.keys()) | {"advanced"}
-PIPELINE_MODE_ALIASES = {
-    "advanced": "vulnerability_audit",
-}
-
-
-def _normalize_pipeline_mode(raw: str | None) -> str:
-    token = str(raw or "").strip().lower()
-    if not token:
-        return "basic"
-    return PIPELINE_MODE_ALIASES.get(token, token)
-
-
-def get_terminal_phase(pipeline_mode: str) -> int:
-    """Return the last *core* phase number for a given pipeline mode.
-    Phase 4 (topology_mapping) is an optional bolt-on and does NOT
-    count as the terminal phase for scan completion logic."""
-    pipeline_mode = _normalize_pipeline_mode(pipeline_mode)
-    phases = PIPELINE_PHASES.get(pipeline_mode, [1])
-    # Exclude Phase 4 (topology) — it's an optional add-on, not core pipeline
-    core_phases = [p for p in phases if p != 4]
-    return max(core_phases) if core_phases else max(phases)
-
-
-def is_phase_in_pipeline(pipeline_mode: str, phase: int) -> bool:
-    """Return True if the given phase belongs to the declared pipeline."""
-    pipeline_mode = _normalize_pipeline_mode(pipeline_mode)
-    return phase in PIPELINE_PHASES.get(pipeline_mode, [1])
-
-
-def resolve_pipeline_mode(raw: str | None) -> str:
-    """
-    Normalise and validate the pipeline_mode from a request.
-    Falls back to 'basic' for unknown / missing values.
-    """
-    token = _normalize_pipeline_mode(raw)
-    if token in VALID_PIPELINE_MODES:
-        return token
-    if raw:
-        log.warning("Unknown pipeline_mode '%s' — defaulting to 'basic'.", raw)
-    return "basic"
+# ─── Pipeline configuration ─────────────────────────────────────────────────
+# Defined in scans/pipeline.py since C6, with the network phases and the one
+# function that hands a phase its hosts. Re-exported here unchanged, as the
+# same objects, for the routes and tests that read them from this module.
+from scans.pipeline import (  # noqa: E402,F401  (re-export)
+    PIPELINE_MODE_ALIASES,
+    PIPELINE_PHASES,
+    VALID_PIPELINE_MODES,
+    _normalize_pipeline_mode,
+    get_terminal_phase,
+    is_phase_in_pipeline,
+    resolve_pipeline_mode,
+)
 
 
 # ─── Misc helpers ────────────────────────────────────────────────────────────
@@ -476,23 +435,12 @@ def finish_progress(scan_id: str, db: Session = None):
             session.close()
 
 
-def make_pdf_cve_paragraph(cve_id: str, style) -> "Paragraph":
-    """
-    Constructs a ReportLab Paragraph containing a secure, clickable hyperlink
-    directing the user to the NVD reference page for the specified CVE.
-    """
-    import html
+def __getattr__(name: str):
+    # make_pdf_cve_paragraph is a renderer's helper and lives in
+    # reporting/report_helpers.py since G6. The old name stays, imported on
+    # first use so that loading this module does not load ReportLab.
+    if name == "make_pdf_cve_paragraph":
+        from reporting.report_helpers import make_pdf_cve_paragraph
 
-    from reportlab.platypus import Paragraph
-
-    clean_id = str(cve_id).strip()
-    # Guard check: if it's not a valid CVE ID, return plain styled Paragraph
-    if not clean_id.upper().startswith("CVE-"):
-        return Paragraph(html.escape(clean_id), style)
-
-    safe_id = html.escape(clean_id.upper())
-    url = f"https://nvd.nist.gov/vuln/detail/{safe_id}"
-
-    # Branded blue link markup
-    link_html = f'<a href="{url}" color="#0066CC"><b>{safe_id}</b></a>'
-    return Paragraph(link_html, style)
+        return make_pdf_cve_paragraph
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

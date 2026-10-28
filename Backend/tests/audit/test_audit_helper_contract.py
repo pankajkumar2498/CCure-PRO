@@ -216,7 +216,7 @@ def test_audit_refusal_preserves_the_original_http_exception(
     Under C4 `log_audit_event` raises, which makes that swallow load-bearing
     rather than incidental — this asserts it still holds.
     """
-    from routers import compliance as compliance_module
+    from routers import compliance_common as compliance_module
 
     monkeypatch.setattr(compliance_module, "log_audit_event", _boom)
 

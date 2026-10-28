@@ -1,7 +1,10 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from core.tasks import run_host_discovery_task
+
+# The phase tasks live in scans/tasks/phases.py since G1; patch the names that
+# module reads (core/tasks.py is a facade and refuses a patch).
+from scans.tasks.phases import run_host_discovery_task
 
 
 @pytest.fixture
@@ -11,7 +14,7 @@ def mock_db():
 
 @pytest.fixture
 def mock_orch():
-    with patch("core.tasks._new_orchestrator") as m:
+    with patch("scans.tasks.phases._new_orchestrator") as m:
         mock_instance = MagicMock()
         m.return_value = mock_instance
         yield mock_instance
@@ -38,25 +41,24 @@ def test_run_host_discovery_task_success(mock_orch, mock_db):
 
     mock_db.query().filter().first.return_value = mock_scan
 
-    # We patch the DB Session and helpers
-    with patch("core.tasks.SessionLocal", return_value=mock_db), patch(
-        "core.tasks.create_completed_scan", return_value=mock_scan
-    ) as mock_create, patch(
+    # We patch the DB Session and helpers. (get_terminal_phase was patched
+    # here until C6; the task asks scans.pipeline.next_phase now, which
+    # answers None for a basic scan's phase 1 as the patch did.)
+    # (A patch of create_completed_scan stood here until G1. The task never
+    # reads that name, so it replaced nothing; scans.tasks.phases does not
+    # import it, and it is gone.)
+    with patch("scans.tasks.phases.SessionLocal", return_value=mock_db), patch(
         "scans.db_helpers.update_scan_phase1", return_value=mock_scan
-    ) as mock_update, patch(
-        "core.tasks._update_task_id"
+    ) as mock_update, patch("scans.tasks.phases._update_task_id"), patch(
+        "scans.tasks.phases._check_cancelled", return_value=False
     ), patch(
-        "core.tasks._check_cancelled", return_value=False
+        "scans.tasks.phases.resolve_pipeline_mode", return_value="basic"
     ), patch(
-        "core.tasks.resolve_pipeline_mode", return_value="basic"
-    ), patch(
-        "core.tasks.get_terminal_phase", return_value=1
-    ), patch(
-        "core.tasks.resolve_report_context", return_value={}
+        "scans.tasks.phases.resolve_report_context", return_value={}
     ), patch(
         "core.redis_client.publish_progress_sync"
     ), patch(
-        "core.tasks._chain_topology_if_needed"
+        "scans.tasks.phases._chain_topology_if_needed"
     ):
 
         # Execute task
@@ -91,16 +93,15 @@ def test_run_host_discovery_task_failure(mock_orch, mock_db):
 
     mock_db.query().filter().first.return_value = mock_scan
 
-    with patch("core.tasks.SessionLocal", return_value=mock_db), patch(
-        "core.tasks.create_completed_scan", return_value=mock_scan
-    ) as mock_create, patch("core.tasks._update_task_id"), patch(
-        "core.tasks._check_cancelled", return_value=False
+    # The failure is settled by _settle_failure, in scans.tasks.common, so
+    # mark_scan_failed is patched where that function reads it. (The
+    # create_completed_scan patch here replaced nothing; see above.)
+    with patch("scans.tasks.phases.SessionLocal", return_value=mock_db), patch(
+        "scans.tasks.phases._update_task_id"
+    ), patch("scans.tasks.phases._check_cancelled", return_value=False), patch(
+        "scans.tasks.phases.resolve_pipeline_mode", return_value="basic"
     ), patch(
-        "core.tasks.resolve_pipeline_mode", return_value="basic"
-    ), patch(
-        "core.tasks.get_terminal_phase", return_value=1
-    ), patch(
-        "core.tasks.mark_scan_failed"
+        "scans.tasks.common.mark_scan_failed"
     ) as mock_mark_failed:
 
         result = run_host_discovery_task(

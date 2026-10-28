@@ -219,7 +219,7 @@ def test_host_rules_are_never_selected_for_a_database_scan():
 
 
 def test_the_database_credential_type_is_usable():
-    from db.models.compliance import (
+    from db.models.credentials import (
         CREDENTIAL_TYPE_DATABASE,
         CREDENTIAL_TYPES,
         USABLE_CREDENTIAL_TYPES,
@@ -230,7 +230,7 @@ def test_the_database_credential_type_is_usable():
 
 
 def test_every_database_transport_matches_a_supported_engine():
-    from db.models.compliance import DATABASE_TRANSPORTS, TRANSPORTS
+    from db.models.credentials import DATABASE_TRANSPORTS, TRANSPORTS
 
     assert set(DATABASE_TRANSPORTS) == set(SUPPORTED_ENGINES)
     assert set(DATABASE_TRANSPORTS) <= set(TRANSPORTS)
@@ -243,7 +243,7 @@ def test_reserved_transports_are_admitted_by_the_column_but_not_offered():
     next phase adds a collector; the API is not, so nobody can save a
     credential nothing would use.
     """
-    from db.models.compliance import TRANSPORTS, USABLE_TRANSPORTS
+    from db.models.credentials import TRANSPORTS, USABLE_TRANSPORTS
 
     assert "oracle" in TRANSPORTS and "mongodb" in TRANSPORTS
     assert "oracle" not in USABLE_TRANSPORTS
@@ -267,7 +267,7 @@ def test_the_transport_check_constraint_matches_the_model():
     import importlib.util
     from pathlib import Path
 
-    from db.models.compliance import TRANSPORTS as MODEL_TRANSPORTS
+    from db.models.credentials import TRANSPORTS as MODEL_TRANSPORTS
 
     path = (
         Path(__file__).resolve().parents[2]
@@ -348,7 +348,7 @@ def test_the_scan_task_has_a_database_branch():
     """
     import inspect
 
-    from core.tasks import run_credentialed_scan_task
+    from scans.tasks.credentialed import run_credentialed_scan_task
 
     source = inspect.getsource(run_credentialed_scan_task)
     assert "CREDENTIAL_TYPE_DATABASE" in source
@@ -363,7 +363,7 @@ def test_database_targets_are_excluded_from_host_asset_sync():
     """
     import inspect
 
-    from core.tasks import run_credentialed_scan_task
+    from scans.tasks.credentialed import run_credentialed_scan_task
 
     source = inspect.getsource(run_credentialed_scan_task)
     assert 'if os_type == "database":' in source
@@ -376,7 +376,7 @@ def test_the_database_auditor_reports_its_own_scope():
     """
     import inspect
 
-    from core.tasks import audit_database_target
+    from scans.tasks.credentialed import audit_database_target
 
     source = inspect.getsource(audit_database_target)
     assert '"packages_assessed": False' in source

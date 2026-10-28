@@ -23,7 +23,14 @@ from db.models.rbac import Organization
 from db.models.web_scans import WebFinding, WebScan
 
 _PREFIX = "wsc_f3_"
-adapt = ComplianceEvidenceProvider._adapt_web_vulnerability_audit
+
+
+def adapt(db, asset_id):
+    """The web-application evidence for a network asset, as compliance asks
+    for it: through the registered provider (G4), with no cache."""
+    return ComplianceEvidenceProvider._fetch_and_translate(
+        db, asset_id, "web_vulnerability_audit"
+    )
 
 
 @pytest.fixture

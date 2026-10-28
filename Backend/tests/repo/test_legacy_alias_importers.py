@@ -45,7 +45,8 @@ ALLOWED: dict[str, set[str]] = {
     # the two WebSocket ticket logins decode a token (identity_boundary
     # KNOWN_IDENTITY_IMPORTS, Phase 10) and the root decodes the same way
     "auth.jwt_handler": {"main.py", "routers/scan_history.py", "routers/web_scans.py"},
-    # the scan task hub re-exports the mail tasks so `core.tasks.send_*` resolves
+    # the scan tasks' compatibility facade re-exports the mail tasks so
+    # `core.tasks.send_*` resolves
     "auth.mail_tasks": {"core/tasks.py"},
 }
 

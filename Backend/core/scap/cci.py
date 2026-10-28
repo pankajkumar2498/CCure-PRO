@@ -47,14 +47,13 @@ __all__ = [
     "NIST_FRAMEWORK_CODE",
     "base_control",
     "crosswalk_entries",
-    "known_controls",
     "parse_cci_list",
 ]
 
 #: The framework code the crosswalk targets, matching the seeded catalogue's
 #: ``code``. Crosswalk entries are ``CODE:control_number`` — see
-#: ``routers/compliance.py``'s gap analysis, which splits on the colon and
-#: normalises what follows.
+#: the compliance gap analysis (``routers/compliance_reports.py``), which
+#: splits on the colon and normalises what follows.
 NIST_FRAMEWORK_CODE = "NIST_800_53_R5"
 
 CCI_PATTERN = re.compile(r"CCI-\d{6}", re.IGNORECASE)
@@ -130,64 +129,12 @@ def parse_cci_list(source: str | bytes) -> Dict[str, Tuple[str, ...]]:
     return {cci: tuple(sorted(controls)) for cci, controls in mapping.items()}
 
 
-_KNOWN: Dict[str, Tuple[str, ...]] = {}
-
-
-def known_controls() -> Tuple[str, ...]:
-    """
-    The control numbers the seeded NIST SP 800-53 Rev. 5 catalogue actually has.
-
-    Read from the seed rather than from a family list written here, so a
-    crosswalk entry cannot name a control this deployment does not hold. The
-    alternative — trusting a regular expression over benchmark prose — emitted
-    ``DS-1`` and ``DS-6`` from NIST CSF's ``PR.DS-01`` on the first real run.
-
-    An unreadable seed yields an empty tuple, and the caller then emits no
-    crosswalk at all rather than an unvalidated one. Losing a crosswalk is
-    recoverable; a crosswalk that points nowhere looks like coverage in every
-    count that reads the field.
-    """
-    if "controls" in _KNOWN:
-        return _KNOWN["controls"]
-    numbers: List[str] = []
-    try:
-        import json
-        from pathlib import Path
-
-        from core.compliance_seeds import seed_path
-
-        # ``seed_path`` returns a str. Calling ``.read_text()`` on it raises
-        # AttributeError, which the except below swallowed — and the symptom
-        # was every crosswalk silently vanishing while the load reported
-        # success. Failing open is right here; failing open *quietly* is not,
-        # which is why the warning below exists.
-        data = json.loads(
-            Path(seed_path("nist_800_53_r5_controls_seed.json")).read_text(
-                encoding="utf-8"
-            )
-        )
-        for control in data.get("controls") or []:
-            number = str(control.get("control_number") or "").strip().upper()
-            if number:
-                numbers.append(number)
-    except Exception as exc:  # a missing seed must not break a benchmark load
-        log.warning(
-            "The NIST SP 800-53 seed could not be read (%s: %s), so STIG "
-            "content will load with no NIST crosswalk. The benchmark is still "
-            "usable; its results simply will not roll up to 800-53.",
-            type(exc).__name__,
-            exc,
-        )
-        numbers = []
-    _KNOWN["controls"] = tuple(sorted(set(numbers)))
-    return _KNOWN["controls"]
-
-
 def crosswalk_entries(
     idents: Iterable[Tuple[str, str]],
     references: Iterable[Tuple[str, str]] = (),
     *,
     cci_index: Mapping[str, Sequence[str]] | None = None,
+    nist_controls: Iterable[str] | None = None,
 ) -> Tuple[str, ...]:
     """
     Crosswalk entries for one rule, from its idents and references.
@@ -200,6 +147,12 @@ def crosswalk_entries(
       controls directly alongside their CCIs, so a useful crosswalk exists even
       with no CCI list — which is the common case, and the reason this does not
       simply return nothing without one.
+
+    *nist_controls* is the control numbers the NIST SP 800-53 catalogue holds,
+    and every entry is checked against it. It is the compliance catalogue's
+    (``core.compliance_seeds.nist_800_53_control_numbers``) and the caller
+    supplies it: the converter reads no compliance data (G4). None or empty
+    checks nothing, as an unreadable seed did before.
     """
     index = {k.upper(): tuple(v) for k, v in (cci_index or {}).items()}
     controls: Set[str] = set()
@@ -231,7 +184,7 @@ def crosswalk_entries(
 
     # Every entry is checked against the catalogue it names. An entry that
     # resolves to nothing is worse than an absent one.
-    catalogue = set(known_controls())
+    catalogue = set(nist_controls or ())
     if catalogue:
         controls &= catalogue
     return tuple(f"{NIST_FRAMEWORK_CODE}:{control}" for control in sorted(controls))

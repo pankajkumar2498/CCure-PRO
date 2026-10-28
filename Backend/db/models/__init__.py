@@ -43,7 +43,6 @@ from .assets import (
 )
 from .compliance import (
     ComplianceControl,
-    ComplianceCredential,
     ComplianceEvidenceFile,
     ComplianceEvidenceRetentionPolicy,
     ComplianceException,
@@ -64,6 +63,7 @@ from .compliance import (
     ComplianceScore,
     ComplianceTenantFramework,
 )
+from .credentials import ComplianceCredential  # the credential vault's model (G2)
 from .findings import (
     AssetVulnerability,
     HttpSecurityDetail,

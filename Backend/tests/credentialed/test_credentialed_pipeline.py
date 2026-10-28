@@ -295,7 +295,7 @@ def test_loopback_listener_is_not_recorded_as_an_open_port(
     indistinguishable from a port a scan had confirmed reachable — so it
     counted toward exposure on the dashboard and in compliance evidence.
     """
-    from scans.asset_syncer import upsert_credentialed_services
+    from core.findings.writer import upsert_credentialed_services
 
     _org, asset, scan_id = org_and_asset
     annotated, _ = correlate_listeners(LISTENERS, network_scanned=False)
@@ -324,7 +324,7 @@ def test_loopback_listener_is_not_recorded_as_an_open_port(
 
 
 def test_correlated_listener_is_recorded_as_open(db_session: Session, org_and_asset):
-    from scans.asset_syncer import upsert_credentialed_services
+    from core.findings.writer import upsert_credentialed_services
 
     _org, asset, scan_id = org_and_asset
     annotated, _ = correlate_listeners(
@@ -353,11 +353,14 @@ def test_credentialed_pass_never_downgrades_a_network_confirmed_port(
     Where the two disagree the direct observation wins, and the credentialed
     pass contributes only what it alone knows.
     """
-    from scans.asset_syncer import _upsert_network_service, upsert_credentialed_services
+    from core.findings.writer import (
+        upsert_credentialed_services,
+        upsert_network_service,
+    )
 
     _org, asset, scan_id = org_and_asset
 
-    _upsert_network_service(
+    upsert_network_service(
         db_session,
         asset.id,
         scan_id,
@@ -401,7 +404,10 @@ def test_credentialed_pass_never_downgrades_a_network_confirmed_port(
 def test_network_scan_preserves_an_earlier_credentialed_confirmation(
     db_session: Session, org_and_asset
 ):
-    from scans.asset_syncer import _upsert_network_service, upsert_credentialed_services
+    from core.findings.writer import (
+        upsert_credentialed_services,
+        upsert_network_service,
+    )
 
     _org, asset, scan_id = org_and_asset
 
@@ -414,7 +420,7 @@ def test_network_scan_preserves_an_earlier_credentialed_confirmation(
     )
     db_session.commit()
 
-    _upsert_network_service(
+    upsert_network_service(
         db_session,
         asset.id,
         scan_id,
@@ -444,7 +450,7 @@ def test_package_findings_are_stamped_so_verification_keeps_them():
     fingerprinted services is read as a network claim about a product the host
     does not appear to run — and suppressed.
     """
-    from core.tasks import _as_credentialed_findings
+    from scans.tasks.credentialed import _as_credentialed_findings
 
     prepared = _as_credentialed_findings(
         [
@@ -465,7 +471,7 @@ def test_credentialed_findings_survive_verification_on_a_scanned_host():
     """End-to-end of the above: the merged finding must reach the report."""
     from scans.finding_normalizer import verify_host_findings
 
-    from core.tasks import _as_credentialed_findings
+    from scans.tasks.credentialed import _as_credentialed_findings
 
     host = {
         "ip_address": "10.0.0.5",
@@ -492,7 +498,7 @@ def test_credentialed_findings_survive_verification_on_a_scanned_host():
 
 
 def test_credential_scope_selects_the_right_host():
-    from core.tasks import _credential_for_host
+    from scans.tasks.credentialed import _credential_for_host
 
     scoped = {"username": "svc-a", "port": 22}
     fallback = {"username": "svc-b", "port": 2222}
@@ -510,7 +516,7 @@ def test_credential_scope_selects_the_right_host():
 
 
 def test_credential_with_no_matching_scope_is_not_applied():
-    from core.tasks import _credential_for_host
+    from scans.tasks.credentialed import _credential_for_host
 
     plan = [
         {
@@ -649,7 +655,8 @@ def test_scan_records_the_pipeline_it_actually_ran(
     Recording it as a vulnerability_audit claimed three phases that never
     executed.
     """
-    import routers.credentialed as credentialed_router
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from engines.credentialed.ssh_scanner import SSHScanner
 
     # The router's pre-flight check resolves the endpoint rather than probing
@@ -666,9 +673,8 @@ def test_scan_records_the_pipeline_it_actually_ran(
         captured.update(kwargs)
         return _Task()
 
-    monkeypatch.setattr(
-        credentialed_router.run_credentialed_scan_task, "delay", _fake_delay
-    )
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_CREDENTIALED_SCAN), "delay", _fake_delay)
 
     response = client.post(
         "/scan/credentialed",
@@ -685,7 +691,8 @@ def test_scan_records_the_pipeline_it_actually_ran(
 def test_multiple_targets_are_expanded_into_one_scan(
     client: TestClient, auth_headers: dict, db_session: Session, monkeypatch
 ):
-    import routers.credentialed as credentialed_router
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from engines.credentialed.ssh_scanner import SSHScanner
 
     # The router's pre-flight check resolves the endpoint rather than probing
@@ -702,9 +709,8 @@ def test_multiple_targets_are_expanded_into_one_scan(
         captured.update(kwargs)
         return _Task()
 
-    monkeypatch.setattr(
-        credentialed_router.run_credentialed_scan_task, "delay", _fake_delay
-    )
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_CREDENTIALED_SCAN), "delay", _fake_delay)
 
     response = client.post(
         "/scan/credentialed",
@@ -784,7 +790,7 @@ def test_an_exact_host_version_replaces_an_open_ended_remote_guess():
     9.6. On a real host that left 34 CVEs reported against PostgreSQL 18.3,
     none of which affect it.
     """
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -807,7 +813,7 @@ def test_an_exact_host_version_replaces_an_open_ended_remote_guess():
 
 def test_a_precise_remote_version_is_left_alone():
     """The scan already measured it exactly; there is nothing to improve."""
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -832,7 +838,7 @@ def test_disagreeing_products_are_never_merged():
     port the scanner reached. Stamping the local binary's version onto it would
     be worse than the imprecise fingerprint it replaced.
     """
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -852,7 +858,7 @@ def test_disagreeing_products_are_never_merged():
 
 def test_an_inexact_host_version_is_not_promoted():
     """Only an exact host-side reading is better than the remote guess."""
-    from core.tasks import _upgrade_network_fingerprints
+    from scans.tasks.credentialed import _upgrade_network_fingerprints
 
     ports = [
         {
@@ -875,7 +881,7 @@ def test_findings_are_restated_only_on_the_corrected_port():
     Verification reads the version recorded on the finding before it looks at
     the host's inventory, so correcting the inventory alone changes nothing.
     """
-    from core.tasks import _restate_findings_for_corrected_ports
+    from scans.tasks.credentialed import _restate_findings_for_corrected_ports
 
     findings = [
         {"cve_id": "CVE-A", "port": 5432, "detected_version": "9.6.0 or later"},
@@ -903,7 +909,7 @@ def test_correction_rules_out_the_inapplicable_and_keeps_the_real():
     """
     from scans.finding_normalizer import verify_host_findings
 
-    from core.tasks import (
+    from scans.tasks.credentialed import (
         _restate_findings_for_corrected_ports,
         _upgrade_network_fingerprints,
     )
@@ -974,7 +980,7 @@ def test_restating_a_finding_drops_what_was_derived_from_the_old_version():
     — chosen while the version was only "9.6.0 or later" — was read back as if
     the feed had published it, and an 18.3 server was told to upgrade to 14.23.
     """
-    from core.tasks import _restate_findings_for_corrected_ports
+    from scans.tasks.credentialed import _restate_findings_for_corrected_ports
 
     derived = {
         "cve_id": "CVE-2026-6473",
@@ -1004,7 +1010,7 @@ def test_a_corrected_version_gets_its_own_branchs_fixed_release():
     """End to end: scan #9's PostgreSQL record, before and after correction."""
     from scans.finding_normalizer import build_scan_report, verify_host_findings
 
-    from core.tasks import (
+    from scans.tasks.credentialed import (
         _restate_findings_for_corrected_ports,
         _upgrade_network_fingerprints,
     )

@@ -15,7 +15,7 @@ than at the moment somebody saved it.
 """
 
 import pytest
-from db.models.compliance import (
+from db.models.credentials import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,
@@ -66,7 +66,7 @@ def test_the_api_refuses_a_kerberos_credential():
 
 
 def test_windows_credentials_are_not_offered_kerberos():
-    from db.models.compliance import CREDENTIAL_TYPE_WINDOWS
+    from db.models.credentials import CREDENTIAL_TYPE_WINDOWS
     from routers.credentials import TYPE_AUTH_MATRIX
 
     assert "kerberos" not in TYPE_AUTH_MATRIX[CREDENTIAL_TYPE_WINDOWS]
@@ -184,9 +184,11 @@ def test_a_stored_hash_never_leaves_the_resolver_as_a_password():
     """
     import inspect
 
-    from core import tasks
+    from core import credential_vault
 
-    source = inspect.getsource(tasks._resolve_stored_credential)
+    # The vault builds the material (G1); the task-side resolver only reads
+    # the scan's organisation and delegates to it.
+    source = inspect.getsource(credential_vault.connection_material)
     assert 'material["nt_hash"] = decrypt_credential' in source
     assert "AUTH_METHOD_NTLM_HASH" in source
 
@@ -418,7 +420,7 @@ def test_the_resolver_really_returns_a_hash_and_not_a_password(db_session, test_
     import uuid
 
     from core.security_crypto import encrypt_credential
-    from core.tasks import _resolve_stored_credential
+    from scans.tasks.credentialed import _resolve_stored_credential
     from db.base import gen_compliance_credential_id
     from db.models import ComplianceCredential
 
@@ -445,7 +447,7 @@ def test_the_resolver_returns_a_key_passphrase_when_one_is_stored(db_session, te
     import uuid
 
     from core.security_crypto import encrypt_credential
-    from core.tasks import _resolve_stored_credential
+    from scans.tasks.credentialed import _resolve_stored_credential
     from db.base import gen_compliance_credential_id
     from db.models import ComplianceCredential
 

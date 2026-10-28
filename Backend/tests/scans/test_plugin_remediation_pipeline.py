@@ -28,6 +28,7 @@ IP = "192.0.2.15"
 
 @pytest.fixture()
 def pipeline(db_session, monkeypatch):
+    from core.findings import writer as findings_writer
     from scans import asset_syncer
 
     monkeypatch.setattr(asset_syncer, "_enrich_findings_with_intel", lambda hosts: None)
@@ -76,7 +77,7 @@ def pipeline(db_session, monkeypatch):
         db_session.commit()
         # The normal pipeline records these services in phase two.
         for endpoint in host.get("open_ports") or []:
-            asset_syncer._upsert_network_service(
+            findings_writer.upsert_network_service(
                 db_session, f"ast_pr_{suffix}", scan.id, endpoint
             )
         db_session.commit()
@@ -200,10 +201,12 @@ def test_d13_invalid_scope_is_rejected_by_api_before_dispatch(
     pipeline, client, monkeypatch
 ):
     _, headers, _ = pipeline
-    from routers import phase_scans
+    from core.celery_app import registered_task
+    from core.task_names import RUN_HOST_DISCOVERY
 
     task = MagicMock()
-    monkeypatch.setattr(phase_scans.run_host_discovery_task, "delay", task)
+    # The route dispatches by registered name (G1); this is the task it finds.
+    monkeypatch.setattr(registered_task(RUN_HOST_DISCOVERY), "delay", task)
     response = client.post(
         "/scan/host-discovery",
         headers=headers,

@@ -3,11 +3,15 @@ Compare two live-scan results (live_scan_harness.py output), ignoring time.
 
     python3 scripts/validation/compare_live_scans.py [--strict] before.json after.json
 
-Standard library only. For each run ("full" and "cancel") it compares the scan
-row, the phases, the assets, the services, the findings, the task's result and
-every progress frame in order. Wall-clock fields are excluded: the frames'
-``t``, the run's elapsed time, the scan's duration and the progress counters'
-``start_time`` and ``elapsed_time``, and the stop's delay.
+Standard library only. For each run (the four that run together — "full",
+"credentialed", "host", "database" — and "cancel", which runs alone) it compares
+the scan row, the phases, the task's result, every progress frame in order and,
+for a credentialed run, its configuration verdicts. The four concurrent runs
+share the organisation's assets, services and findings, which are compared
+once, as "concurrent"; the cancel run's are its own. Whether each credentialed
+scan authenticated is compared too. Wall-clock fields are excluded: the frames'
+``t`` and ``timestamp``, the run's elapsed time, the scan's duration and the
+progress counters' ``start_time`` and ``elapsed_time``, and the stop's delay.
 
 Two more things depend on timing alone. Both were measured during B3
 (docs/architecture/MODULAR_REFACTORING_LOG.md §6), and a difference in either
@@ -31,6 +35,12 @@ frame, a frame that goes backwards, and every stored row are compared exactly.
 Every tolerated difference is still printed. ``--strict`` compares everything
 exactly, as before B3.
 
+The rescans (G3) run one at a time, so nothing in them is timing: for each,
+its row, phases and task result, its comparison with its baseline, the
+remediation events it wrote, the verification a pipeline rescan would make,
+and the target's findings after it are compared exactly, and so is whether
+the rescans reached every classification. Their frames are not recorded.
+
 Exit 0 when nothing differs or only tolerated differences remain, 1 when
 anything else differs (each difference is named), 2 on bad input.
 """
@@ -40,8 +50,28 @@ from __future__ import annotations
 import json
 import sys
 
-RUNS = ("full", "cancel")
-TABLES = ("phases", "assets", "services", "findings")
+RUNS = ("full", "credentialed", "host", "database", "cancel")
+#: What each run carries itself. The cancel run runs alone, so the
+#: organisation's state after it is its own; the four concurrent runs share
+#: theirs, compared once under CONCURRENT.
+RUN_TABLES = {"cancel": ("phases", "assets", "services", "findings")}
+DEFAULT_RUN_TABLES = ("phases", "verdicts")
+CONCURRENT = "concurrent"
+CONCURRENT_TABLES = ("assets", "services", "findings")
+#: Frame fields that are wall-clock time: the harness's arrival time, and the
+#: send time the credentialed task stamps on its progress frames.
+FRAME_TIME_KEYS = frozenset({"t", "timestamp"})
+
+#: What each rescan carries, compared exactly (the row and task result too).
+RESCAN_FIELDS = (
+    "kind",
+    "target_state",
+    "phases",
+    "comparison",
+    "remediation_events",
+    "verification_preview",
+    "target_findings",
+)
 
 #: The frame POST /scans/{id}/stop publishes (live_scan_harness.stop_like_the_route,
 #: pinned against it by tests/repo/test_live_scan_tooling.py), as frame_view records it.
@@ -66,7 +96,9 @@ def _scan(row: dict) -> dict:
 
 
 def _frames(frames: list[dict]) -> list[dict]:
-    return [{k: v for k, v in frame.items() if k != "t"} for frame in frames]
+    return [
+        {k: v for k, v in frame.items() if k not in FRAME_TIME_KEYS} for frame in frames
+    ]
 
 
 def _stop(stop: dict | None) -> dict:
@@ -155,12 +187,17 @@ def classify(
     tolerated: list[str] = []
     for run in RUNS:
         old, new = before.get(run), after.get(run)
+        if old is None and new is None:
+            continue  # neither recorded it: a result from before the run existed
         if old is None or new is None:
             differences.append(
                 f"{run}: missing from {'before' if old is None else 'after'}"
             )
             continue
-        pairs = [(t, old.get(t), new.get(t)) for t in TABLES]
+        pairs = [
+            (t, old.get(t), new.get(t))
+            for t in RUN_TABLES.get(run, DEFAULT_RUN_TABLES)
+        ]
         pairs += [
             ("scan", _scan(old["scan"]), _scan(new["scan"])),
             ("task_result", old.get("task_result"), new.get("task_result")),
@@ -195,7 +232,60 @@ def classify(
                     )
                 else:
                     differences.append(_line(run, "stop", a, b))
+
+    old, new = before.get(CONCURRENT), after.get(CONCURRENT)
+    if old is None and new is None:
+        pass
+    elif old is None or new is None:
+        differences.append(
+            f"{CONCURRENT}: missing from {'before' if old is None else 'after'}"
+        )
+    else:
+        for table in CONCURRENT_TABLES:
+            if old.get(table) != new.get(table):
+                differences.append(
+                    _line(CONCURRENT, table, old.get(table), new.get(table))
+                )
+    if before.get("authenticated") != after.get("authenticated"):
+        differences.append(
+            _line("authenticated", "", before.get("authenticated"), after.get("authenticated"))
+        )
+    differences.extend(_rescan_differences(before, after))
     return differences, tolerated
+
+
+def _rescan_differences(before: dict, after: dict) -> list[str]:
+    old, new = before.get("rescans"), after.get("rescans")
+    if old is None and new is None:
+        return []  # neither recorded them: a result from before G3
+    if old is None or new is None:
+        return [f"rescans: missing from {'before' if old is None else 'after'}"]
+    differences = []
+    for run in sorted(set(old) | set(new)):
+        a, b = old.get(run), new.get(run)
+        if a is None or b is None:
+            differences.append(
+                f"rescan {run}: missing from {'before' if a is None else 'after'}"
+            )
+            continue
+        pairs = [(name, a.get(name), b.get(name)) for name in RESCAN_FIELDS]
+        pairs += [
+            ("scan", _scan(a.get("scan") or {}), _scan(b.get("scan") or {})),
+            ("task_result", a.get("task_result"), b.get("task_result")),
+        ]
+        for name, x, y in pairs:
+            if x != y:
+                differences.append(_line(f"rescan {run}", name, x, y))
+    if before.get("rescan_coverage") != after.get("rescan_coverage"):
+        differences.append(
+            _line(
+                "rescan_coverage",
+                "",
+                before.get("rescan_coverage"),
+                after.get("rescan_coverage"),
+            )
+        )
+    return differences
 
 
 def compare(before: dict, after: dict, strict: bool = False) -> list[str]:
@@ -208,11 +298,44 @@ def summary(result: dict) -> list[str]:
     for run in RUNS:
         r = result.get(run) or {}
         scan = r.get("scan") or {}
+        own = (
+            f" {len(r.get('assets') or [])} assets, {len(r.get('services') or [])} services,"
+            f" {len(r.get('findings') or [])} findings,"
+            if run in RUN_TABLES
+            else f" {scan.get('total_vulns')} findings reported,"
+            + (f" {len(r.get('verdicts') or [])} verdicts," if "verdicts" in r else "")
+        )
         lines.append(
             f"{run}: status {scan.get('status')}, {len(r.get('phases') or [])} phases,"
-            f" {len(r.get('assets') or [])} assets, {len(r.get('services') or [])} services,"
-            f" {len(r.get('findings') or [])} findings, {len(r.get('frames') or [])} frames,"
-            f" {r.get('elapsed_s')} s"
+            f"{own} {len(r.get('frames') or [])} frames, {r.get('elapsed_s')} s"
+        )
+    state = result.get(CONCURRENT) or {}
+    lines.append(
+        f"{CONCURRENT}: {len(state.get('assets') or [])} assets,"
+        f" {len(state.get('services') or [])} services,"
+        f" {len(state.get('findings') or [])} findings"
+    )
+    auth = result.get("authenticated") or {}
+    lines.append(
+        "authenticated: "
+        + (", ".join(f"{k} {v}" for k, v in sorted(auth.items())) or "not recorded")
+    )
+    for run, r in (result.get("rescans") or {}).items():
+        comparison = r.get("comparison") or {}
+        counts = {k: v for k, v in sorted((comparison.get("counts") or {}).items()) if v}
+        events = {}
+        for row in r.get("remediation_events") or []:
+            events[row[3]] = events.get(row[3], 0) + 1
+        lines.append(
+            f"rescan {run}: status {(r.get('scan') or {}).get('status')},"
+            f" baseline {comparison.get('baseline')}, {counts or 'no changes'},"
+            f" events {events or 'none'}, {r.get('elapsed_s')} s"
+        )
+    coverage = result.get("rescan_coverage")
+    if coverage is not None:
+        missing = sorted(k for k, ok in coverage.items() if not ok)
+        lines.append(
+            "rescan coverage: " + ("complete" if not missing else f"missing {missing}")
         )
     return lines
 

@@ -280,7 +280,9 @@ def test_requesting_a_new_link_invalidates_the_previous_one(
     """
     old = _issue_token(db_session, reset_user)
 
-    with patch("core.tasks.send_password_reset_email_task.delay"):
+    with patch(
+        "ccure_platform.identity.mail_tasks.send_password_reset_email_task.delay"
+    ):
         response = client.post(
             "/auth/forgot-password", json={"email": "resetuser@test.com"}
         )
@@ -381,7 +383,9 @@ def test_mail_bomb_ceiling_does_not_become_an_account_oracle(
     )
 
     with patch("core.throttle.hit", return_value=True):
-        with patch("core.tasks.send_password_reset_email_task.delay") as mail:
+        with patch(
+            "ccure_platform.identity.mail_tasks.send_password_reset_email_task.delay"
+        ) as mail:
             throttled = client.post(
                 "/auth/forgot-password", json={"email": "resetuser@test.com"}
             )

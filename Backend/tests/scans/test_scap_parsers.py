@@ -19,10 +19,10 @@ refused since Phase 4.
 
 import pytest
 
+from core.compliance_seeds import nist_800_53_control_numbers
 from core.scap.cci import (
     base_control,
     crosswalk_entries,
-    known_controls,
     parse_cci_list,
 )
 from core.scap.oval import (
@@ -482,17 +482,42 @@ def test_a_csf_identifier_is_not_read_as_an_800_53_control():
     filter alone let it through.
     """
     assert (
-        crosswalk_entries((), (("https://csrc.nist.gov/cyberframework", "PR.DS-01"),))
+        crosswalk_entries(
+            (),
+            (("https://csrc.nist.gov/cyberframework", "PR.DS-01"),),
+            nist_controls=nist_800_53_control_numbers(),
+        )
         == ()
     )
 
 
 def test_a_crosswalk_entry_must_name_a_control_the_catalogue_has():
-    assert known_controls(), "the seeded NIST SP 800-53 catalogue should be readable"
+    catalogue = nist_800_53_control_numbers()
+    assert catalogue, "the seeded NIST SP 800-53 catalogue should be readable"
     assert crosswalk_entries(
-        (), (("https://nvd.nist.gov/800-53/Rev5", "AC-17 (1)"),)
+        (),
+        (("https://nvd.nist.gov/800-53/Rev5", "AC-17 (1)"),),
+        nist_controls=catalogue,
     ) == ("NIST_800_53_R5:AC-17",)
-    assert crosswalk_entries((), (("https://nvd.nist.gov/800-53/Rev5", "ZZ-99"),)) == ()
+    assert (
+        crosswalk_entries(
+            (),
+            (("https://nvd.nist.gov/800-53/Rev5", "ZZ-99"),),
+            nist_controls=catalogue,
+        )
+        == ()
+    )
+
+
+def test_the_catalogue_is_the_callers_and_absent_it_checks_nothing():
+    """
+    G4: the converter reads no compliance data, so the STIG loader passes the
+    catalogue in. With none, an entry is not checked, which is what an
+    unreadable seed did before (recorded in the refactoring log, §7).
+    """
+    assert crosswalk_entries((), (("https://nvd.nist.gov/800-53/Rev5", "ZZ-99"),)) == (
+        "NIST_800_53_R5:ZZ-99",
+    )
 
 
 def test_a_reference_that_is_not_about_800_53_is_ignored():

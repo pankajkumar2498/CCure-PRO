@@ -66,7 +66,8 @@ tables:
   http_security_details: {owner: audit, capability: findings}
   vulnerability_definitions: {owner: audit, capability: findings}
   asset_vulnerabilities: {owner: audit, capability: findings}
-  finding_remediation_events: {owner: audit, capability: remediation}
+  # D-6 (G3): remediation is part of the findings capability.
+  finding_remediation_events: {owner: audit, capability: findings}
   # ── audit: web application scanning ──────────────────────────────────────
   web_scans: {owner: audit, capability: web_dast}
   web_assets: {owner: audit, capability: web_dast}

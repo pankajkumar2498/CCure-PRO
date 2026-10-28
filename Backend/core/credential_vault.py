@@ -29,12 +29,13 @@ and are never logged, returned or written to the audit trail.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ccure_platform import api as platform_api
-from core.security_crypto import encrypt_credential
+from core.security_crypto import decrypt_credential, encrypt_credential
 from db.base import gen_compliance_credential_id
-from db.models.compliance import (
+from db.models.credentials import (
+    AUTH_METHOD_NTLM_HASH,
     AUTH_REQUIRES_KEY,
     AUTH_REQUIRES_PASSWORD,
     CREDENTIAL_TYPE_DATABASE,
@@ -218,6 +219,122 @@ def list_for_org(
     return query.order_by(ComplianceCredential.name.asc()).all()
 
 
+def resolve(
+    db: Session, credential_id: str, *, org_id: Optional[str]
+) -> Dict[str, Any]:
+    """
+    Decrypt a stored credential for use, scoped to *org_id*.
+
+    Returns the connection material; the caller is responsible for discarding
+    it. *org_id* is the organisation the credential is used for — a scan's own
+    tenant — and filtering on it is what keeps one tenant from naming another
+    tenant's credential id. ``None`` applies no tenant filter, which is right
+    only for a caller that has already found the row within its organisation.
+    """
+    query = db.query(ComplianceCredential).filter(
+        ComplianceCredential.id == credential_id
+    )
+    if org_id:
+        query = query.filter(ComplianceCredential.tenant_id == org_id)
+
+    cred = query.first()
+    if not cred:
+        raise ValueError(
+            f"Stored credential with ID {credential_id} not found or access denied."
+        )
+    return connection_material(cred)
+
+
+def connection_material(cred: ComplianceCredential) -> Dict[str, Any]:
+    """
+    One stored credential's connection material, decrypted.
+
+    The caller is responsible for discarding it. Holds the secret the
+    credential's auth method presents and nothing else.
+    """
+    material = {
+        # The username in the form this credential's auth method expects.
+        # NTLM wants DOMAIN\user, Kerberos wants user@REALM, SSH wants the bare
+        # name — `principal()` owns that mapping so the two callers of this
+        # function cannot disagree about it.
+        "username": cred.principal(),
+        "port": cred.port,
+        "auth_method": cred.auth_method,
+        "credential_type": cred.credential_type,
+        "transport": cred.transport,
+        "domain": cred.domain,
+        "options": dict(cred.options or {}),
+        "password": None,
+        "key_content": None,
+        #: Unlocks an encrypted private key. Separate from ``password``: the two
+        #: unlock different things and a key credential may carry only this one.
+        "key_passphrase": None,
+        #: Pass-the-Hash material. Kept out of ``password`` deliberately — every
+        #: transport that receives a password would present this as one, and
+        #: only the SMB executor knows how to send a hash.
+        "nt_hash": None,
+    }
+    # Driven by the shared AUTH_REQUIRES_* sets rather than an if/elif on two
+    # literal method names. The literal form is what made ``ntlm`` and
+    # ``kerberos`` resolve to a credential with no material at all: both
+    # present a password, neither matched ``== "password"``, so the connection
+    # was attempted with None and failed as "authentication rejected" — a
+    # misleading message for a credential that was never actually sent.
+    if cred.auth_method == AUTH_METHOD_NTLM_HASH and cred.encrypted_password:
+        # The hash is stored in the password column and must not leave this
+        # function as one: handing it to a transport that expects a password
+        # would present the hash as plaintext against the account.
+        material["nt_hash"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
+        material["password"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method in AUTH_REQUIRES_KEY and cred.encrypted_key_content:
+        material["key_content"] = decrypt_credential(cred.encrypted_key_content)
+        if cred.encrypted_key_passphrase:
+            material["key_passphrase"] = decrypt_credential(
+                cred.encrypted_key_passphrase
+            )
+    return material
+
+
+def stored_secrets(db: Session, credential_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Every secret one stored credential holds, decrypted, with its username,
+    port and auth method; ``None`` when there is no such credential.
+
+    The form compliance remediation has always used, moved here unchanged by
+    G2 (C5) from ``core/compliance_tasks.py``:
+
+    * the stored ``username``, not ``principal()``;
+    * the password and the private key, each decrypted whenever the row holds
+      one, whatever the auth method — so a key credential that also stores a
+      password, for sudo, keeps it;
+    * looked up by id alone. The remediation routes check that the credential
+      belongs to the caller's organisation before its id reaches the task.
+
+    ``connection_material``, which the collectors use, differs on all three.
+    Making remediation use it would change what a remediation authenticates
+    with, and is a decision of its own (refactoring log §7).
+    """
+    cred = db.query(ComplianceCredential).filter_by(id=credential_id).first()
+    if cred is None:
+        return None
+    return {
+        "username": cred.username,
+        "port": cred.port,
+        "auth_method": cred.auth_method,
+        "password": (
+            decrypt_credential(cred.encrypted_password)
+            if cred.encrypted_password
+            else None
+        ),
+        "key_content": (
+            decrypt_credential(cred.encrypted_key_content)
+            if cred.encrypted_key_content
+            else None
+        ),
+    }
+
+
 def create(
     db: Session,
     *,
@@ -299,6 +416,43 @@ def create(
     return cred
 
 
+#: Who refers to a stored credential, asked when one is deleted:
+#: ``counter(db, org_id, credential_id) -> int``. The vault does not read other
+#: capabilities' tables to find out (G2, C5). The capability holding the
+#: references registers its own counter, as a module answers a user purge
+#: (``ccure_platform/offboarding.py``). Scheduling registers
+#: ``SCAN_SCHEDULE_REFERENCES`` from ``core/scheduling/credential_references.py``,
+#: which ``main.py`` imports; ``tests/repo/test_credential_vault_boundary.py``
+#: checks the application has it.
+CredentialReferenceCounter = Callable[[Session, str, str], int]
+
+SCAN_SCHEDULE_REFERENCES = "scan_schedules"
+
+_reference_counters: Dict[str, CredentialReferenceCounter] = {}
+
+
+def register_reference_counter(name: str, counter: CredentialReferenceCounter) -> None:
+    """Register ``counter`` under a unique ``name`` (the same one again is a no-op)."""
+    existing = _reference_counters.get(name)
+    if existing is not None and existing is not counter:
+        raise ValueError(
+            f"A credential reference counter named {name!r} is already registered."
+        )
+    _reference_counters[name] = counter
+
+
+def registered_reference_counters() -> tuple:
+    return tuple(_reference_counters)
+
+
+def references(db: Session, org_id: str, credential_id: str) -> Dict[str, int]:
+    """How many records of each registered kind refer to the credential."""
+    return {
+        name: counter(db, org_id, credential_id)
+        for name, counter in tuple(_reference_counters.items())
+    }
+
+
 def delete(
     db: Session, *, actor, org_id: str, credential_id: str, request=None
 ) -> tuple:
@@ -315,13 +469,8 @@ def delete(
     cred = get_for_org(db, org_id, credential_id)
     name = cred.name
 
-    from db.models.scan_schedules import ScanSchedule
-
-    affected = (
-        db.query(ScanSchedule.id)
-        .filter(ScanSchedule.credential_id == cred.id, ScanSchedule.org_id == org_id)
-        .count()
-    )
+    # Scheduling's own count, registered with the vault (above).
+    affected = references(db, org_id, cred.id).get(SCAN_SCHEDULE_REFERENCES, 0)
 
     platform_api.log_audit_event(
         db,

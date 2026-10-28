@@ -758,13 +758,13 @@ class _FakeFinding:
 def _run_vulnerability_adapter(findings):
     """Drive the adapter over a fixed row set and hand back its payload plus
     the filter clauses it asked the database for."""
-    from core.compliance_evidence import ComplianceEvidenceProvider
+    from core.findings.evidence import vulnerability_audit
 
     db = MagicMock()
     query = db.query.return_value.join.return_value.filter.return_value
     query.all.return_value = findings
 
-    payload = ComplianceEvidenceProvider._adapt_vulnerability_audit(db, "ast_test")
+    payload = vulnerability_audit(db, "ast_test")
     clauses = db.query.return_value.join.return_value.filter.call_args.args
     return payload, clauses
 

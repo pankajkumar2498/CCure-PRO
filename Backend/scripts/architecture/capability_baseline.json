@@ -4,19 +4,15 @@
   [
    "assets",
    "compliance",
-   "config_audit",
    "credential_vault",
    "credentialed_audit",
    "discovery",
    "findings",
    "network_checks",
-   "remediation",
    "scan_policy",
    "scans",
    "scheduling",
-   "task_hub",
-   "topology",
-   "web_dast"
+   "topology"
   ],
   [
    "check_kernel",
@@ -32,17 +28,10 @@
  "cycles_top_level": [
   [
    "assets",
-   "compliance",
-   "config_audit",
-   "credential_vault",
    "credentialed_audit",
    "findings",
    "network_checks",
-   "scan_policy",
-   "scans",
-   "scheduling",
-   "task_hub",
-   "topology"
+   "scans"
   ],
   [
    "infra",
@@ -52,23 +41,7 @@
  "foreign_table_references": [
   [
    "assets",
-   "asset_vulnerabilities"
-  ],
-  [
-   "assets",
    "scans"
-  ],
-  [
-   "assets",
-   "services"
-  ],
-  [
-   "assets",
-   "tls_details"
-  ],
-  [
-   "assets",
-   "vulnerability_definitions"
   ],
   [
    "audit_boundary",
@@ -116,67 +89,11 @@
   ],
   [
    "compliance",
-   "asset_vulnerabilities"
-  ],
-  [
-   "compliance",
    "assets"
   ],
   [
    "compliance",
-   "compliance_credentials"
-  ],
-  [
-   "compliance",
-   "network_links"
-  ],
-  [
-   "compliance",
    "services"
-  ],
-  [
-   "compliance",
-   "tls_details"
-  ],
-  [
-   "compliance",
-   "vulnerability_definitions"
-  ],
-  [
-   "compliance",
-   "web_findings"
-  ],
-  [
-   "compliance",
-   "web_scans"
-  ],
-  [
-   "config_audit",
-   "compliance_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_frameworks"
-  ],
-  [
-   "config_audit",
-   "compliance_rule_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_rules"
-  ],
-  [
-   "config_audit",
-   "compliance_tenant_frameworks"
-  ],
-  [
-   "credential_vault",
-   "scan_schedules"
-  ],
-  [
-   "credentialed_audit",
-   "compliance_credentials"
   ],
   [
    "dashboard",
@@ -224,10 +141,6 @@
   ],
   [
    "findings",
-   "assets"
-  ],
-  [
-   "findings",
    "scans"
   ],
   [
@@ -247,14 +160,6 @@
    "vulnerability_definitions"
   ],
   [
-   "remediation",
-   "asset_vulnerabilities"
-  ],
-  [
-   "remediation",
-   "assets"
-  ],
-  [
    "reporting",
    "assets"
   ],
@@ -265,26 +170,6 @@
   [
    "reporting",
    "scans"
-  ],
-  [
-   "scan_policy",
-   "compliance_controls"
-  ],
-  [
-   "scan_policy",
-   "compliance_frameworks"
-  ],
-  [
-   "scan_policy",
-   "compliance_rule_controls"
-  ],
-  [
-   "scan_policy",
-   "compliance_rules"
-  ],
-  [
-   "scan_policy",
-   "compliance_tenant_frameworks"
   ],
   [
    "scan_policy",
@@ -315,40 +200,12 @@
    "vulnerability_definitions"
   ],
   [
-   "scheduling",
-   "compliance_credentials"
+   "scans",
+   "web_scans"
   ],
   [
    "scheduling",
    "scan_policies"
-  ],
-  [
-   "task_hub",
-   "asset_vulnerabilities"
-  ],
-  [
-   "task_hub",
-   "assets"
-  ],
-  [
-   "task_hub",
-   "compliance_credentials"
-  ],
-  [
-   "task_hub",
-   "scan_phases"
-  ],
-  [
-   "task_hub",
-   "scans"
-  ],
-  [
-   "task_hub",
-   "vulnerability_definitions"
-  ],
-  [
-   "task_hub",
-   "web_scans"
   ],
   [
    "topology",
@@ -369,22 +226,6 @@
  ],
  "foreign_table_writes": [
   [
-   "assets",
-   "asset_vulnerabilities"
-  ],
-  [
-   "assets",
-   "services"
-  ],
-  [
-   "assets",
-   "tls_details"
-  ],
-  [
-   "assets",
-   "vulnerability_definitions"
-  ],
-  [
    "audit_boundary",
    "asset_notes"
   ],
@@ -394,43 +235,11 @@
   ],
   [
    "audit_boundary",
-   "asset_vulnerabilities"
-  ],
-  [
-   "audit_boundary",
    "scans"
   ],
   [
-   "config_audit",
-   "compliance_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_frameworks"
-  ],
-  [
-   "config_audit",
-   "compliance_rule_controls"
-  ],
-  [
-   "config_audit",
-   "compliance_rules"
-  ],
-  [
-   "task_hub",
-   "asset_vulnerabilities"
-  ],
-  [
-   "task_hub",
+   "scans",
    "assets"
-  ],
-  [
-   "task_hub",
-   "scans"
-  ],
-  [
-   "task_hub",
-   "vulnerability_definitions"
   ],
   [
    "topology",
@@ -439,28 +248,12 @@
  ],
  "lateral_edges": [
   [
-   "core.compliance_evidence",
-   "db.models.assets:Asset"
+   "core.asset_hosts",
+   "core.findings.hosts"
   ],
   [
-   "core.compliance_evidence",
-   "db.models.findings"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:Service"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:TLSDetail"
-  ],
-  [
-   "core.compliance_evidence",
-   "db.models.findings:VulnerabilityDefinition"
+   "core.compliance_tasks",
+   "core.credential_vault"
   ],
   [
    "core.compliance_tasks",
@@ -468,19 +261,7 @@
   ],
   [
    "core.compliance_tasks",
-   "db.models.compliance:ComplianceCredential"
-  ],
-  [
-   "core.compliance_tasks",
    "db.models.findings:Service"
-  ],
-  [
-   "core.credential_vault",
-   "db.models.compliance"
-  ],
-  [
-   "core.credential_vault",
-   "db.models.scan_schedules:ScanSchedule"
   ],
   [
    "core.cve_database",
@@ -489,30 +270,6 @@
   [
    "core.findings.comparison",
    "core.scan_policy"
-  ],
-  [
-   "core.remediation.reporting",
-   "db.models.assets:Asset"
-  ],
-  [
-   "core.remediation.reporting",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "core.remediation.states",
-   "db.models.findings"
-  ],
-  [
-   "core.remediation.verification",
-   "core.findings.comparison"
-  ],
-  [
-   "core.remediation.verification",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "core.remediation.workflow",
-   "db.models.findings:AssetVulnerability"
   ],
   [
    "core.risk",
@@ -524,27 +281,15 @@
   ],
   [
    "core.scan_policy.validation",
-   "core.compliance_frameworks"
+   "core.compliance_catalogue.reads"
   ],
   [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceControl"
+   "core.scheduling.credential_references",
+   "core.credential_vault"
   ],
   [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceFramework"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceRule"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceRuleControl"
-  ],
-  [
-   "core.scan_policy.validation",
-   "db.models.compliance:ComplianceTenantFramework"
+   "core.scheduling.dispatcher",
+   "core.credential_vault"
   ],
   [
    "core.scheduling.dispatcher",
@@ -552,39 +297,19 @@
   ],
   [
    "core.scheduling.dispatcher",
-   "db.models.compliance:ComplianceCredential"
-  ],
-  [
-   "core.scheduling.dispatcher",
    "db.models.scan_policies:ScanPolicy"
-  ],
-  [
-   "core.tasks",
-   "core.scan_control"
-  ],
-  [
-   "core.tasks",
-   "db.models.scans:Scan"
-  ],
-  [
-   "core.tasks",
-   "db.models.scans:ScanPhase"
-  ],
-  [
-   "core.tasks",
-   "orchestrator.scan_orchestrator"
-  ],
-  [
-   "core.tasks",
-   "scan_helpers"
-  ],
-  [
-   "core.tasks",
-   "scans.db_helpers"
   ],
   [
    "core.utils",
    "core.cve_database"
+  ],
+  [
+   "db.models.compliance",
+   "db.models.credentials"
+  ],
+  [
+   "db.models.compliance",
+   "db.models.credentials:ComplianceCredential"
   ],
   [
    "reporting.exports",
@@ -600,55 +325,19 @@
   ],
   [
    "routers.assets",
-   "db.models.findings"
+   "core.findings"
   ],
   [
    "routers.assets",
-   "db.models.findings:AssetVulnerability"
+   "core.findings.reads"
   ],
   [
-   "routers.assets",
-   "db.models.findings:Service"
+   "routers.compliance_common",
+   "db.models.assets:Asset"
   ],
   [
-   "routers.assets",
-   "db.models.findings:TLSDetail"
-  ],
-  [
-   "routers.compliance",
+   "routers.compliance_remediation",
    "core.credential_vault"
-  ],
-  [
-   "routers.compliance",
-   "db.models.assets:Asset"
-  ],
-  [
-   "routers.compliance",
-   "db.models.compliance:ComplianceCredential"
-  ],
-  [
-   "routers.credentials",
-   "db.models.compliance"
-  ],
-  [
-   "routers.findings",
-   "core.remediation"
-  ],
-  [
-   "routers.findings",
-   "db.models.assets:Asset"
-  ],
-  [
-   "routers.phase_scans",
-   "core.tasks"
-  ],
-  [
-   "routers.remediation",
-   "db.models.assets:Asset"
-  ],
-  [
-   "routers.remediation",
-   "db.models.findings:AssetVulnerability"
   ],
   [
    "routers.scan_policies",
@@ -663,44 +352,12 @@
    "core.scan_policy"
   ],
   [
-   "routers.traditional_scans",
-   "core.tasks"
-  ],
-  [
    "scans.asset_syncer",
    "core.findings"
   ],
   [
    "scans.asset_syncer",
-   "core.findings.comparison"
-  ],
-  [
-   "scans.asset_syncer",
-   "core.findings.credentialed_scope"
-  ],
-  [
-   "scans.asset_syncer",
-   "core.findings.fix_state"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:AssetVulnerability"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:Service"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:TLSDetail"
-  ],
-  [
-   "scans.asset_syncer",
-   "db.models.findings:VulnerabilityDefinition"
+   "core.findings.writer"
   ],
   [
    "scans.nvd_sync",
@@ -825,6 +482,7 @@
    "capabilities": [
     "assets",
     "compliance",
+    "credential_vault",
     "findings",
     "infra",
     "platform",
@@ -919,6 +577,7 @@
    "capabilities": [
     "assets",
     "compliance",
+    "credential_vault",
     "findings",
     "infra",
     "platform",
@@ -944,50 +603,6 @@
    "reporting.report_helpers"
   ],
   [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceControl"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceFramework"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceRule"
-  ],
-  [
-   "core.benchmarks.loader",
-   "db.models.compliance:ComplianceRuleControl"
-  ],
-  [
-   "core.benchmarks.pack",
-   "core.compliance_frameworks"
-  ],
-  [
-   "core.benchmarks.selection",
-   "core.compliance_frameworks"
-  ],
-  [
-   "core.benchmarks.selection",
-   "core.scan_policy.spec"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceControl"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceRule"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceRuleControl"
-  ],
-  [
-   "core.benchmarks.selection",
-   "db.models.compliance:ComplianceTenantFramework"
-  ],
-  [
    "core.discovery.techniques.arp",
    "core.oui_lookup"
   ],
@@ -998,10 +613,6 @@
   [
    "core.findings.comparison",
    "db.models.scans:Scan"
-  ],
-  [
-   "core.scap.cci",
-   "core.compliance_seeds"
   ],
   [
    "core.scheduling.dispatcher",
@@ -1028,44 +639,16 @@
    "core.device_classifier"
   ],
   [
-   "reporting.web_pdf_generator",
-   "scan_helpers"
-  ],
-  [
-   "routers.assets",
-   "core.tasks"
-  ],
-  [
    "routers.assets",
    "db.models.scans:Scan"
   ],
   [
    "routers.credentialed",
-   "core.tasks"
+   "core.credential_vault"
   ],
   [
    "routers.credentialed",
-   "db.models.compliance:ComplianceCredential"
-  ],
-  [
-   "routers.credentialed",
-   "orchestrator.scan_orchestrator"
-  ],
-  [
-   "routers.credentialed",
-   "scan_helpers"
-  ],
-  [
-   "routers.credentialed",
-   "scans.db_helpers"
-  ],
-  [
-   "routers.credentialed",
-   "scans.policy_binding"
-  ],
-  [
-   "routers.credentials",
-   "core.tasks"
+   "scans.scan_creation"
   ],
   [
    "routers.scan_policies",

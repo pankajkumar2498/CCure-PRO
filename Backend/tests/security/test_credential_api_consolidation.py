@@ -652,6 +652,35 @@ def test_a_picked_credential_can_be_attached_to_a_schedule(
     assert SECRET not in created.text
 
 
+def test_deleting_a_credential_reports_the_schedules_it_leaves_without_one(
+    client, db_session, org, as_role
+):
+    """
+    The count comes from scheduling's own counter, registered with the vault
+    (G2): the vault no longer reads ``scan_schedules`` itself. A schedule is
+    never deleted with its credential; its reference is cleared, and the
+    dispatcher then refuses to run it unauthenticated.
+    """
+    from db.models import ScanSchedule
+
+    stored = _stored(db_session, org)
+    created = client.post(
+        "/scan-schedules",
+        json=_credentialed_schedule(stored.id),
+        headers=as_role("platform.analyst"),
+    )
+    assert created.status_code == 201, created.text
+    schedule_id = created.json()["id"]
+
+    response = client.delete(
+        f"{CANONICAL}/{stored.id}", headers=as_role("platform.org_admin")
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["schedules_affected"] == 1
+    db_session.expire_all()
+    assert db_session.get(ScanSchedule, schedule_id).credential_id is None
+
+
 def test_another_organisations_credential_still_cannot_be_attached(
     client, db_session, org, other_org, as_role
 ):

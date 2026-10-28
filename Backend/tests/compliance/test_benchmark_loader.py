@@ -25,7 +25,7 @@ benchmark result.
 
 import pytest
 
-from core.benchmarks.loader import (
+from core.compliance_catalogue.benchmark_loader import (
     BENCHMARK_EVIDENCE_SOURCE,
     BENCHMARK_THEME,
     control_row_id,

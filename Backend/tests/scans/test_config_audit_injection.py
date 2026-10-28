@@ -10,7 +10,7 @@ now injected:
 * the collector asks the executor it was handed (``DatabaseSession.
   normalize_engine``);
 * the evaluator uses ``CollectionContext.version_compare``, which the two places
-  production builds a context (``core/tasks.py``) set to the matcher's
+  production builds a context (``scans/tasks/credentialed.py``) set to the matcher's
   comparator.
 
 These pin the purpose (statically, and by running both with ``engines`` made
@@ -37,18 +37,17 @@ from testpaths import BACKEND_ROOT
 
 # ── The purpose ──────────────────────────────────────────────────────────────
 
-#: The one edge out of the evaluation path that is not to the check kernel, and
-#: why it stays: the CCI crosswalk resolves the seeded NIST catalogue's path.
-#: It is a seed-file lookup, not an engine, and not B10's.
-_KNOWN = {("core.scap.cci", "core.compliance_seeds")}
+#: Edges out of the evaluation path that are not to the check kernel. Empty
+#: since G4: the CCI crosswalk read the seeded NIST catalogue through
+#: ``core.compliance_seeds``, and the STIG loader passes it in now.
+_KNOWN: set = set()
 
 
 def test_the_audit_engine_and_scap_evaluation_depend_only_on_the_check_kernel():
     """
     The plan's target, for the engine, its collectors and the SCAP compiler and
-    evaluator. The benchmark loader's catalogue access (``core.benchmarks``) is
-    compliance's to take over (C4) and the router is the HTTP edge; neither is
-    here. Lazy imports count.
+    evaluator. The benchmark loader and selection are compliance's since C4,
+    and the router is the HTTP edge; neither is here. Lazy imports count.
     """
     _, edges = collect_edges()
     beyond = sorted(
@@ -183,7 +182,7 @@ def test_every_context_production_builds_carries_the_comparator():
     """A context without one would turn every OVAL version comparison into an
     unknown, and every such rule into an ERROR on every host."""
     sites = []
-    for path in (BACKEND_ROOT / "core" / "tasks.py",):
+    for path in (BACKEND_ROOT / "scans" / "tasks" / "credentialed.py",):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.Call)
@@ -207,7 +206,7 @@ def test_no_other_production_module_builds_a_context():
         source = path.read_text(encoding="utf-8")
         if "CollectionContext(" in source and module != "core.config_audit.collection":
             builders.add(module)
-    assert builders == {"core.tasks"}
+    assert builders == {"scans.tasks.credentialed"}
 
 
 # ── The seams ────────────────────────────────────────────────────────────────

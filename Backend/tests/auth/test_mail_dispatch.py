@@ -70,7 +70,9 @@ def test_sends_inline_when_no_worker_is_consuming(real_routing):
 
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=False):
         with patch("auth.mail_service.send_verification_email") as sender:
-            with patch("core.tasks.send_verification_email_task.delay") as delay:
+            with patch(
+                "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+            ) as delay:
                 result = mail_dispatch.dispatch_email(
                     "verification", "a@b.test", "someone", "https://x/verify?token=t"
                 )
@@ -86,7 +88,9 @@ def test_queues_when_a_worker_is_consuming(real_routing):
 
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=True):
         with patch("auth.mail_service.send_verification_email") as sender:
-            with patch("core.tasks.send_verification_email_task.delay") as delay:
+            with patch(
+                "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+            ) as delay:
                 result = mail_dispatch.dispatch_email(
                     "verification", "a@b.test", "someone", "https://x/verify?token=t"
                 )
@@ -106,7 +110,7 @@ def test_falls_back_inline_when_the_broker_refuses(real_routing):
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=True):
         with patch("auth.mail_service.send_verification_email") as sender:
             with patch(
-                "core.tasks.send_verification_email_task.delay",
+                "ccure_platform.identity.mail_tasks.send_verification_email_task.delay",
                 side_effect=OSError("connection refused"),
             ):
                 result = mail_dispatch.dispatch_email(
@@ -170,7 +174,9 @@ def test_eager_mode_sends_once_and_reports_eager(monkeypatch):
     monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
 
     with patch("auth.mail_service.send_verification_email") as sender:
-        with patch("core.tasks.send_verification_email_task.delay") as delay:
+        with patch(
+            "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+        ) as delay:
             result = mail_dispatch.dispatch_email(
                 "verification", "a@b.test", "someone", "https://x/verify?token=t"
             )
@@ -193,7 +199,9 @@ def test_eager_mode_does_not_consult_the_broker(monkeypatch):
     monkeypatch.setattr(celery_app.conf, "task_always_eager", True)
 
     with patch.object(mail_dispatch, "_queue_has_consumer") as check:
-        with patch("core.tasks.send_verification_email_task.delay"):
+        with patch(
+            "ccure_platform.identity.mail_tasks.send_verification_email_task.delay"
+        ):
             mail_dispatch.dispatch_email("verification", "a@b.test", "x", "y")
     check.assert_not_called()
 
@@ -278,7 +286,7 @@ def test_mail_tasks_retry_instead_of_swallowing(task_name):
     had succeeded — so a momentary SMTP failure destroyed the message with no
     retry. Autoretry must be configured, or that returns.
     """
-    from core import tasks
+    from ccure_platform.identity import mail_tasks as tasks
 
     task = getattr(tasks, task_name)
     assert (
@@ -294,7 +302,7 @@ def test_mail_task_failure_is_reported_permanently():
     After the retries are exhausted the message really is gone; that has to be
     findable in the log, with the recipient.
     """
-    from core import tasks
+    from ccure_platform.identity import mail_tasks as tasks
 
     task = tasks.send_verification_email_task
     with patch.object(tasks.log, "error") as log_error:

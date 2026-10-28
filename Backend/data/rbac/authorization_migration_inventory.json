@@ -757,7 +757,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 67,
+      "line": 63,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -767,7 +767,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 193,
+      "line": 183,
       "function": "list_assets",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -777,7 +777,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 300,
+      "line": 290,
       "function": "debug_reconcile",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -787,7 +787,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 369,
+      "line": 359,
       "function": "list_global_certificates",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -797,7 +797,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 485,
+      "line": 415,
       "function": "list_global_services",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -807,7 +807,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 583,
+      "line": 469,
       "function": "list_service_assets",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -817,7 +817,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 647,
+      "line": 500,
       "function": "get_coverage_stats",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -827,7 +827,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 756,
+      "line": 609,
       "function": "get_reconciliation_drilldown",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -837,7 +837,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1042,
+      "line": 895,
       "function": "get_asset",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -847,7 +847,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1069,
+      "line": 922,
       "function": "get_asset_services",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -857,7 +857,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1138,
+      "line": 940,
       "function": "get_asset_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -867,7 +867,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1206,
+      "line": 961,
       "function": "get_asset_changelog",
       "mechanism": "require_authorized",
       "permission": "audit.asset.read",
@@ -877,7 +877,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1321,
+      "line": 1076,
       "function": "update_asset",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -887,7 +887,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1372,
+      "line": 1127,
       "function": "add_tag",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -897,7 +897,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1397,
+      "line": 1152,
       "function": "remove_tag",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -907,7 +907,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1426,
+      "line": 1181,
       "function": "add_note",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -917,7 +917,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1553,
+      "line": 1308,
       "function": "import_amt_inventory",
       "mechanism": "require_authorized",
       "permission": "audit.asset.import_amt",
@@ -926,524 +926,524 @@
       "site_id": "routers/assets.py::import_amt_inventory::require_authorized::audit.asset.import_amt#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 288,
-      "function": "_may_bypass_maker_checker",
-      "mechanism": "has_permission",
-      "permission": "audit.compliance.approve_exception",
-      "status": "migrated",
-      "reason": "in-handler permission check",
-      "site_id": "routers/compliance.py::_may_bypass_maker_checker::has_permission::audit.compliance.approve_exception#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 493,
-      "function": "get_marketplace_frameworks",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::get_marketplace_frameworks::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 576,
-      "function": "install_marketplace_framework",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_frameworks",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::install_marketplace_framework::require_authorized::audit.compliance.manage_frameworks#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 718,
-      "function": "uninstall_marketplace_framework",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_frameworks",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::uninstall_marketplace_framework::require_authorized::audit.compliance.manage_frameworks#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 753,
-      "function": "list_policies",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_policies::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 805,
-      "function": "get_policy_rules",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::get_policy_rules::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 878,
-      "function": "update_compliance_rule",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_rules",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::update_compliance_rule::require_authorized::audit.compliance.manage_rules#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 901,
-      "function": "update_compliance_rule",
-      "mechanism": "has_permission",
-      "permission": "audit.compliance.manage_shared_rules",
-      "status": "migrated",
-      "reason": "in-handler permission check",
-      "site_id": "routers/compliance.py::update_compliance_rule::has_permission::audit.compliance.manage_shared_rules#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 957,
-      "function": "create_policy_baseline",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_rules",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::create_policy_baseline::require_authorized::audit.compliance.manage_rules#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 1054,
+      "file": "routers/compliance_assessment.py",
+      "line": 79,
       "function": "trigger_compliance_scan",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.scan",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::trigger_compliance_scan::require_authorized::audit.compliance.scan#1"
+      "site_id": "routers/compliance_assessment.py::trigger_compliance_scan::require_authorized::audit.compliance.scan#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 1170,
+      "file": "routers/compliance_assessment.py",
+      "line": 198,
       "function": "list_findings",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_findings::require_authorized::audit.compliance.read#1"
+      "site_id": "routers/compliance_assessment.py::list_findings::require_authorized::audit.compliance.read#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 1347,
-      "function": "attest_manual_control",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.attest",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::attest_manual_control::require_authorized::audit.compliance.attest#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 1504,
-      "function": "list_framework_controls",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_framework_controls::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 1709,
-      "function": "upload_control_evidence",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.attest",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::upload_control_evidence::require_authorized::audit.compliance.attest#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 1904,
-      "function": "list_control_evidence",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_control_evidence::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 1936,
-      "function": "download_control_evidence",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_control_evidence::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 1973,
-      "function": "delete_control_evidence",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.attest",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::delete_control_evidence::require_authorized::audit.compliance.attest#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2016,
+      "file": "routers/compliance_assessment.py",
+      "line": 380,
       "function": "list_scan_runs",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_scan_runs::require_authorized::audit.compliance.read#1"
+      "site_id": "routers/compliance_assessment.py::list_scan_runs::require_authorized::audit.compliance.read#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 2049,
+      "file": "routers/compliance_assessment.py",
+      "line": 413,
       "function": "get_scan_run",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::get_scan_run::require_authorized::audit.compliance.read#1"
+      "site_id": "routers/compliance_assessment.py::get_scan_run::require_authorized::audit.compliance.read#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 2107,
-      "function": "create_scan_schedule",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_schedules",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::create_scan_schedule::require_authorized::audit.compliance.manage_schedules#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2166,
-      "function": "list_scan_schedules",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_scan_schedules::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2209,
-      "function": "update_scan_schedule",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_schedules",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::update_scan_schedule::require_authorized::audit.compliance.manage_schedules#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2245,
-      "function": "delete_scan_schedule",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.manage_schedules",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::delete_scan_schedule::require_authorized::audit.compliance.manage_schedules#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2291,
-      "function": "create_credential",
-      "mechanism": "require_authorized",
-      "permission": "audit.credential.manage",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::create_credential::require_authorized::audit.credential.manage#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2298,
-      "function": "create_credential",
-      "mechanism": "resolve_active_organisation",
-      "permission": null,
-      "status": "migrated",
-      "reason": "organisation scope (platform-scope switch grant)",
-      "site_id": "routers/compliance.py::create_credential::resolve_active_organisation::#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2338,
-      "function": "list_credentials",
-      "mechanism": "require_authorized",
-      "permission": "audit.credential.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_credentials::require_authorized::audit.credential.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2341,
-      "function": "list_credentials",
-      "mechanism": "resolve_active_organisation",
-      "permission": null,
-      "status": "migrated",
-      "reason": "organisation scope (platform-scope switch grant)",
-      "site_id": "routers/compliance.py::list_credentials::resolve_active_organisation::#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2351,
-      "function": "delete_credential",
-      "mechanism": "require_authorized",
-      "permission": "audit.credential.delete",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::delete_credential::require_authorized::audit.credential.delete#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2358,
-      "function": "delete_credential",
-      "mechanism": "resolve_active_organisation",
-      "permission": null,
-      "status": "migrated",
-      "reason": "organisation scope (platform-scope switch grant)",
-      "site_id": "routers/compliance.py::delete_credential::resolve_active_organisation::#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2382,
-      "function": "apply_remediation",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.remediate",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::apply_remediation::require_authorized::audit.compliance.remediate#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2548,
-      "function": "list_remediation_requests",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.read",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::list_remediation_requests::require_authorized::audit.compliance.read#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2641,
-      "function": "approve_remediation_request",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.approve_exception",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::approve_remediation_request::require_authorized::audit.compliance.approve_exception#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2758,
-      "function": "cancel_remediation_request",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.remediate",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::cancel_remediation_request::require_authorized::audit.compliance.remediate#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 2819,
-      "function": "rollback_remediation_request",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.remediate",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::rollback_remediation_request::require_authorized::audit.compliance.remediate#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 3015,
-      "function": "request_exception_waiver",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.attest",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::request_exception_waiver::require_authorized::audit.compliance.attest#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 3068,
-      "function": "approve_exception_waiver",
-      "mechanism": "require_authorized",
-      "permission": "audit.compliance.approve_exception",
-      "status": "migrated",
-      "reason": "permission guard",
-      "site_id": "routers/compliance.py::approve_exception_waiver::require_authorized::audit.compliance.approve_exception#1"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 3135,
+      "file": "routers/compliance_assessment.py",
+      "line": 483,
       "function": "get_dashboard_summary",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::get_dashboard_summary::require_authorized::audit.compliance.read#1"
+      "site_id": "routers/compliance_assessment.py::get_dashboard_summary::require_authorized::audit.compliance.read#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 3980,
-      "function": "download_statement_of_applicability",
+      "file": "routers/compliance_attestation.py",
+      "line": 94,
+      "function": "attest_manual_control",
       "mechanism": "require_authorized",
-      "permission": "audit.compliance.export_report",
+      "permission": "audit.compliance.attest",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_statement_of_applicability::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_attestation.py::attest_manual_control::require_authorized::audit.compliance.attest#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 4098,
-      "function": "download_executive_compliance_report",
+      "file": "routers/compliance_attestation.py",
+      "line": 307,
+      "function": "upload_control_evidence",
       "mechanism": "require_authorized",
-      "permission": "audit.compliance.export_report",
+      "permission": "audit.compliance.attest",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_executive_compliance_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_attestation.py::upload_control_evidence::require_authorized::audit.compliance.attest#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 4248,
-      "function": "get_compliance_gap_analysis",
+      "file": "routers/compliance_attestation.py",
+      "line": 502,
+      "function": "list_control_evidence",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::get_compliance_gap_analysis::require_authorized::audit.compliance.read#1"
+      "site_id": "routers/compliance_attestation.py::list_control_evidence::require_authorized::audit.compliance.read#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 4862,
-      "function": "download_nist_csf_report",
+      "file": "routers/compliance_attestation.py",
+      "line": 534,
+      "function": "download_control_evidence",
       "mechanism": "require_authorized",
-      "permission": "audit.compliance.export_report",
+      "permission": "audit.compliance.read",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_nist_csf_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_attestation.py::download_control_evidence::require_authorized::audit.compliance.read#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 4936,
+      "file": "routers/compliance_attestation.py",
+      "line": 571,
+      "function": "delete_control_evidence",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.attest",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_attestation.py::delete_control_evidence::require_authorized::audit.compliance.attest#1"
+    },
+    {
+      "file": "routers/compliance_attestation.py",
+      "line": 622,
+      "function": "request_exception_waiver",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.attest",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_attestation.py::request_exception_waiver::require_authorized::audit.compliance.attest#1"
+    },
+    {
+      "file": "routers/compliance_attestation.py",
+      "line": 675,
+      "function": "approve_exception_waiver",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.approve_exception",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_attestation.py::approve_exception_waiver::require_authorized::audit.compliance.approve_exception#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 60,
+      "function": "get_marketplace_frameworks",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::get_marketplace_frameworks::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 143,
+      "function": "install_marketplace_framework",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_frameworks",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::install_marketplace_framework::require_authorized::audit.compliance.manage_frameworks#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 285,
+      "function": "uninstall_marketplace_framework",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_frameworks",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::uninstall_marketplace_framework::require_authorized::audit.compliance.manage_frameworks#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 333,
+      "function": "list_policies",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::list_policies::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 385,
+      "function": "get_policy_rules",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::get_policy_rules::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 458,
+      "function": "update_compliance_rule",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_rules",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::update_compliance_rule::require_authorized::audit.compliance.manage_rules#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 481,
+      "function": "update_compliance_rule",
+      "mechanism": "has_permission",
+      "permission": "audit.compliance.manage_shared_rules",
+      "status": "migrated",
+      "reason": "in-handler permission check",
+      "site_id": "routers/compliance_catalogue.py::update_compliance_rule::has_permission::audit.compliance.manage_shared_rules#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 537,
+      "function": "create_policy_baseline",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_rules",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::create_policy_baseline::require_authorized::audit.compliance.manage_rules#1"
+    },
+    {
+      "file": "routers/compliance_catalogue.py",
+      "line": 642,
+      "function": "list_framework_controls",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_catalogue.py::list_framework_controls::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_common.py",
+      "line": 115,
+      "function": "_may_bypass_maker_checker",
+      "mechanism": "has_permission",
+      "permission": "audit.compliance.approve_exception",
+      "status": "migrated",
+      "reason": "in-handler permission check",
+      "site_id": "routers/compliance_common.py::_may_bypass_maker_checker::has_permission::audit.compliance.approve_exception#1"
+    },
+    {
+      "file": "routers/compliance_framework_reports.py",
+      "line": 77,
       "function": "download_cis_v8_1_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_cis_v8_1_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_cis_v8_1_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 5001,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 142,
       "function": "download_soc2_type2_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_soc2_type2_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_soc2_type2_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 5092,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 233,
       "function": "download_cert_in_2022_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_cert_in_2022_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_cert_in_2022_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 5334,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 298,
       "function": "download_pci_dss_v4_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_pci_dss_v4_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_pci_dss_v4_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 5545,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 368,
       "function": "download_dpdp_2023_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_dpdp_2023_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_dpdp_2023_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 5618,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 441,
       "function": "download_gdpr_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_gdpr_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_gdpr_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 5972,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 516,
       "function": "download_nist_800_53_r5_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_nist_800_53_r5_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_nist_800_53_r5_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 6338,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 602,
       "function": "download_iec_62443_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_iec_62443_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_iec_62443_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 6661,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 692,
       "function": "download_nist_800_82_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_nist_800_82_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_nist_800_82_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 7314,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 775,
       "function": "download_nerc_cip_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_nerc_cip_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_nerc_cip_report::require_authorized::audit.compliance.export_report#1"
     },
     {
-      "file": "routers/compliance.py",
-      "line": 7383,
+      "file": "routers/compliance_framework_reports.py",
+      "line": 844,
       "function": "download_nis2_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
       "status": "migrated",
       "reason": "permission guard",
-      "site_id": "routers/compliance.py::download_nis2_report::require_authorized::audit.compliance.export_report#1"
+      "site_id": "routers/compliance_framework_reports.py::download_nis2_report::require_authorized::audit.compliance.export_report#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 91,
+      "function": "create_credential",
+      "mechanism": "require_authorized",
+      "permission": "audit.credential.manage",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::create_credential::require_authorized::audit.credential.manage#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 98,
+      "function": "create_credential",
+      "mechanism": "resolve_active_organisation",
+      "permission": null,
+      "status": "migrated",
+      "reason": "organisation scope (platform-scope switch grant)",
+      "site_id": "routers/compliance_remediation.py::create_credential::resolve_active_organisation::#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 138,
+      "function": "list_credentials",
+      "mechanism": "require_authorized",
+      "permission": "audit.credential.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::list_credentials::require_authorized::audit.credential.read#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 141,
+      "function": "list_credentials",
+      "mechanism": "resolve_active_organisation",
+      "permission": null,
+      "status": "migrated",
+      "reason": "organisation scope (platform-scope switch grant)",
+      "site_id": "routers/compliance_remediation.py::list_credentials::resolve_active_organisation::#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 151,
+      "function": "delete_credential",
+      "mechanism": "require_authorized",
+      "permission": "audit.credential.delete",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::delete_credential::require_authorized::audit.credential.delete#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 158,
+      "function": "delete_credential",
+      "mechanism": "resolve_active_organisation",
+      "permission": null,
+      "status": "migrated",
+      "reason": "organisation scope (platform-scope switch grant)",
+      "site_id": "routers/compliance_remediation.py::delete_credential::resolve_active_organisation::#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 200,
+      "function": "apply_remediation",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.remediate",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::apply_remediation::require_authorized::audit.compliance.remediate#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 379,
+      "function": "list_remediation_requests",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::list_remediation_requests::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 472,
+      "function": "approve_remediation_request",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.approve_exception",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::approve_remediation_request::require_authorized::audit.compliance.approve_exception#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 589,
+      "function": "cancel_remediation_request",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.remediate",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::cancel_remediation_request::require_authorized::audit.compliance.remediate#1"
+    },
+    {
+      "file": "routers/compliance_remediation.py",
+      "line": 650,
+      "function": "rollback_remediation_request",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.remediate",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_remediation.py::rollback_remediation_request::require_authorized::audit.compliance.remediate#1"
+    },
+    {
+      "file": "routers/compliance_reports.py",
+      "line": 78,
+      "function": "download_statement_of_applicability",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.export_report",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_reports.py::download_statement_of_applicability::require_authorized::audit.compliance.export_report#1"
+    },
+    {
+      "file": "routers/compliance_reports.py",
+      "line": 196,
+      "function": "download_executive_compliance_report",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.export_report",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_reports.py::download_executive_compliance_report::require_authorized::audit.compliance.export_report#1"
+    },
+    {
+      "file": "routers/compliance_reports.py",
+      "line": 346,
+      "function": "get_compliance_gap_analysis",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_reports.py::get_compliance_gap_analysis::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_reports.py",
+      "line": 559,
+      "function": "download_nist_csf_report",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.export_report",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_reports.py::download_nist_csf_report::require_authorized::audit.compliance.export_report#1"
+    },
+    {
+      "file": "routers/compliance_schedules.py",
+      "line": 73,
+      "function": "create_scan_schedule",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_schedules",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_schedules.py::create_scan_schedule::require_authorized::audit.compliance.manage_schedules#1"
+    },
+    {
+      "file": "routers/compliance_schedules.py",
+      "line": 132,
+      "function": "list_scan_schedules",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.read",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_schedules.py::list_scan_schedules::require_authorized::audit.compliance.read#1"
+    },
+    {
+      "file": "routers/compliance_schedules.py",
+      "line": 175,
+      "function": "update_scan_schedule",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_schedules",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_schedules.py::update_scan_schedule::require_authorized::audit.compliance.manage_schedules#1"
+    },
+    {
+      "file": "routers/compliance_schedules.py",
+      "line": 211,
+      "function": "delete_scan_schedule",
+      "mechanism": "require_authorized",
+      "permission": "audit.compliance.manage_schedules",
+      "status": "migrated",
+      "reason": "permission guard",
+      "site_id": "routers/compliance_schedules.py::delete_scan_schedule::require_authorized::audit.compliance.manage_schedules#1"
     },
     {
       "file": "routers/config_audit.py",
@@ -1487,7 +1487,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 46,
+      "line": 54,
       "function": "_enforce_credentialed_scan_scope",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1497,7 +1497,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 168,
+      "line": 173,
       "function": "scan_credentialed",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1507,7 +1507,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 202,
+      "line": 207,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1517,7 +1517,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 284,
+      "line": 286,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1597,7 +1597,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 626,
+      "line": 625,
       "function": "delete_credential",
       "mechanism": "require_authorized",
       "permission": "audit.credential.delete",
@@ -1787,7 +1787,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 56,
+      "line": 61,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1797,7 +1797,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 151,
+      "line": 156,
       "function": "list_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1807,7 +1807,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 355,
+      "line": 368,
       "function": "list_findings_grouped",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1817,7 +1817,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 517,
+      "line": 531,
       "function": "get_finding",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1827,7 +1827,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 696,
+      "line": 720,
       "function": "update_finding_status",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1837,7 +1837,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 869,
+      "line": 864,
       "function": "update_finding_notes",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1847,7 +1847,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 58,
+      "line": 65,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1857,7 +1857,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 395,
+      "line": 402,
       "function": "scan_host_discovery",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1867,7 +1867,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 579,
+      "line": 586,
       "function": "scan_asset_discovery",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1877,7 +1877,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 648,
+      "line": 656,
       "function": "scan_vulnerability_audit",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1887,7 +1887,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 703,
+      "line": 712,
       "function": "scan_phases",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -1897,7 +1897,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 117,
+      "line": 118,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1907,7 +1907,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 279,
+      "line": 281,
       "function": "remediation_summary",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1917,7 +1917,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 406,
+      "line": 410,
       "function": "overdue_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1927,7 +1927,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 434,
+      "line": 438,
       "function": "pending_verification",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1937,7 +1937,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 463,
+      "line": 467,
       "function": "finding_remediation",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1947,7 +1947,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 479,
+      "line": 483,
       "function": "finding_history",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1957,7 +1957,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 545,
+      "line": 549,
       "function": "get_sla_policy",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -1967,7 +1967,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 564,
+      "line": 568,
       "function": "set_sla_policy",
       "mechanism": "require_authorized",
       "permission": "audit.remediation.manage_sla",
@@ -1977,7 +1977,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 634,
+      "line": 638,
       "function": "assign",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1987,7 +1987,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 710,
+      "line": 715,
       "function": "set_state",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -1997,7 +1997,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 767,
+      "line": 772,
       "function": "append_note",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -2007,7 +2007,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 801,
+      "line": 806,
       "function": "accept_finding_risk",
       "mechanism": "require_authorized",
       "permission": "audit.finding.accept_risk",
@@ -2017,7 +2017,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 863,
+      "line": 868,
       "function": "withdraw_finding_acceptance",
       "mechanism": "require_authorized",
       "permission": "audit.finding.accept_risk",
@@ -2477,7 +2477,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 58,
+      "line": 61,
       "function": "scan_host",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2487,7 +2487,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 84,
+      "line": 87,
       "function": "scan_range",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2497,7 +2497,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 110,
+      "line": 113,
       "function": "scan_subnet",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2507,7 +2507,7 @@
     },
     {
       "file": "routers/traditional_scans.py",
-      "line": 136,
+      "line": 139,
       "function": "scan_subnets",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",

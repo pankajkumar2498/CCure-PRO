@@ -817,7 +817,7 @@ CONFIG_TITLE = "SSH does not permit password-based root login"
 def _config_finding_payload() -> dict:
     """
     One host carrying one configuration finding, exactly as
-    ``core.tasks._run_configuration_audit`` emits it.
+    ``scans.tasks.credentialed._run_configuration_audit`` emits it.
 
     Copied in shape rather than invented: ``detection_method="config_check"``
     is what makes the finding authoritative and keeps it above the reporting

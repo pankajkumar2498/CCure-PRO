@@ -57,7 +57,7 @@ from core import credential_vault
 from core.security_crypto import encrypt_credential
 from db.base import get_db
 from db.models import ComplianceCredential
-from db.models.compliance import (
+from db.models.credentials import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
     USABLE_AUTH_METHODS,
@@ -537,10 +537,10 @@ def validate_credential(
 
     try:
         if cred.transport == TRANSPORT_WINRM:
-            from core.tasks import _resolve_stored_credential
             from engines.credentialed.winrm_executor import WinRMExecutor
 
-            material = _resolve_stored_credential(db, None, cred.id)
+            # The row was found within this organisation above (`_get`).
+            material = credential_vault.connection_material(cred)
             with WinRMExecutor(
                 ip=target,
                 username=material["username"],
@@ -562,10 +562,9 @@ def validate_credential(
                 outcome["authenticated_as"] = who.stdout.strip() or material["username"]
                 outcome["detail"] = "WinRM authentication succeeded."
         else:
-            from core.tasks import _resolve_stored_credential
             from engines.credentialed.ssh_scanner import SSHScanner
 
-            material = _resolve_stored_credential(db, None, cred.id)
+            material = credential_vault.connection_material(cred)
             with SSHScanner(
                 ip=target,
                 username=material["username"],

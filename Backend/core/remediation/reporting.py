@@ -56,15 +56,16 @@ def remediation_report_payload(
     Returns ``{}`` when the organisation has no findings, so a report for an
     empty estate renders no section rather than a page of zeroes.
     """
-    from db.models.assets import Asset
+    from core.findings.hosts import hosts
     from db.models.findings import AssetVulnerability
 
     now = datetime.now(timezone.utc)
 
+    host = hosts()
     base = (
         db.query(AssetVulnerability)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org_id)
+        .join(host, AssetVulnerability.asset_id == host.c.id)
+        .filter(host.c.org_id == org_id)
         .filter(is_remediation_work(AssetVulnerability.status))
     )
     if asset_ids:

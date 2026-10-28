@@ -180,7 +180,7 @@ def test_the_standalone_credentialed_writer_stores_it_too(db_session):
     from db.models.assets import Asset
     from scans.db_helpers import utcnow
 
-    from core.tasks import _sync_credentialed_vulnerabilities
+    from core.findings.writer import _sync_credentialed_vulnerabilities
 
     org_id = f"org_{uuid.uuid4().hex[:8]}"
     db_session.add(

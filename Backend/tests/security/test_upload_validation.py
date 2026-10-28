@@ -837,7 +837,7 @@ def test_evidence_enforces_tenant_storage_quota(
     tenant quota, `compliance:attest` is an unbounded write to the API host's
     disk.
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
 
     monkeypatch.setattr(
         compliance_router, "_MAX_EVIDENCE_BYTES_PER_TENANT", len(PDF_BYTES) + 1
@@ -918,7 +918,7 @@ def test_malware_detection_refuses_before_writing_anything(
     monkeypatch,
 ):
     """A detection must refuse with nothing on disk and no metadata row."""
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
 
     def _detect(*_a, **_kw):
         raise MalwareDetected("Eicar-Test-Signature")
@@ -952,7 +952,7 @@ def test_unavailable_scanner_refuses_with_503_and_no_side_effects(
     400, because the file is not accused of anything — and leaves neither an
     orphaned file nor committed metadata.
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
     from db.models.compliance import ComplianceEvidenceFile
 
     before = (
@@ -1005,7 +1005,7 @@ def test_failed_commit_leaves_no_orphaned_file(
     The end state must be all-or-nothing on three axes: the file, the row, and
     the quota accounting derived from the row.
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
     from db.models.compliance import ComplianceEvidenceFile
 
     def _tenant_usage() -> int:
@@ -1101,7 +1101,7 @@ def test_evidence_quota_check_is_serialised_per_tenant(db_session: Session):
     transaction-scoped advisory lock; this asserts it is actually taken, since
     a helper that quietly no-ops is how a concurrency guard stops guarding.
     """
-    import routers.compliance as compliance_router
+    import routers.compliance_attestation as compliance_router
 
     if db_session.bind is None or db_session.bind.dialect.name != "postgresql":
         pytest.skip("advisory locks are Postgres-only; SQLite serialises writers")

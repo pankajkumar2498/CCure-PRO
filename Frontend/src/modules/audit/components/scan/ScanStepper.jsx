@@ -1,5 +1,5 @@
 /**
- * src/modules/audit/components/layout/ScanStepper.jsx
+ * src/modules/audit/components/scan/ScanStepper.jsx
  *
  * The scan pipeline's steps and where the scan has got to. Driven by
  * `pipelineState` from ScanContext, with the page's `current` as fallback.

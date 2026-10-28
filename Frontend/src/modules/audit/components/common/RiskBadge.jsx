@@ -1,7 +1,7 @@
 import { CcureSeverityBadge } from "../../../../design-system";
 
 /**
- * src/modules/audit/components/scan/RiskBadge.jsx
+ * src/modules/audit/components/common/RiskBadge.jsx
  *
  * **Deprecated adapter.** The canonical implementation is
  * `CcureSeverityBadge`; this file now only maps the old prop name and exists

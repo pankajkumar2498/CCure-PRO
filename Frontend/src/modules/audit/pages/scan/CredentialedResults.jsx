@@ -12,7 +12,7 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
-import RiskBadge from "@audit/components/scan/RiskBadge";
+import RiskBadge from "@audit/components/common/RiskBadge";
 import { getScan } from "@audit/api/scans";
 import api from "@shell/api/axiosInstance";
 import {
@@ -20,13 +20,13 @@ import {
   collectFailedHosts,
 } from "@audit/utils/credentialedReport";
 import CVELink from "@audit/components/common/CVELink";
-import ConfigAuditSection from "@audit/components/scan/ConfigAuditSection";
-import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
-import ScanPolicySnapshot from "@audit/components/scan/ScanPolicySnapshot";
-import FindingsListSection from "@audit/components/scan/FindingsListSection";
-import PackageCoverageSection from "@audit/components/scan/PackageCoverageSection";
-import PackageInventorySection from "@audit/components/scan/PackageInventorySection";
-import SuppressedFindingsSection from "@audit/components/scan/SuppressedFindingsSection";
+import ConfigAuditSection from "@audit/components/credentialed/ConfigAuditSection";
+import ReportExportPanel from "@audit/components/common/ReportExportPanel";
+import ScanPolicySnapshot from "@audit/components/credentialed/ScanPolicySnapshot";
+import FindingsListSection from "@audit/components/credentialed/FindingsListSection";
+import PackageCoverageSection from "@audit/components/credentialed/PackageCoverageSection";
+import PackageInventorySection from "@audit/components/credentialed/PackageInventorySection";
+import SuppressedFindingsSection from "@audit/components/credentialed/SuppressedFindingsSection";
 import {
   CcureAlert,
   CcureBadge,

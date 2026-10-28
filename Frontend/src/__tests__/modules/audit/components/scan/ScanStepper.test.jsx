@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 
-import ScanStepper from "@audit/components/layout/ScanStepper";
+import ScanStepper from "@audit/components/scan/ScanStepper";
 import { PIPELINE_STATES } from "@audit/context/ScanContext";
 
 let scan;

@@ -18,7 +18,7 @@
 import { useEffect, useState, useCallback, useId, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
-import RiskBadge from "@audit/components/scan/RiskBadge";
+import RiskBadge from "@audit/components/common/RiskBadge";
 import NetworkPluginCoverage from "@audit/components/scan/NetworkPluginCoverage";
 import { useAuth } from "@shell/auth/AuthContext";
 import { useScan } from "@audit/context/ScanContext";

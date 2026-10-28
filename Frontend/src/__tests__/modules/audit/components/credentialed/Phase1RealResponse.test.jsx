@@ -21,10 +21,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import real from "../../../../fixtures/credentialedReport.real.json";
-import ConfigAuditSection from "@audit/components/scan/ConfigAuditSection";
-import PackageCoverageSection from "@audit/components/scan/PackageCoverageSection";
-import PackageInventorySection from "@audit/components/scan/PackageInventorySection";
-import SuppressedFindingsSection from "@audit/components/scan/SuppressedFindingsSection";
+import ConfigAuditSection from "@audit/components/credentialed/ConfigAuditSection";
+import PackageCoverageSection from "@audit/components/credentialed/PackageCoverageSection";
+import PackageInventorySection from "@audit/components/credentialed/PackageInventorySection";
+import SuppressedFindingsSection from "@audit/components/credentialed/SuppressedFindingsSection";
 
 describe("Configuration Audit — real response", () => {
   it("shows the host's actual verdict counts", () => {

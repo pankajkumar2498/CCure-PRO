@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import PackageCoverageSection from "@audit/components/scan/PackageCoverageSection";
+import PackageCoverageSection from "@audit/components/credentialed/PackageCoverageSection";
 
 const base = {
   packages_collected: 2699,

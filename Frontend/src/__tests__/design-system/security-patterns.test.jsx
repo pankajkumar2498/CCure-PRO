@@ -19,7 +19,7 @@ import CcureScanStatus, {
   SCAN_STATUSES,
 } from "../../design-system/patterns/CcureScanStatus";
 import CcureScanProgress from "../../design-system/patterns/CcureScanProgress";
-import RiskBadge from "@audit/components/scan/RiskBadge";
+import RiskBadge from "@audit/components/common/RiskBadge";
 
 /* ══════════════════════════════════════════════════════════════════════════
    Severity

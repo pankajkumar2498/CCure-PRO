@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
 import real from "../../../../fixtures/scanPolicySnapshot.real.json";
-import ScanPolicySnapshot from "@audit/components/scan/ScanPolicySnapshot";
+import ScanPolicySnapshot from "@audit/components/credentialed/ScanPolicySnapshot";
 import api from "@shell/api/axiosInstance";
 
 vi.mock("@shell/api/axiosInstance", () => ({

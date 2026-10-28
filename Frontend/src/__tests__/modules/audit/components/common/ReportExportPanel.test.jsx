@@ -26,7 +26,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
+import ReportExportPanel from "@audit/components/common/ReportExportPanel";
 import api from "@shell/api/axiosInstance";
 import { keySetHolds } from "../../../../fixtures/authorization";
 import { personaFrom } from "../../../../fixtures/authorization";

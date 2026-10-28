@@ -24,11 +24,11 @@
     "payloads": ["asset_discovery"]
   },
   "vuln_audit": {
-    "files": ["Frontend/src/modules/audit/pages/scan/Phase3Results.jsx","Frontend/src/modules/audit/components/scan/RiskBadge.jsx"],
+    "files": ["Frontend/src/modules/audit/pages/scan/Phase3Results.jsx","Frontend/src/modules/audit/components/common/RiskBadge.jsx"],
     "payloads": ["vuln_audit"]
   },
   "credentialed": {
-    "files": ["Frontend/src/modules/audit/pages/scan/CredentialedResults.jsx","Frontend/src/modules/audit/components/scan/ConfigAuditSection.jsx","Frontend/src/modules/audit/components/scan/PackageCoverageSection.jsx","Frontend/src/modules/audit/components/scan/PackageInventorySection.jsx","Frontend/src/modules/audit/components/scan/SuppressedFindingsSection.jsx","Frontend/src/modules/audit/components/scan/FindingsListSection.jsx"],
+    "files": ["Frontend/src/modules/audit/pages/scan/CredentialedResults.jsx","Frontend/src/modules/audit/components/credentialed/ConfigAuditSection.jsx","Frontend/src/modules/audit/components/credentialed/PackageCoverageSection.jsx","Frontend/src/modules/audit/components/credentialed/PackageInventorySection.jsx","Frontend/src/modules/audit/components/credentialed/SuppressedFindingsSection.jsx","Frontend/src/modules/audit/components/credentialed/FindingsListSection.jsx"],
     "payloads": ["credentialed"]
   },
   "scan_envelope": {

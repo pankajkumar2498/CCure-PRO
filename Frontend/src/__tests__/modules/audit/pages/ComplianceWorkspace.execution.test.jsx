@@ -221,8 +221,7 @@ const bodyText = () => squash(document.body);
 const gets = () => api.get.mock.calls.map(([u]) => u);
 const REQUESTS_URL = "/compliance/remediations/requests";
 const requestReads = () => gets().filter((u) => u === REQUESTS_URL).length;
-const credentialReads = () =>
-  gets().filter((u) => u === "/compliance/credentials").length;
+const credentialReads = () => gets().filter((u) => u === "/credentials").length;
 
 const tabBar = () =>
   [...document.querySelectorAll("div")].find(
@@ -354,8 +353,13 @@ beforeEach(() => {
       return Promise.resolve({
         data: { data: requests.map((r) => ({ ...r })) },
       });
-    if (url === "/compliance/credentials")
-      return Promise.resolve({ data: STORED.map((c) => ({ ...c })) });
+    if (url === "/credentials")
+      return Promise.resolve({
+        data: {
+          credentials: STORED.map((c) => ({ ...c })),
+          total: STORED.length,
+        },
+      });
     if (url.startsWith("/compliance/findings"))
       return Promise.resolve({ data: { data: FINDINGS } });
     if (url === "/compliance/marketplace")

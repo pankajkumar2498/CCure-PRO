@@ -4,10 +4,7 @@
  * Moved from `pages/ComplianceWorkspace.jsx` (F1) unchanged.
  */
 
-import {
-  createComplianceCredential,
-  deleteComplianceCredential,
-} from "@audit/api/compliance";
+import { createCredential, deleteCredential } from "@audit/api/credentials";
 import {
   CcureCard,
   CcureTableStatus,
@@ -138,13 +135,16 @@ export default function ComplianceCredentialsTab({
               if (savingCredential) return;
               setSavingCredential(true);
               try {
-                await createComplianceCredential({
+                // The form registers SSH credentials, as it always has; the
+                // store's own form (Scan Credentials) offers every type.
+                await createCredential({
                   name: newCredName,
                   username: newCredUsername,
-                  auth_method: newCredAuthMethod,
+                  credentialType: "ssh",
+                  authMethod: newCredAuthMethod,
                   password:
                     newCredAuthMethod === "password" ? newCredPassword : null,
-                  key_content:
+                  privateKey:
                     newCredAuthMethod === "key" ? newCredKeyContent : null,
                   port: parseInt(newCredPort) || 22,
                 });
@@ -272,7 +272,7 @@ export default function ComplianceCredentialsTab({
           const c = credentialToDelete;
           setDeletingCredential(true);
           try {
-            await deleteComplianceCredential(c.id);
+            await deleteCredential(c.id);
             pushToast("Credential deleted successfully.", "success");
             fetchTabData();
           } catch (e) {

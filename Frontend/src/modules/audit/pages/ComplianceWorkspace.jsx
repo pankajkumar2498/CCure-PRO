@@ -15,7 +15,6 @@ import {
   getComplianceScanRun,
   getComplianceSummary,
   installComplianceFramework,
-  listComplianceCredentials,
   listComplianceFindings,
   listComplianceMarketplace,
   listCompliancePolicies,
@@ -31,6 +30,7 @@ import {
   updateComplianceRule,
   uploadControlEvidence,
 } from "@audit/api/compliance";
+import { listCredentials } from "@audit/api/credentials";
 import AppLayout from "@audit/components/layout/AppLayout";
 import ComplianceEvidence from "@audit/components/compliance/ComplianceEvidence";
 import ComplianceSchedules from "@audit/components/compliance/ComplianceSchedules";
@@ -1005,8 +1005,8 @@ export default function ComplianceWorkspace() {
         const res = await listPendingExceptionFindings(params);
         setExceptions(res.data.data || []);
       } else if (activeTab === "credentials") {
-        const res = await listComplianceCredentials();
-        setCredentialsList(res.data || []);
+        const data = await listCredentials();
+        setCredentialsList(data?.credentials || []);
       } else if (activeTab === "approvals") {
         const res = await listRemediationRequests();
         setApprovalsList(res.data.data || []);
@@ -1426,8 +1426,8 @@ export default function ComplianceWorkspace() {
 
   useEffect(() => {
     if (modalOpen && (modalType === "remediate" || modalType === "rollback")) {
-      listComplianceCredentials()
-        .then((res) => setCredentialsList(res.data || []))
+      listCredentials()
+        .then((data) => setCredentialsList(data?.credentials || []))
         .catch((err) =>
           console.error("Failed to load credentials for modal", err),
         );

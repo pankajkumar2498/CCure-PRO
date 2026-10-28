@@ -192,8 +192,7 @@ const change = async (el, value) => {
 const gets = () => api.get.mock.calls.map(([u]) => u);
 const gapReads = () =>
   gets().filter((u) => u.startsWith("/compliance/gap-analysis"));
-const credentialReads = () =>
-  gets().filter((u) => u === "/compliance/credentials").length;
+const credentialReads = () => gets().filter((u) => u === "/credentials").length;
 const GAP_URL = (source, target) =>
   `/compliance/gap-analysis?source_framework_id=${source}&target_framework_id=${target}`;
 
@@ -290,8 +289,13 @@ beforeEach(() => {
         data: { data: [], active_framework_ids: ACTIVE },
       });
     if (url.startsWith("/compliance/gap-analysis")) return gapReply(url);
-    if (url === "/compliance/credentials")
-      return Promise.resolve({ data: credentials.map((c) => ({ ...c })) });
+    if (url === "/credentials")
+      return Promise.resolve({
+        data: {
+          credentials: credentials.map((c) => ({ ...c })),
+          total: credentials.length,
+        },
+      });
     if (url.startsWith("/compliance/summary"))
       return Promise.resolve({
         data: { score_pct: 70, weighted_score_pct: 60, kpis: {} },

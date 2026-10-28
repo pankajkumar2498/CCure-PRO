@@ -31,7 +31,7 @@ import "../../styles/credentialed-scan.css";
 import { parseTargets, runCredentialedScan } from "@audit/api/credentialedScan";
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
-import api from "@shell/api/axiosInstance";
+import { listCredentials } from "@audit/api/credentials";
 
 const SECTIONS = [
   {
@@ -121,10 +121,9 @@ export default function CredentialedScan() {
   }, [prefillIp]);
 
   useEffect(() => {
-    api
-      .get("/compliance/credentials")
-      .then((res) => {
-        setCredentialsList(res.data || []);
+    listCredentials()
+      .then((data) => {
+        setCredentialsList(data?.credentials || []);
       })
       .catch((err) => {
         console.error("Failed to load credentials for scan", err);

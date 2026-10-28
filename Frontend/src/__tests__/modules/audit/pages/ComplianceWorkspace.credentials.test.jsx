@@ -8,12 +8,13 @@
  * specification, and every test in it fails on the legacy page.
  *
  * ── The contract ───────────────────────────────────────────────────────────
- * The tab reads GET /compliance/credentials once and lists each credential by
+ * The tab reads GET /credentials once and lists each credential by
  * nickname, username, port and method — the API returns no secret and none is
  * shown. An organisation admin or superadmin sees a Delete action on every row
  * and the Register Credential form; anyone else sees the list only. Saving
- * posts the name, username, method, the password or the key (the other null)
- * and the port as a number, then clears the form and re-reads the list.
+ * posts an SSH credential to the credential store: the name, username, method,
+ * the password or the key (never both) and the port as a number, with no domain
+ * and no options; then it clears the form and re-reads the list.
  * Deleting asks, naming the credential, then sends one DELETE carrying only the
  * credential's id in its path. Every refusal is reported with the API's detail.
  *
@@ -146,8 +147,7 @@ const mount = async () => {
 const squash = (el) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 const bodyText = () => squash(document.body);
 const gets = () => api.get.mock.calls.map(([u]) => u);
-const credentialReads = () =>
-  gets().filter((u) => u === "/compliance/credentials");
+const credentialReads = () => gets().filter((u) => u === "/credentials");
 
 const tabBar = () =>
   [...document.querySelectorAll("div")].find(
@@ -259,7 +259,12 @@ beforeEach(() => {
   user = ORG_ADMIN;
   credentials = CREDENTIALS.map((c) => ({ ...c }));
   listReply = () =>
-    Promise.resolve({ data: credentials.map((c) => ({ ...c })) });
+    Promise.resolve({
+      data: {
+        credentials: credentials.map((c) => ({ ...c })),
+        total: credentials.length,
+      },
+    });
   postReply = (url, body) => {
     credentials = [
       ...credentials,
@@ -285,7 +290,7 @@ beforeEach(() => {
   for (const verb of ["get", "post", "put", "patch", "delete"])
     api[verb].mockReset();
   api.get.mockImplementation((url) => {
-    if (url === "/compliance/credentials") return listReply();
+    if (url === "/credentials") return listReply();
     if (url === "/compliance/marketplace")
       return Promise.resolve({ data: { data: [] } });
     if (url.startsWith("/compliance/summary"))
@@ -311,11 +316,10 @@ afterEach(() => {
   // approval, evidence or report path is reached.
   expect(api.put).not.toHaveBeenCalled();
   expect(api.patch).not.toHaveBeenCalled();
-  for (const [url] of api.post.mock.calls)
-    expect(url).toBe("/compliance/credentials");
+  for (const [url] of api.post.mock.calls) expect(url).toBe("/credentials");
   for (const args of api.delete.mock.calls) {
     expect(args).toHaveLength(1);
-    expect(args[0]).toMatch(/^\/compliance\/credentials\/cred-[0-9]+$/);
+    expect(args[0]).toMatch(/^\/credentials\/cred-[0-9]+$/);
   }
   const urls = [
     ...gets(),
@@ -484,7 +488,7 @@ describe("ComplianceWorkspace Credentials Manager — contract", () => {
       expect(passwordInput(form)).toBeTruthy();
     });
 
-    it("saving with a password posts the name, username, method, the password, a null key and the port as a number; says so, clears the form and re-reads the list", async () => {
+    it("saving with a password posts an SSH credential's name, username, method, the password and the port as a number, and no key; says so, clears the form and re-reads the list", async () => {
       await mount();
       await openCredentials();
       const form = registerForm();
@@ -498,14 +502,16 @@ describe("ComplianceWorkspace Credentials Manager — contract", () => {
       await click(saveButton(form));
       expect(api.post.mock.calls).toEqual([
         [
-          "/compliance/credentials",
+          "/credentials",
           {
             name: "Web tier",
             username: "deploy",
+            domain: null,
+            credential_type: "ssh",
             auth_method: "password",
             password: PASS,
-            key_content: null,
             port: 2200,
+            options: {},
           },
         ],
       ]);
@@ -519,7 +525,7 @@ describe("ComplianceWorkspace Credentials Manager — contract", () => {
       expect(rowOf("Web tier")).toBeTruthy();
     });
 
-    it("saving with a key posts the key and a null password, and keeps the method chosen", async () => {
+    it("saving with a key posts the key and no password, and keeps the method chosen", async () => {
       await mount();
       await openCredentials();
       const form = registerForm();
@@ -533,10 +539,12 @@ describe("ComplianceWorkspace Credentials Manager — contract", () => {
       expect(api.post.mock.calls[0][1]).toEqual({
         name: "Jump hosts",
         username: "ops",
+        domain: null,
+        credential_type: "ssh",
         auth_method: "key",
-        password: null,
-        key_content: KEY,
+        private_key: KEY,
         port: 22,
+        options: {},
       });
       const after = registerForm();
       expect(methodSelect(after).value).toBe("key");
@@ -659,9 +667,7 @@ describe("ComplianceWorkspace Credentials Manager — contract", () => {
       await openCredentials();
       const before = credentialReads().length;
       await answerDelete("Bastion keys", true);
-      expect(api.delete.mock.calls).toEqual([
-        ["/compliance/credentials/cred-2"],
-      ]);
+      expect(api.delete.mock.calls).toEqual([["/credentials/cred-2"]]);
       expect(bodyText()).toContain("Credential deleted successfully.");
       expect(credentialReads().length - before).toBe(1);
       expect(rowOf("Bastion keys")).toBeUndefined();

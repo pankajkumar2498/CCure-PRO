@@ -208,7 +208,8 @@ beforeEach(() => {
   user = ADMIN;
   policies = POLICIES;
   policiesReply = null;
-  credentialsReply = () => Promise.resolve({ data: [] });
+  credentialsReply = () =>
+    Promise.resolve({ data: { credentials: [], total: 0 } });
   Element.prototype.scrollIntoView = vi.fn();
   for (const verb of ["get", "post", "put", "patch", "delete"])
     api[verb].mockReset();
@@ -224,7 +225,7 @@ beforeEach(() => {
       return Promise.resolve({ data: { data: FINDINGS } });
     if (url.startsWith("/compliance/gap-analysis"))
       return Promise.resolve({ data: GAP });
-    if (url === "/compliance/credentials") return credentialsReply();
+    if (url === "/credentials") return credentialsReply();
     if (url.startsWith("/compliance/summary"))
       return Promise.resolve({
         data: { score_pct: 70, weighted_score_pct: 60, kpis: {} },

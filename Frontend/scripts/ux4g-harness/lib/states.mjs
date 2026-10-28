@@ -1158,7 +1158,10 @@ const CW29_BASE = {
 };
 const CW29_STUBS = {
   ...CW_STUBS,
-  "/compliance/credentials": CW29_CREDENTIALS,
+  "/credentials": {
+    credentials: CW29_CREDENTIALS,
+    total: CW29_CREDENTIALS.length,
+  },
 };
 const CW29_OPEN = [
   { click: cwTabClick("Credentials Manager") },
@@ -1205,7 +1208,10 @@ const CW29_STATES = [
     ...CW29_BASE,
     id: "cw29-credentials-empty",
     themes: LIGHT,
-    stubs: { ...CW_STUBS, "/compliance/credentials": [] },
+    stubs: {
+      ...CW_STUBS,
+      "/credentials": { credentials: [], total: 0 },
+    },
     actions: [
       { click: cwTabClick("Credentials Manager") },
       { waitFor: hasText("/Save Target Credential/") },
@@ -1267,12 +1273,18 @@ const CW30_BASE = {
 const CW30_QUEUE_STUBS = {
   ...CW_STUBS,
   "/compliance/remediations/requests": CW30_REQUESTS,
-  "/compliance/credentials": CW29_CREDENTIALS,
+  "/credentials": {
+    credentials: CW29_CREDENTIALS,
+    total: CW29_CREDENTIALS.length,
+  },
 };
 const CW30_FINDINGS_STUBS = {
   ...CW26B_FINDINGS_STUBS,
   "/compliance/findings": CW30_FINDINGS,
-  "/compliance/credentials": CW29_CREDENTIALS,
+  "/credentials": {
+    credentials: CW29_CREDENTIALS,
+    total: CW29_CREDENTIALS.length,
+  },
 };
 const CW30_QUEUE_OPEN = [
   { click: cwTabClick("Approvals Queue") },
@@ -1456,7 +1468,10 @@ const CW31_GAP_OPEN = [
 ];
 const CW31_CREDENTIAL_STUBS = {
   ...CW_STUBS,
-  "/compliance/credentials": CW31_CREDENTIALS,
+  "/credentials": {
+    credentials: CW31_CREDENTIALS,
+    total: CW31_CREDENTIALS.length,
+  },
 };
 const CW31_CREDENTIALS_OPEN = [
   { click: cwTabClick("Credentials Manager") },

@@ -8,9 +8,8 @@
  * the ones they were. Recurring scans have their own module,
  * `complianceSchedules.js`.
  *
- * The credentials calls are the compliance alias of the credential vault's API
- * (`/compliance/credentials`); moving the screens to one credential API is F3,
- * not this module's business.
+ * Stored credentials are not compliance's: the workspace reads and writes them
+ * through `credentials.js`, the credential store's own API (F3).
  */
 
 import api from "@shell/api/axiosInstance";
@@ -62,10 +61,6 @@ export const listPendingExceptionFindings = (params) =>
   api.get(
     `/compliance/findings?status=pending&limit=10000${params.length > 0 ? `&${params.join("&")}` : ""}`,
   );
-
-/** Stored credentials, through the compliance alias of the vault's API. */
-export const listComplianceCredentials = () =>
-  api.get("/compliance/credentials");
 
 /** The maker-checker remediation queue. */
 export const listRemediationRequests = () =>
@@ -144,11 +139,3 @@ export const decideRemediationRequest = (requestId, status) =>
   api.post(`/compliance/remediations/requests/${requestId}/approve`, {
     status,
   });
-
-/** Store a credential, through the compliance alias of the vault's API. */
-export const createComplianceCredential = (body) =>
-  api.post("/compliance/credentials", body);
-
-/** Delete a stored credential, through the same alias. */
-export const deleteComplianceCredential = (id) =>
-  api.delete(`/compliance/credentials/${id}`);

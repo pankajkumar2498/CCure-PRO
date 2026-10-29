@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# API golden: drive the findings, remediation, asset and compliance APIs
-# through the application, with a real broker, on a copy of a restored
+# API golden: drive the findings, remediation, asset, compliance, dashboard
+# and report APIs through the application, with a real broker, on a copy of a restored
 # database with one commit's code, and capture every response, every broker
 # message and what the writes leave behind. capture.py says what is driven and
 # captured.

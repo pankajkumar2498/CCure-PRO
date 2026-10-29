@@ -3929,6 +3929,85 @@ their mutation.
 - **`npm run test:browser` was not run**; the selector reports `browser: false`. The Playwright
   catalogue's stubs were changed with the screens and are exercised only by that suite.
 
+### Group 1 — D1 and E2: the engine libraries, isolated and pinned
+
+**The scope** (analysis §10, Phases D and E; the grouped plan's Group 1): D1's harness for
+the libraries that should already pass, and E2's forbidden-package pin for the same set.
+
+**D1 — `Backend/scripts/architecture/library_isolation.py`.** `LIBRARIES` declares eight
+libraries: each one's entry points, the first-party module prefixes and the third-party
+packages it may use, and its existing tests. Each is checked twice, each time in a fresh
+interpreter started with `-P`, holding no settings, database URL or credentials and only
+the parent's package directories on its path:
+
+- **import:** every first-party import is checked against the declaration. Afterwards
+  nothing undeclared may be in `sys.modules`, nothing first-party may have loaded from
+  outside the checkout (the backend image also carries its baked `/app`), and none of
+  SQLAlchemy, FastAPI, Celery or Redis may have loaded, whoever imported it;
+- **exercise:** its existing tests run under pytest without `tests/conftest.py`. The tests
+  may import anything; every import the library's own code makes is checked. The guard
+  sits on `builtins.__import__` as well as `sys.meta_path`, because a module the tests
+  already loaded is answered from `sys.modules` without asking any finder.
+
+A refused import raises `ImportError` and is recorded, so a library that catches it and
+carries on still fails.
+
+**E2 — `capability_map.library_problems`.** Every declared entry point's load profile may
+hold none of `FORBIDDEN`. The ratchet runs it on the tree, and `--write-baseline` refuses
+a measurement that breaks it, so unlike a load-profile ratchet entry no rewritten
+baseline admits one. The ceilings are unchanged.
+
+**Not declared, deliberately:** the port and network-check engines, the nmap wrapper,
+the version matcher and the topology engine. Each loads a forbidden package (§12.1) and
+joins in Group 3. Nothing exempts them.
+
+**Integration.** `scripts/ci/local_guard_tests.sh`, with its default set, runs the harness
+after pytest in the backend image, with no network and the staged checkout read-only.
+
+#### Results
+
+| Library           | First-party modules loaded | Its tests in isolation                                                       |
+| ----------------- | -------------------------: | ---------------------------------------------------------------------------- |
+| `ssh_transport`   |                          3 | `test_sudo_password_safety.py`: 44 passed                                    |
+| `winrm_transport` |                          4 | `test_windows_winrm.py`, its transport tests by name: 15 passed              |
+| `smb_transport`   |                          4 | `test_smb_transport.py`: 63 passed                                           |
+| `config_audit`    |                         23 | `test_config_audit_engine.py`, `test_config_audit_collectors.py`: 106 passed |
+| `scap_compiler`   |                         32 | `test_scap_parsers.py`, `test_scap_evaluation.py`: 100 passed                |
+| `check_kernel`    |                          8 | `test_check_framework.py`: 32 passed                                         |
+| `renderers`       |                         16 | `test_export_workbook.py`, `test_report_integrity.py`: 76 passed             |
+| `discovery`       |                         17 | `test_host_identity_precedence.py`, `test_ot_probes.py`: 39 passed           |
+
+No library fails isolation, and no import was refused. The module counts equal the static
+closures `import_graph` computes, so the real imports and the static measurement agree.
+
+The first run's one failure was test selection, not the library: 16 tests in
+`test_windows_winrm.py` exercise the credential API, its validation and its audit trail
+through `conftest`'s database fixtures. The declaration now names the file's transport
+tests (`TestWinRMConfiguration`, `TestWinRMThreadSafety`, the shell-type test).
+
+#### Verification
+
+- `scripts/ci/local_guard_tests.sh`, default set, in `ccure-audit-pro-backend:latest`:
+  `tests/repo`, the sudo-password tests and the credential-API tests **970 passed, 0 failed,
+  1 skipped** (the `alembic.ini` rehearsal); the harness **8 isolated, 0 failed**; exit 0.
+- `tests/repo/test_library_isolation.py` (12 tests, inside that run), the mutations among
+  them:
+  - **SQLAlchemy in an engine:** appended to `core/config_audit/engine.py`. E2 names it
+    from the load profiles, and D1 refuses it in a copy of the source.
+  - **`config` in discovery:** appended to `core/discovery/engine.py`; D1 refuses it. E2
+    cannot see this one: discovery already loads the `infra` capability.
+  - Each D1 mutation runs on a copy that passes first, so a pass is not vacuous.
+  - A baseline recording a forbidden package still fails the ratchet.
+  - A library's lazy import of a module its tests already loaded is still refused.
+- `capability_map --check` and the `architecture-guards` hook: hold.
+
+#### What is left
+
+- **D1 vouches only for the paths its tests reach.** Discovery's tests never run ARP, the
+  path that lazily imports `core.oui_lookup` and through it `db.models` (log §7, from B3).
+- **The harness runs locally only** until CI runs again (D-5; Group 5).
+- **Five engines join in Group 3.**
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |

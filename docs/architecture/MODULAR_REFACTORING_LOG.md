@@ -4199,6 +4199,87 @@ the cycle, which is now assets, compliance, findings, scan policy, scans and sch
 - **The E1 rule lives in the capability map, not `layer_rules.py`** (above); the module rule
   `engines-are-libraries` is unchanged.
 
+### Group 4 — D2: the web DAST reuse pilot
+
+Commit `dda5c56`, on top of `9dc40dc`.
+
+**The scope** (analysis §11, D2; the grouped plan's Group 4): run web DAST in a host
+application that is not Audit's, with a stub identity provider and a settings object of its
+own, and hand its settings to the modules that read `WebScanConfig`. Out of scope, as planned:
+the topology engine's SQLAlchemy split and the `web_scans` / `web_findings` foreign keys.
+
+#### Settings, handed in
+
+The plan counted ten modules reading `WebScanConfig`; they are nine in `core/web` — the crawler,
+the ffuf, nuclei, sqlmap and subfinder wrappers, the nuclei profiles, the OAST client, the worker
+self-check and the scan reaper — and the web orchestrator. All ten now read
+`core.web.settings.current()`:
+
+- **`core/web/settings.py`** holds the registered object. `configure()` refuses a second,
+  different object and an object missing a name in `READ`, the 55 settings read without a
+  default; `READ_WITH_DEFAULT` names the 13 each reader defaults itself. A read with nothing
+  registered raises `WebSettingsMissing`.
+- **Audit registers `config.WebScanConfig` itself** (`ccure_audit/web_settings.py`, a fourth new
+  name in Celery's `imports`), so every value is the deployment's, read at call time, and every
+  test that patches an attribute on `WebScanConfig` patches what the engine reads.
+- **The rewrite is mechanical:** `WebScanConfig.X` became `web_settings.current().X` and
+  `getattr(WebScanConfig, …)` `getattr(web_settings.current(), …)`; no default changed.
+
+| Figure                                               | Before (`9dc40dc`) | After (`dda5c56`) |
+| ---------------------------------------------------- | -----------------: | ----------------: |
+| Web DAST modules importing `config` (all imports)    |                 10 |                 0 |
+| `core/web` engine modules loading `config` at import |                  6 |                 0 |
+| D1 libraries isolated                                |                  8 |                 9 |
+
+No ceiling moved; the baseline gained the eight new entry points' load profiles (each loads
+infra alone).
+
+#### The pilot
+
+- **The host** (`tests/web/test_web_dast_pilot_host.py`): a bare `FastAPI()` holding the
+  `/web-scans` router and nothing else, with a stub identity provider in place of the platform's
+  token verification and `PilotWebSettings` registered. Authorization is not stubbed: the routes
+  ask the RBAC engine through `require_authorized`, so the host serves a scan to a stub account
+  holding `audit.scan.read`, answers 401 with no account and 403 to one holding nothing or only
+  `audit.finding.read` (which then reads the findings). With the pilot's settings registered, the
+  engine ignores a change to `config.WebScanConfig`; and no web DAST module imports `config`, read
+  from the import graph.
+- **The engine** (`tests/web/test_web_dast_engine_pilot.py`): the tool wrappers, the ffuf tiers,
+  the crawler, the nuclei profiles and its OAST arguments, and the OAST client, each on the
+  pilot's values; an unregistered process, an incomplete settings object and a second one are
+  refused. It needs no conftest and imports no application module, so the D1 harness runs it as
+  library **`web_dast`** (eight entry points, `core.web` modules only, no third-party package at
+  import), in a fresh interpreter that refuses `config`. A third mutation case puts
+  `from config import WebScanConfig` back into the sqlmap wrapper and fails it.
+
+#### Verification
+
+- **The web group**, `tests/web` in throwaway containers: **500 passed, 1 skipped** (4 min); the
+  skip is the live OSV npm feed.
+- **The guard set** (`tests/repo`, the sudo-password guard, the credential-API tests): **991
+  passed, 1 skipped**; then the D1 harness: **9 isolated, 0 failed** — `web_dast`: import 21
+  first-party modules, exercise 10 passed.
+- **Interfaces**, `interface_snapshot` in the backend image, `9dc40dc` against the change:
+  identical — routes, limiter keys, the OpenAPI digest, tasks and beat.
+- **The ratchet and the stdlib guards** hold; the 13 ruff findings in the touched files are the
+  13 that were there before.
+- **Live:** `dda5c56`'s code in the backend image, Celery eager, a throwaway PostgreSQL and Redis on an internal network, against a disposable Juice Shop v17.3.0 (pinned by digest) on the compose network; the scan created as `POST /web-scans` creates it (the request model's defaults, out-of-band testing off) and dispatched by registered name. In the scanning process the registered settings were `config.WebScanConfig`. All four phases complete in 32 min: 75 assets, 2 findings (a DOM XSS, medium; an open redirect, low). Every tool the policy selects ran and none was unavailable or partial: nuclei's fingerprinting, then its STANDARD profile (6,051 templates loaded and executed against 63 targets, at the settings' 150 req/s), sqlmap (2 of 2 candidates), the injection, XSS, HTTP-method and JavaScript-dependency engines, and ffuf (deep tier, 4,752 words); sslyze and subfinder skipped as the target needs (plain HTTP, no subdomains). **Beside it, `9dc40dc` against its own Juice Shop, concurrently: identical apart from timing** — the same assets, findings, phases and tool coverage, field by field. A first run of `dda5c56` alone gave the same counts (31 min), but recorded no tool coverage, which is why the pair was run. Everything the runs created was removed.
+
+#### What is left
+
+- **The router is not yet the platform's consumer alone.** The pilot mounts it with a stub
+  identity, but `routers.web_scans` still imports `auth.jwt_handler.decode_token` (its progress
+  WebSocket's login), `db.models.User`, `db.base` and `core.rate_limiter`. D2's "through
+  `ccure_platform.api` and declared settings alone" is met for settings, not for those.
+- **The self-check and the reaper read their settings through the port but reach the database and
+  Redis themselves** (`core.web.self_check`, `core.web.timeout`), as do the tasks
+  (`core.web.tasks`), the scan-status helper and the JavaScript dependency engine's catalogue
+  lookup. None is in the `web_dast` library.
+- **The orchestrator is not isolated.** It reads its settings through the port and nothing else
+  changed: it still loads the database layer and Redis lazily, and drives the tasks.
+- **Out of scope, unchanged:** the topology engine's SQLAlchemy split (Group 3, "What is left")
+  and the `web_scans` / `web_findings` foreign keys (§7, B8).
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -4261,3 +4342,5 @@ the cycle, which is now assets, compliance, findings, scan policy, scans and sch
 | new | Show the credential store's delete note in the compliance workspace's Credentials Manager tab, as Scan Credentials does: since F3 the delete answers how many schedules the credential leaves without one, and the tab still says only "Credential deleted successfully."                                                                                                                                                                                                                                                                                                                                                                      | F3, §6                                                             |
 | new | Point the scan setup's "no stored credentials" state at Scan Credentials, the credential store's own page, rather than at Compliance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | F3, §6                                                             |
 | new | D-3 can now be decided on its own: since F3 no screen calls `/compliance/credentials`. Retiring it removes three routes from the API and from the gateway policy; keeping it costs nothing the frontend sees                                                                                                                                                                                                                                                                                                                                                                                                                                   | F3, §6                                                             |
+| new | Whether web DAST's router reaches identity, the session and rate limiting through `ccure_platform.api` alone. It imports `auth.jwt_handler.decode_token` for the progress WebSocket's login, `db.models.User` and `core.rate_limiter`, which keeps D2 short of "the platform API and declared settings alone"                                                                                                                                                                                                                                                                                                                                  | Group 4, §6                                                        |
+| new | Whether web DAST's worker self-check and scan reaper become ports or stay the worker's own infrastructure. Both read the database and Redis themselves; the engine's tool wrappers, crawler and OAST client no longer read anything global                                                                                                                                                                                                                                                                                                                                                                                                     | Group 4, §6                                                        |

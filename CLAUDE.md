@@ -472,6 +472,13 @@ Two things Phase 3 deliberately left, which are **not** violations:
     imports `scan_helpers`; the platform loads no Audit capability; and E2
     pins `PINNED_ENGINES`. The topology engine is not pinned: it persists its
     own links.
+- **Web DAST reads its settings through `core.web.settings`, never `config`**
+  (Group 4, D2). `current()` answers the object a host registered; Audit
+  registers `config.WebScanConfig` itself (`ccure_audit/web_settings.py`, in
+  Celery's `imports`), so patch a setting on `WebScanConfig` as before. A new
+  setting read without a default goes in `READ`. The engine runs in the D1
+  harness as library `web_dast`, and `tests/web/test_web_dast_pilot_host.py`
+  fails if any web DAST module imports `config`.
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.

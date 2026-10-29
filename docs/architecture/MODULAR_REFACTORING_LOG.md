@@ -4280,6 +4280,62 @@ infra alone).
 - **Out of scope, unchanged:** the topology engine's SQLAlchemy split (Group 3, "What is left")
   and the `web_scans` / `web_findings` foreign keys (§7, B8).
 
+### Group 5 — E3: the architecture guards on every push to GitHub
+
+Commit `4067f92`, on top of `138e30f`.
+
+**The scope** (analysis §10, E3; the grouped plan's Group 5): the GitHub Actions workflows run
+the architecture guard tests and the D1 harness on a push to GitHub, with no duplicate runs.
+Out of scope, as asked: GitLab CI, a GitLab runner, mirroring, and any trigger outside GitHub.
+D-5 (§7) is therefore still open.
+
+#### What ran on GitHub before
+
+- **`tests/repo` already ran** in `Backend Validation` on every pull request, push to `master`,
+  tag and nightly run: it is in every selection `select_tests.py` makes.
+- **`check.py` and the D1 harness ran nowhere on GitHub** — only in the pre-commit hook and in
+  `local_guard_tests.sh` ("What is left", Group 1).
+- **A push of any branch other than `main`/`master` ran nothing.** `ci.yml`'s `push` filter
+  names those two on purpose, so a pull request does not run the pipeline twice; this branch is
+  pushed to `github` without a pull request.
+
+#### What changed
+
+- **`ci.yml`, `Backend Validation`:** `check.py` before the dependency install, so a breach fails
+  in seconds, and the D1 harness after the test suite, in every scope. The job names, the
+  required checks and the triggers are unchanged.
+- **New `architecture.yml`, job `Architecture Guards`:** on `push` with
+  `branches-ignore: [main, master]` — the complement of `ci.yml`'s filter, so no push starts
+  both. It runs `check.py`, then `local_guard_tests.sh`'s default set (`tests/repo`, the
+  sudo-password guard, the credential-API tests) against throwaway PostgreSQL 18 and Redis 7
+  services, then the harness, which runs even when the tests fail, as the local script does. A
+  read-only token, a 30-minute limit, and one live run per branch.
+- **`tests/repo/test_ci_architecture_guards.py`** pins the trigger split, `check.py` ahead of
+  the install and the harness in both jobs, the service images against `ci.yml`'s (which
+  `test_ci_postgres_version.py` holds to production's major), and the test targets against
+  `DEFAULT_TARGETS` in the local script. Six mutations — a `pull_request` trigger, an overlapping
+  branch filter, a dropped target, the harness removed from `ci.yml`, another PostgreSQL major,
+  and a target added to the local script alone — each fail it.
+- **Local enforcement is unchanged:** the pre-commit hook and `local_guard_tests.sh`.
+
+#### Verification
+
+- **YAML and hooks:** pre-commit's `check-yaml`, black, ruff, bandit and gitleaks pass on the
+  three files; both workflows parse, and the new test reads them as a runner would.
+- **The new commands outside the image**, from a pip-installed environment as on a runner:
+  `check.py` passes (13 s); the D1 harness: **9 isolated, 0 failed** (21 s).
+- **The guard set**, `local_guard_tests.sh` in throwaway containers: **996 passed, 1 skipped** (6 min), the 991 of Group 4 plus the five new tests, live rather than skipped because the script stages the whole repository; the skip is the activated `alembic.ini`. Then the D1 harness: **9 isolated, 0 failed**.
+- **Not run:** no workflow ran on GitHub — nothing was pushed — and no workflow linter
+  (`actionlint`) is installed here or in the repository's tooling. The first push of a branch
+  to `github` is the first real run, and its result is the check that the runner's Python 3.12
+  environment passes the harness as the image's 3.11 does.
+
+#### What is left
+
+- **D-5:** GitLab merge requests reach these checks only when the commit is pushed to `github`.
+- **A branch with an open GitHub pull request** runs the guards twice (push and merge ref).
+  Accepted: review happens on GitLab.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |

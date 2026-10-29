@@ -442,6 +442,13 @@ prints the graph; `--violations` lists every rule-breaking edge.
 - GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
   only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
   runs where.
+- **Every push to `github` runs the architecture guards** (E3): `check.py`,
+  the database-backed guard tests and the D1 harness. `ci.yml`'s
+  `Backend Validation` covers pull requests, `master`, tags and nightly;
+  `architecture.yml` covers a push of any other branch, and its filter is the
+  complement of `ci.yml`'s so no push starts both. Its test targets are
+  `local_guard_tests.sh`'s `DEFAULT_TARGETS`; change the two together
+  (`tests/repo/test_ci_architecture_guards.py`).
 
 Two things Phase 3 deliberately left, which are **not** violations:
 

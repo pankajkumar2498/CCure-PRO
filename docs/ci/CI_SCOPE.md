@@ -7,14 +7,20 @@ merge.
 
 ## The two scopes
 
-| Scope        | When                                                      | What runs                                                                                                                                                                                                                    |
-| ------------ | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **targeted** | `pull_request`, push to `main`/`master`                   | Always: Bandit, ruff, OpenAPI contract, gateway hermetic suites, documentation integrity, `tests/repo` and `tests/security`, secret scan, dependency audits, reset validation. Plus the test groups the changed paths map to |
-| **full**     | nightly 00:30 IST, `v*` tag, manual (`workflow_dispatch`) | Everything the pipeline ran before: every backend group with coverage, the migration round-trip, the whole vitest suite, the Chromium browser suite                                                                          |
+| Scope        | When                                                      | What runs                                                                                                                                                                                                                                                                                                     |
+| ------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **targeted** | `pull_request`, push to `main`/`master`                   | Always: the stdlib architecture guards (`check.py`), Bandit, ruff, OpenAPI contract, gateway hermetic suites, documentation integrity, `tests/repo` and `tests/security`, the library isolation harness (D1), secret scan, dependency audits, reset validation. Plus the test groups the changed paths map to |
+| **full**     | nightly 00:30 IST, `v*` tag, manual (`workflow_dispatch`) | Everything the pipeline ran before: every backend group with coverage, the migration round-trip, the whole vitest suite, the Chromium browser suite                                                                                                                                                           |
 
 Image builds and Trivy (`images.yml`), the three-engine browser matrix
 (`browser-matrix.yml`) and the gateway harness (`gateway.yml`) are not on the
 pull-request path; see [BRANCH_PROTECTION.md](BRANCH_PROTECTION.md).
+
+**A push of any other branch runs the architecture guards alone**
+(`architecture.yml`, E3): `check.py`, the default set of
+`scripts/ci/local_guard_tests.sh` and the D1 harness. Its branch filter is the
+complement of `ci.yml`'s `push` filter, so no push starts both workflows
+([LOCAL_ENFORCEMENT.md](LOCAL_ENFORCEMENT.md#on-github-since-29-oct-2026-e3)).
 
 ## How a change is mapped
 

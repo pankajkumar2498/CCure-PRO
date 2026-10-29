@@ -8,12 +8,12 @@ enforces it" is only said where it is true. Measured 16 Oct 2026.
 
 ## The three paths
 
-| Path                                                                                | Runs                                                                                          | Needs                                                                                     | Covers                                                                                                                                                                                                                                                                                                                  |
-| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pre-commit hook `architecture-guards`** (`Backend/scripts/architecture/check.py`) | Every commit that stages backend code (not tests), in ~12 s                                   | Python 3 only — no database, no network                                                   | Layering, module-level import cycles, the identity boundary, organisation-setting references, the capability ratchet, and the sudo-password and session-password guards                                                                                                                                                 |
-| **`scripts/ci/local_guard_tests.sh`**                                               | On demand                                                                                     | Docker and the backend image                                                              | The database-backed tests: by default `tests/repo` (all architecture ratchets, table ownership, schema drift, documentation integrity), the sudo-password tests and the credential-API authorization tests, then the library isolation harness (D1); any pytest target can be passed, and then the harness does not run |
-| **`scripts/validation/live_scan.sh`**                                               | Before and after a change on a scan path (B2, B3, C2, C3, C6)                                 | Docker, the backend image and the validation targets (`scripts/validation/targets.sh up`) | Live scans of disposable targets on an internal network with one commit's code; `compare_live_scans.py` compares two runs ([`LIVE_SCAN_VALIDATION.md`](LIVE_SCAN_VALIDATION.md))                                                                                                                                        |
-| **GitHub Actions** (`.github/workflows/ci.yml`; [CI_SCOPE.md](CI_SCOPE.md))         | Pull requests and pushes **on the `github` remote**, and nightly at 19:00 UTC on its `master` | GitHub-hosted runners                                                                     | Everything above and the rest of the suite                                                                                                                                                                                                                                                                              |
+| Path                                                                                | Runs                                                                                                                                                                | Needs                                                                                     | Covers                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pre-commit hook `architecture-guards`** (`Backend/scripts/architecture/check.py`) | Every commit that stages backend code (not tests), in ~12 s                                                                                                         | Python 3 only — no database, no network                                                   | Layering, module-level import cycles, the identity boundary, organisation-setting references, the capability ratchet, and the sudo-password and session-password guards                                                                                                                                                 |
+| **`scripts/ci/local_guard_tests.sh`**                                               | On demand                                                                                                                                                           | Docker and the backend image                                                              | The database-backed tests: by default `tests/repo` (all architecture ratchets, table ownership, schema drift, documentation integrity), the sudo-password tests and the credential-API authorization tests, then the library isolation harness (D1); any pytest target can be passed, and then the harness does not run |
+| **`scripts/validation/live_scan.sh`**                                               | Before and after a change on a scan path (B2, B3, C2, C3, C6)                                                                                                       | Docker, the backend image and the validation targets (`scripts/validation/targets.sh up`) | Live scans of disposable targets on an internal network with one commit's code; `compare_live_scans.py` compares two runs ([`LIVE_SCAN_VALIDATION.md`](LIVE_SCAN_VALIDATION.md))                                                                                                                                        |
+| **GitHub Actions** (`ci.yml`, `architecture.yml`; [CI_SCOPE.md](CI_SCOPE.md))       | Every push **to the `github` remote**: pull requests, pushes to `master`, tags and nightly at 19:00 UTC (`ci.yml`); a push of any other branch (`architecture.yml`) | GitHub-hosted runners                                                                     | `ci.yml`: everything above and the rest of the suite. `architecture.yml`: `check.py`, the local script's default set and the D1 harness                                                                                                                                                                                 |
 
 `git commit --no-verify` skips the hook. CLAUDE.md forbids it, and the hook is
 fast and environment-independent so that nobody has a reason to.
@@ -39,6 +39,41 @@ are the only enforcement a GitLab merge request gets:
 
 This choice is decision D-5 in
 [`../architecture/MODULE_INDEPENDENCE_ANALYSIS.md`](../architecture/MODULE_INDEPENDENCE_ANALYSIS.md).
+
+## On GitHub, since 29 Oct 2026 (E3)
+
+The three guards — `check.py`, the database-backed guard tests and the D1
+harness — run on every push that reaches the `github` remote. Two workflows
+share the pushes, and no push starts both:
+
+| Push or event                                | Workflow and job                          | Guards                                                                                             |
+| -------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Pull request into `master`, push to `master` | `ci.yml`, `Backend Validation`            | `check.py` before the install; `tests/repo` and `tests/security` with the selected groups; then D1 |
+| `v*` tag, nightly, manual                    | `ci.yml`, `Backend Validation` (full)     | the same, over the whole suite                                                                     |
+| Push of any other branch                     | `architecture.yml`, `Architecture Guards` | `check.py`; `local_guard_tests.sh`'s default set on throwaway PostgreSQL 18 and Redis 7; then D1   |
+
+- **No duplicate runs from one push.** `architecture.yml` triggers on
+  `branches-ignore: [main, master]`, the complement of `ci.yml`'s `push`
+  filter, which stays as it is (it is what stops a pull request running the
+  whole pipeline twice). A branch with an open **GitHub** pull request runs
+  the guards twice — once for the push, once in `ci.yml` for the merge ref.
+  Review happens on GitLab, so that is rare, and the guard job is the small
+  one.
+- **One list of guard tests.** `architecture.yml` runs exactly the local
+  script's `DEFAULT_TARGETS`, and
+  `Backend/tests/repo/test_ci_architecture_guards.py` fails if the two
+  diverge, if the branch filters overlap, or if either workflow loses
+  `check.py` or the harness.
+- **The harness runs on the runner, not the backend image.** It hands each
+  child interpreter none of the job's environment, as it does locally; what
+  the runner adds is a network, which the import and exercise checks do not
+  depend on. Measured outside the image, from a pip-installed environment:
+  9 isolated in about 20 seconds.
+- **Not a required check.** `Architecture Guards` never runs on a pull
+  request, so it must not be added to the ruleset (see
+  [BRANCH_PROTECTION.md](BRANCH_PROTECTION.md)).
+- **GitLab is unchanged.** A merge request there reaches these checks only
+  when the commit is pushed to `github` too; D-5 stays open.
 
 ## Running them
 

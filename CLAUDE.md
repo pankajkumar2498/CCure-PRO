@@ -454,9 +454,24 @@ Two things Phase 3 deliberately left, which are **not** violations:
   stays for tests and scripts. The two `scans.*` aliases move later (C3).
 - **The discovery engine no longer loads SQLAlchemy** (B3, 20 Oct 2026). It came
   in through `core.risk` → `core.vuln_intel`, for two pure functions; they now
-  live in `core/vuln_scoring.py`, which `core.vuln_intel` re-exports. The port
-  and network-check engines still load the CVE database through `core.utils`
-  (`docs/architecture/MODULAR_REFACTORING_LOG.md` §6).
+  live in `core/vuln_scoring.py`, which `core.vuln_intel` re-exports.
+- **Nor do the port and network-check engines, the Nmap wrapper or the version
+  matcher** (Group 3, `docs/architecture/MODULAR_REFACTORING_LOG.md` §6).
+  - **The CVE client** is `engines/vulnerability/cve_lookup.py`, built at the
+    first CVE lookup, never at import; `core.utils` has no CVE lookup.
+  - **Ports, registered by Audit's composition root** and loaded through
+    Celery's `imports`: the OUI lookup's vendor cache
+    (`ccure_audit/vendor_cache.py`), the Nmap wrapper's Redis lease and cache
+    and the version matcher's CVE repository (`ccure_audit/engine_ports.py`),
+    and the topology engine's asset and scan directory
+    (`ccure_audit/topology_directory.py`). Without a registration the vendor
+    cache and the Nmap state behave as an unreachable database or Redis
+    always did; the topology directory and the CVE repository raise.
+  - **The rules (E1)**, absolute in `capability_map.py`: no layer-3
+    capability imports a higher layer; nothing outside scans and `main`
+    imports `scan_helpers`; the platform loads no Audit capability; and E2
+    pins `PINNED_ENGINES`. The topology engine is not pinned: it persists its
+    own links.
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.

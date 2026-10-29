@@ -31,7 +31,13 @@ from engines.credentialed.vuln_matcher import VulnMatcher
 
 
 def _matcher(sources: dict[str, str] | None = None) -> VulnMatcher:
+    from core.vuln_intel_repository import REPOSITORY
+
     matcher = VulnMatcher.__new__(VulnMatcher)
+    # Built without __init__: the SQL construct and the errors the matcher is
+    # handed by its repository (Group 3) are set the same way.
+    matcher._sql = REPOSITORY.sql
+    matcher._db_errors = REPOSITORY.errors
     matcher._package_sources = dict(sources or {})
     matcher._osv_rows_without_range = 0
     return matcher

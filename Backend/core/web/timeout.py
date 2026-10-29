@@ -42,10 +42,10 @@ log = logging.getLogger("ccure.web.timeout")
 
 def configured_timeout() -> int:
     """The global timeout in seconds, or 0 when disabled."""
-    from config import WebScanConfig
+    from core.web import settings as web_settings
 
     try:
-        return int(getattr(WebScanConfig, "WEB_SCAN_TIMEOUT", 0) or 0)
+        return int(getattr(web_settings.current(), "WEB_SCAN_TIMEOUT", 0) or 0)
     except (TypeError, ValueError):
         return 0
 

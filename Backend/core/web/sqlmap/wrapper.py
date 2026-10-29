@@ -17,7 +17,7 @@ This wrapper:
 import logging
 from typing import Dict, Optional
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 from core.web.base_wrapper import ToolWrapper
 
 log = logging.getLogger("ccure.web.sqlmap")
@@ -43,8 +43,8 @@ class SqlmapWrapper(ToolWrapper):
         timeout: int | None = None,
     ):
         super().__init__(
-            binary_path=binary_path or WebScanConfig.SQLMAP_BINARY,
-            timeout=timeout or WebScanConfig.SQLMAP_TIMEOUT,
+            binary_path=binary_path or web_settings.current().SQLMAP_BINARY,
+            timeout=timeout or web_settings.current().SQLMAP_TIMEOUT,
             name="sqlmap",
         )
 
@@ -106,8 +106,8 @@ class SqlmapWrapper(ToolWrapper):
 
         common = [
             "--batch",  # Non-interactive
-            f"--level={level or WebScanConfig.SQLMAP_LEVEL}",
-            f"--risk={risk or WebScanConfig.SQLMAP_RISK}",
+            f"--level={level or web_settings.current().SQLMAP_LEVEL}",
+            f"--risk={risk or web_settings.current().SQLMAP_RISK}",
             f"--output-dir={output_dir}",
             "--flush-session",
             "--disable-coloring",

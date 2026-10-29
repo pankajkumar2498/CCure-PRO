@@ -33,7 +33,7 @@ import json
 import re
 from typing import List, Optional
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 
 #: Canonical profile names, in order of increasing coverage.
 PROFILES = ("FAST", "STANDARD", "DEEP")
@@ -58,7 +58,7 @@ DEFAULT_PROFILE = "STANDARD"
 def default_exclude_tags() -> List[str]:
     """The mandatory safety exclusions, from config (comma-separated)."""
     raw = getattr(
-        WebScanConfig, "NUCLEI_EXCLUDE_TAGS", "dos,fuzz,intrusive,brute-force"
+        web_settings.current(), "NUCLEI_EXCLUDE_TAGS", "dos,fuzz,intrusive,brute-force"
     )
     return [t.strip() for t in str(raw).split(",") if t.strip()]
 
@@ -77,7 +77,7 @@ def resolve_exclude_tags(
     if override is not None:
         return list(override)
     if include_dangerous or getattr(
-        WebScanConfig, "NUCLEI_INCLUDE_DANGEROUS_TAGS", False
+        web_settings.current(), "NUCLEI_INCLUDE_DANGEROUS_TAGS", False
     ):
         return []
     return default_exclude_tags()
@@ -115,26 +115,34 @@ def profile_controls(profile: str) -> dict:
     configurable, as the phase requires.
     """
     p = (profile or DEFAULT_PROFILE).upper()
-    bulk = int(getattr(WebScanConfig, "NUCLEI_BULK_SIZE", 25))
+    bulk = int(getattr(web_settings.current(), "NUCLEI_BULK_SIZE", 25))
     if p == "FAST":
         return {
-            "concurrency": int(getattr(WebScanConfig, "NUCLEI_CONCURRENCY_FAST", 75)),
-            "timeout": int(getattr(WebScanConfig, "NUCLEI_TIMEOUT_FAST", 1800)),
+            "concurrency": int(
+                getattr(web_settings.current(), "NUCLEI_CONCURRENCY_FAST", 75)
+            ),
+            "timeout": int(
+                getattr(web_settings.current(), "NUCLEI_TIMEOUT_FAST", 1800)
+            ),
             "bulk_size": bulk,
-            "rate_limit": int(getattr(WebScanConfig, "NUCLEI_RATE_FAST", 150)),
+            "rate_limit": int(getattr(web_settings.current(), "NUCLEI_RATE_FAST", 150)),
         }
     if p == "DEEP":
         return {
-            "concurrency": int(getattr(WebScanConfig, "NUCLEI_CONCURRENCY_DEEP", 40)),
-            "timeout": int(getattr(WebScanConfig, "NUCLEI_TIMEOUT_DEEP", 14400)),
+            "concurrency": int(
+                getattr(web_settings.current(), "NUCLEI_CONCURRENCY_DEEP", 40)
+            ),
+            "timeout": int(
+                getattr(web_settings.current(), "NUCLEI_TIMEOUT_DEEP", 14400)
+            ),
             "bulk_size": bulk,
-            "rate_limit": int(getattr(WebScanConfig, "NUCLEI_RATE_DEEP", 100)),
+            "rate_limit": int(getattr(web_settings.current(), "NUCLEI_RATE_DEEP", 100)),
         }
     return {
-        "concurrency": int(getattr(WebScanConfig, "NUCLEI_CONCURRENCY", 25)),
-        "timeout": int(getattr(WebScanConfig, "NUCLEI_TIMEOUT", 7200)),
+        "concurrency": int(getattr(web_settings.current(), "NUCLEI_CONCURRENCY", 25)),
+        "timeout": int(getattr(web_settings.current(), "NUCLEI_TIMEOUT", 7200)),
         "bulk_size": bulk,
-        "rate_limit": int(getattr(WebScanConfig, "NUCLEI_RATE_STANDARD", 150)),
+        "rate_limit": int(getattr(web_settings.current(), "NUCLEI_RATE_STANDARD", 150)),
     }
 
 

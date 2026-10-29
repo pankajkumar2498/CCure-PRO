@@ -188,6 +188,36 @@ LIBRARIES: dict[str, Library] = {
             "tests/scans/test_ot_probes.py",
         ),
     ),
+    # Group 4 (D2): the web DAST engine, on settings it is handed
+    # (core.web.settings). Its test registers settings of its own, so this
+    # run proves the engine never reads config. Not the worker self-check or
+    # the scan reaper (core.web.self_check, core.web.timeout): they read their
+    # settings the same way but reach the database and Redis themselves.
+    "web_dast": Library(
+        entry_points=(
+            "core.web.settings",
+            "core.web.crawling.browser",
+            "core.web.ffuf.wrapper",
+            "core.web.nuclei.profiles",
+            "core.web.nuclei.wrapper",
+            "core.web.oast.client",
+            "core.web.sqlmap.wrapper",
+            "core.web.subfinder.wrapper",
+        ),
+        first_party=(
+            "core.web.settings",
+            "core.web.base_wrapper",
+            "core.web.browser_runtime",
+            "core.web.crawling",
+            "core.web.ffuf",
+            "core.web.nuclei",
+            "core.web.oast",
+            "core.web.sqlmap",
+            "core.web.subfinder",
+        ),
+        third_party=frozenset({"playwright", "httpx"}),
+        tests=("tests/web/test_web_dast_engine_pilot.py",),
+    ),
 }
 
 

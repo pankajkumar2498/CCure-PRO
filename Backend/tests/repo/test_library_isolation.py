@@ -36,7 +36,8 @@ DEFERRED = {
 # ── The declarations ──────────────────────────────────────────────────────────
 
 
-def test_the_eight_libraries_of_group_1_are_declared():
+def test_the_libraries_are_declared():
+    # Group 1's eight, and web DAST since Group 4.
     assert set(li.LIBRARIES) == {
         "ssh_transport",
         "winrm_transport",
@@ -46,6 +47,7 @@ def test_the_eight_libraries_of_group_1_are_declared():
         "check_kernel",
         "renderers",
         "discovery",
+        "web_dast",
     }
 
 
@@ -173,6 +175,13 @@ def backend_copy(tmp_path_factory):
             "sqlalchemy",
         ),
         ("discovery", "core/discovery/engine.py", "import config", "config"),
+        # Group 4: the web engine reading the global configuration again.
+        (
+            "web_dast",
+            "core/web/sqlmap/wrapper.py",
+            "from config import WebScanConfig",
+            "config",
+        ),
     ],
 )
 def test_an_undeclared_import_fails_isolation(

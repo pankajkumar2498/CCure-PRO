@@ -97,9 +97,9 @@ def _check_sqlmap() -> dict:
 
 
 def _check_nuclei_templates() -> dict:
-    from config import WebScanConfig
+    from core.web import settings as web_settings
 
-    d = getattr(WebScanConfig, "NUCLEI_TEMPLATES_DIR", "/opt/nuclei-templates")
+    d = getattr(web_settings.current(), "NUCLEI_TEMPLATES_DIR", "/opt/nuclei-templates")
     if not os.path.isdir(d):
         return _result(_MISSING, f"templates dir absent: {d}", False)
     try:

@@ -406,6 +406,54 @@
     "sqlalchemy"
    ]
   },
+  "core.web.crawling.browser": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.ffuf.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.nuclei.profiles": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.nuclei.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.oast.client": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.settings": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.sqlmap.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.subfinder.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
   "engines.credentialed.smb_executor": {
    "capabilities": [
     "infra"

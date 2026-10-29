@@ -58,6 +58,9 @@ celery_app.conf.imports = (
     # The topology engine's directory (G3): it reads and enrols assets, and
     # reads its scan's targets, through it, and raises without it.
     "ccure_audit.topology_directory",
+    # The web engine's settings (Group 4): it reads them through
+    # core.web.settings, and raises WebSettingsMissing without them.
+    "ccure_audit.web_settings",
 )
 
 # Optional but recommended configuration for security and stability

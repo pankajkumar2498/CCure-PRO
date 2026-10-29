@@ -21,6 +21,11 @@ What it ratchets, and what it deliberately does not:
   capabilities of one layer; every table a capability references or writes that
   another capability owns; and, for selected entry points, which capabilities
   and heavy third-party packages importing them loads.
+* **Pinned (E2)** — the engine libraries ``library_isolation.LIBRARIES``
+  declares may never load a package in ``library_isolation.FORBIDDEN``
+  (SQLAlchemy, FastAPI, Celery, Redis). Unlike the ratchet this is absolute: no
+  rewritten baseline admits one. ``library_isolation`` proves the same by
+  running the libraries (D1).
 * **Not ratcheted** — raw edge counts. A new downward import (a scan engine
   using the check kernel) is the architecture working as intended, and a
   ratchet that failed on it would teach people to regenerate the baseline
@@ -66,6 +71,7 @@ from scripts.architecture.import_graph import (
     collect_edges,
     strongly_connected,
 )
+from scripts.architecture.library_isolation import FORBIDDEN, LIBRARIES
 
 BASELINE_FILE = Path(__file__).with_name("capability_baseline.json")
 OWNERSHIP_FILE = Path(__file__).with_name("table_ownership.yaml")
@@ -777,6 +783,33 @@ def load_profiles(modules, raw_edges) -> dict[str, dict[str, list[str]]]:
     return profiles
 
 
+def library_problems(load_profiles: dict) -> list[str]:
+    """
+    E2: no engine library loads a package in ``FORBIDDEN``.
+
+    Read from the same load profiles the ratchet records, but not from the
+    baseline: a library that started loading SQLAlchemy fails here however
+    the baseline was rewritten. Every library's entry point must be one of
+    ``ENTRY_POINTS``, or there would be no profile to read.
+    """
+    problems = []
+    for name, library in sorted(LIBRARIES.items()):
+        for entry in library.entry_points:
+            profile = load_profiles.get(entry)
+            if profile is None:
+                problems.append(
+                    f"library {name}: no load profile for {entry} — add it to ENTRY_POINTS"
+                )
+                continue
+            loaded = sorted(FORBIDDEN & set(profile["third_party"]))
+            if loaded:
+                problems.append(
+                    f"library {name}: importing {entry} loads {loaded}, which an "
+                    "engine library may never load (E2)"
+                )
+    return problems
+
+
 # ── Measurement, baseline and ratchet ─────────────────────────────────────────
 def measure(root: Path = BACKEND_ROOT) -> dict:
     modules, raw_edges = collect_edges(root)
@@ -948,7 +981,9 @@ def ratchet_problems(measurement: dict | None = None, baseline=None) -> list[str
             for m in measurement["unmapped"]
         ]
     baseline = baseline if baseline is not None else load_baseline()
-    problems = ceiling_problems(baseline)
+    problems = ceiling_problems(baseline) + library_problems(
+        measurement["load_profiles"]
+    )
 
     for key, label in (("cycles", "cycle"), ("cycles_top_level", "top-level cycle")):
         known = [frozenset(c) for c in baseline[key]]
@@ -1035,7 +1070,9 @@ def main(argv: list[str] | None = None) -> int:
         print()
         return 0
     if args.write_baseline:
-        problems = ceiling_problems(baseline_from(measurement))
+        problems = ceiling_problems(baseline_from(measurement)) + library_problems(
+            measurement["load_profiles"]
+        )
         if problems:
             print("\n".join(problems))
             return 1

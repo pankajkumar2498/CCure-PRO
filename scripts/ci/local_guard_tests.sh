@@ -2,7 +2,7 @@
 # Run the database-backed guard tests locally, the way CI runs them, without
 # touching any live database.
 #
-#   scripts/ci/local_guard_tests.sh                 # the guard set (below)
+#   scripts/ci/local_guard_tests.sh                 # the guard set (below), then D1
 #   scripts/ci/local_guard_tests.sh tests/security  # any pytest targets, from Backend/
 #
 # The architecture ratchets (tests/repo), the sudo-password guard and the
@@ -26,8 +26,14 @@
 # Tests that need the DBA-installed audit chain skip themselves on a throwaway
 # database and say "NOT VERIFIED, not passing"; they are reported, not hidden.
 #
+# With the default set it then runs the library isolation harness (D1,
+# Backend/scripts/architecture/library_isolation.py): each engine library in a
+# fresh interpreter holding only what it declares. That needs no database, so
+# it runs with no network at all and the staged checkout mounted read-only.
+#
 # Requires Docker and the backend image (CCURE_TEST_IMAGE, default
-# ccure-audit-pro-backend:latest). Exit status is pytest's.
+# ccure-audit-pro-backend:latest). Exit status is pytest's, or the harness's
+# when pytest passed.
 set -euo pipefail
 
 REPO=$(git rev-parse --show-toplevel)
@@ -108,4 +114,15 @@ set +e
 run_in_image python -m pytest -p no:cacheprovider -q -rfEs "${TARGETS[@]}"
 status=$?
 set -e
+
+if [ "$#" -eq 0 ]; then
+  echo "running the library isolation harness (D1)"
+  set +e
+  docker run --rm --init --network none --user 1000:1000 -e PYTHONDONTWRITEBYTECODE=1 \
+    -v "$WORK/repo:/repo:ro" -w /repo/Backend --entrypoint python "$IMAGE" \
+    -m scripts.architecture.library_isolation
+  isolation=$?
+  set -e
+  if [ "$status" -eq 0 ]; then status=$isolation; fi
+fi
 exit "$status"

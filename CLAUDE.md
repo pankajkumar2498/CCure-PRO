@@ -395,8 +395,15 @@ and the compliance router (Phase C, G1–G6, 22–24 Oct 2026).** Record:
     it in passing.
   - **`routers/compliance.py` refuses a patch.** Patch the part whose code reads
     the name; the error names it.
-  - **The documents are renderers:** the 20 generators are in
-    `reporting/compliance/` and import nothing of compliance.
+  - **The documents are renderers:** the 21 generators are in
+    `reporting/compliance/` and import nothing of compliance (the executive
+    report's joined the 20 in G2).
+  - **The dashboard and the report routes read through owners' modules**
+    (G2): `core/findings/summaries.py`, `core/asset_reads.py`,
+    `scans/reads.py`, `scans/report_context.py`, `core/web/reads.py`, and
+    `scans.scan_access.report_scan_or_404` for the export lookup. A new
+    dashboard or report query goes in the owner's read module; the router
+    names no table.
   - **The guard:** `tests/repo/test_compliance_router_split.py`.
 
 Imports inside functions count as dependencies — they are how this codebase

@@ -4008,6 +4008,97 @@ tests (`TestWinRMConfiguration`, `TestWinRMThreadSafety`, the shell-type test).
 - **The harness runs locally only** until CI runs again (D-5; Group 5).
 - **Five engines join in Group 3.**
 
+### Group 2 — the dashboard and the report routes read through their owners (C7's remainder)
+
+Commits `b6db6f7` (the golden, before the change) and `0687924` (the change), on top of
+`a019399`.
+
+**The scope** (analysis §10, C7; the grouped plan's Group 2): the read side G6 left — the
+dashboard's 17 routes and the three report routes — reads each capability through that
+capability's own lower-layer read module; `routers.reports` stops importing `scan_helpers`;
+and the executive compliance PDF, the one document still drawn inside a route, becomes a
+renderer.
+
+#### Before the change: the API golden extended
+
+`Backend/scripts/verification/api_golden/` (`b6db6f7`) now drives, besides everything G6
+drove:
+
+- **all 17 dashboard routes** in both organisations, and 26 variants: every window, limit
+  and severity filter, every web drill-down filter and page, an invalid date and an
+  out-of-range window;
+- **the three report routes:** download in every format and alias for four scans (a
+  credentialed audit, a basic scan, an unreachable one and an asset discovery), a bad
+  format and a missing scan; the export in every format and dataset, with severity,
+  verdict, scope, baseline and organisation filters, and its four refusals; deleting a
+  scan's reports, then the download that regenerates them.
+
+The restored copy held no discovered endpoints and no HTTP security details, and its web
+findings carried no OWASP category, tool or verification, so the golden seeds them: a recent,
+a running and an other-organisation web scan, six web findings, six endpoints (distinct
+timestamps, so no ordering rests on a tie) and three HTTP detail rows. The report routes
+authenticate with a ticket or a bearer token (`current_user_flexible`), overridden like the
+bearer dependency; they write into a directory of the run's own, since the stored report
+files are not in the checkout and the first download of each regenerates it.
+
+Two captures of `a019399` were byte-identical (855 files) once two things were fixed in the
+golden: an endpoint row's `updated_at` defaulted to the server clock, and a workbook's file
+digest carried each zip entry's write time (the files are now recorded member by member, as
+the responses already were).
+
+#### The change (`0687924`)
+
+| Read                                                  | Was                                         | Now                                                                                |
+| ----------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Findings, services, TLS and HTTP details (17 queries) | the dashboard, joining the asset model      | `core/findings/summaries.py`, scoped through the host port `core.findings.hosts`   |
+| Assets and the change log (14 queries)                | the dashboard; the export's lifecycle dates | `core/asset_reads.py`                                                              |
+| Scan records (6 queries), a scan's stored phases      | the dashboard; `reporting.exports`          | `scans/reads.py`                                                                   |
+| Web scans, findings and endpoints (16 queries)        | the dashboard                               | `core/web/reads.py`                                                                |
+| The export lookup (`_scan_for_user`)                  | `routers/reports.py`                        | `scans.scan_access.report_scan_or_404`, moved unchanged; the router keeps the name |
+| What a report says about its scan                     | `scan_helpers`                              | `scans/report_context.py`, moved unchanged; `scan_helpers` re-exports every name   |
+| Recording and clearing a scan's report paths          | the report routes, by attribute             | `scans.reads.record_report_paths` / `forget_report_paths`                          |
+| The executive compliance PDF                          | drawn in the route                          | `reporting/compliance/executive.py`; the route keeps its two queries               |
+
+Every query is moved unchanged but for the host port, so a response is byte for byte what it
+was. The routers keep routing, permissions, organisation resolution and the arithmetic that
+shapes each response; every route's docstring, which is its OpenAPI description, is
+unchanged. The writes of a scan's report paths were not counted by the ratchet (an
+attribute assignment is a reference), and went through the owner anyway, as G6 did for the
+findings → assets write.
+
+#### Verification
+
+- **The API golden, `a019399` against `0687924`:** byte-identical in all 855 files — every
+  response (the 20 new routes' included), every report file (8 PDFs, 9 CSVs and 5
+  workbooks, member by member), every broker message, every table, and every query plan:
+  scoping through the host port's subquery gives the same plans as the join to the asset
+  table did.
+- **Golden mutations**, one scratch commit (`3ed72b5`, on no branch): the web drill-down
+  without its organisation filter, the finding-status counts without theirs, and a label in
+  the moved executive PDF. All three caught: 9 responses and 13 plans differ — the
+  executive report's digest, risk-breakdown in both organisations, and the web drill-down in
+  both organisations and four variants (the other variants' filters already confine them to
+  one organisation's rows, so only their plans moved).
+- **Interfaces**, `interface_snapshot` in the backend image, `a019399` against the change:
+  identical — routes, limiter keys, the OpenAPI digest, the task registry and beat.
+- **Tests:** the selector's 14 groups (assets, audit, audit_boundary, auth, compliance, credentialed, modules, rbac, repo, reports, scans, security, topology, web) on `0687924`, in throwaway containers: **8,271 passed, 0 failed, 211 skipped** (18 min). The skips are the environment ones every run on this branch has: the DBA-installed audit chain and retention, the live OSV feed, the Alembic rehearsal. A first run was cut off at 44% when its session ended, clean until its database container went with the session; it was rerun whole. No frontend file changed (the selector: frontend none).
+- **The ratchet:** foreign-table references 46 → 32 (the dashboard's 11, the reporting
+  capability's 3); the ceiling is lowered, the baseline rewritten (14 entries removed, none
+  added). Cycles, upward and lateral edges, writes and load profiles are unchanged.
+  `tests/repo/test_compliance_router_split.py` counts 21 generators (20 from G6, the
+  executive report's from G2).
+
+#### What is left
+
+- **Neither capability is in a cycle, and both now meet their §12 foreign-table targets:**
+  the dashboard and reporting reference no foreign table. Reporting's §12 row also asks
+  that the renderers be in no cycle; they are still in the 4-capability cycle through
+  `ccure_platform.audit_log.export` (log §7, from B7).
+- **The routers still hold ORM rows** the read modules return — a `Scan`, an `Asset`, a
+  `WebFinding` — rather than views. Converting them is a change to the renderers and the
+  exports, which take the same rows.
+- **§12.1** is the dated E4 measurement and is not regenerated here.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -4055,11 +4146,11 @@ tests (`TestWinRMConfiguration`, `TestWinRMThreadSafety`, the shell-type test).
 | new | Give the engines the typed records (the analysis's `discover(…) → list[HostRecord]`, `inventory(hosts, …) → ServiceInventory`). C6 typed the hand-off between phases; the engines still read and edit the records as dicts in place, and phase 3's identity merge depends on those edits                                                                                                                                                                                                                                                                                                                                                       | G5, §6                                                             |
 | new | Take the scans capability's direct engine imports through the pipeline definition (§12's target for `scans`). The orchestrator still imports the discovery, port and vulnerability engines itself                                                                                                                                                                                                                                                                                                                                                                                                                                              | G5, §6                                                             |
 | new | Run C6's live validation (§11) if wanted: about two hours for a before/after pair. The phase-pipeline golden covers the hand-off with the tasks' own code; the live harness runs Celery eager too, so neither exercises a real broker's JSON round trip, which C6 leaves unchanged by construction                                                                                                                                                                                                                                                                                                                                             | G5, §6                                                             |
-| new | The read side C7 names that G6 did not change: the dashboard (`routers/dashboard.py`, 11 foreign tables) and `routers.reports`' direct reads of findings and vulnerability intelligence. Both are layer-6 read models, so they may read through the capabilities' read modules (`core.findings.reads`, the host port) or `ccure_audit/services`                                                                                                                                                                                                                                                                                                | G6, §6                                                             |
+| new | **Done in G2** (§6, `0687924`): the dashboard and the report routes read through their owners' read modules. Was: the read side C7 names that G6 did not change: the dashboard (`routers/dashboard.py`, 11 foreign tables) and `routers.reports`' direct reads                                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |
 | new | Scope findings by their own `org_id` and drop the host join where only scoping needs it (the remediation routes and report). The finding's column is written from its asset's organisation and agrees on every row today (0 of 3,854), but no constraint enforces it; a composite foreign key `(asset_id, org_id)` → `assets(id, org_id)` would, and needs a unique key on `assets` first                                                                                                                                                                                                                                                      | G6, §6                                                             |
 | new | Whether the findings side's host port should carry plain values instead of a SQL projection. G6 chose the projection so that every query stays one statement with the same plan; the findings capability is then coupled to the asset table's columns by a declared contract (`HOST_COLUMNS`) rather than by an import                                                                                                                                                                                                                                                                                                                         | G6, §6                                                             |
 | new | Give `/assets/services/assets` an `ORDER BY`. The service-host listing pages with none, so which hosts a page holds is whatever the plan returns (pre-existing; G6 kept the query as it was)                                                                                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
-| new | Move the executive compliance report's inline PDF (`download_executive_compliance_report`, `routers/compliance_reports.py`) into `reporting/compliance/` like the 20 generators                                                                                                                                                                                                                                                                                                                                                                                                                                                                | G6, §6                                                             |
+| new | **Done in G2** (§6, `0687924`): `reporting/compliance/executive.py`. Was: move the executive compliance report's inline PDF (`download_executive_compliance_report`) into `reporting/compliance/` like the 20 generators                                                                                                                                                                                                                                                                                                                                                                                                                       | G6, §6                                                             |
 | new | Take findings out of the capability cycle: it reaches the scan model (the comparison), the credentialed audit (the writer's coverage import, the router's version comparator), configuration audit (the credentialed scope) and scan policy (the comparison)                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
 | new | Whether the compliance router's parts keep `routers.compliance` as their `__name__` or take their own. Renaming changes every compliance limiter key and the gateway route policy's endpoints, so it needs the policy regenerated and the gateway rebuilt in the same release                                                                                                                                                                                                                                                                                                                                                                  | G6, §6                                                             |
 | new | Give the API golden a passing NIST CSF control. In the restored data no CSF control passes (26 fail, 80 not assessed), so the renderer's label for a pass is never drawn and a change to it went uncaught (G6's golden mutations); `setup.sql` could add a passing attestation                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |

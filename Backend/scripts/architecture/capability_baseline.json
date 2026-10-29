@@ -96,50 +96,6 @@
    "services"
   ],
   [
-   "dashboard",
-   "asset_change_log"
-  ],
-  [
-   "dashboard",
-   "asset_vulnerabilities"
-  ],
-  [
-   "dashboard",
-   "assets"
-  ],
-  [
-   "dashboard",
-   "http_security_details"
-  ],
-  [
-   "dashboard",
-   "scans"
-  ],
-  [
-   "dashboard",
-   "services"
-  ],
-  [
-   "dashboard",
-   "tls_details"
-  ],
-  [
-   "dashboard",
-   "vulnerability_definitions"
-  ],
-  [
-   "dashboard",
-   "web_assets"
-  ],
-  [
-   "dashboard",
-   "web_findings"
-  ],
-  [
-   "dashboard",
-   "web_scans"
-  ],
-  [
    "findings",
    "scans"
   ],
@@ -158,18 +114,6 @@
   [
    "main",
    "vulnerability_definitions"
-  ],
-  [
-   "reporting",
-   "assets"
-  ],
-  [
-   "reporting",
-   "scan_phases"
-  ],
-  [
-   "reporting",
-   "scans"
   ],
   [
    "scan_policy",

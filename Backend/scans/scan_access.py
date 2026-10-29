@@ -44,3 +44,45 @@ def get_scan_or_404(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
+
+
+def report_scan_or_404(
+    db: Session, user: CurrentUser, scan_id: str, org_id: str | None = None
+) -> Scan:
+    """
+    The scan, or 404 — under this caller's own visibility rules.
+
+    Exactly the scoping the download endpoint has always applied: a superadmin
+    sees any organisation, everybody else is confined to their own, and a user
+    without ``scans:read_all`` sees only the scans they started. Expressed once
+    so an export route cannot drift from it, which is the shape a cross-tenant
+    export takes: not a missing check, a second copy of one that fell behind.
+
+    404 rather than 403 for a scan in another organisation, deliberately — a
+    403 would confirm the id exists.
+
+    The report and export routes' lookup (``routers.reports._scan_for_user``),
+    moved here unchanged in G2 so the read side names no scan model.
+    """
+    reach = platform_api.acts_across_organisations(user)
+    query = db.query(Scan).filter(Scan.id == scan_id)
+    if reach:
+        if org_id:
+            query = query.filter(Scan.org_id == org_id)
+    else:
+        query = query.filter(Scan.org_id == user.org_id)
+
+    scan = query.first()
+    # The scan's own organisation, read from the stored row, decides the rest: the
+    # account must be allowed to act there, and holds read_all for it or started
+    # the scan (RBAC-5; a client-supplied organisation id proves nothing).
+    if (
+        not scan
+        or not platform_api.resource_organisation_allowed(user, scan.org_id)
+        or (
+            str(scan.created_by) != str(user.id)
+            and not user_can_read_all_scans(user, db, scan.org_id)
+        )
+    ):
+        raise HTTPException(status_code=404, detail="Scan not found.")
+    return scan

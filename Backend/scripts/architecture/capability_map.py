@@ -250,6 +250,8 @@ PREFIXES: dict[str, str] = {
     "core.asset_evidence": "assets",
     # G6 (C7): the asset registry's answer to the findings side's host port.
     "core.asset_hosts": "assets",
+    # G2 (C7): what the dashboard and the report export read from the registry.
+    "core.asset_reads": "assets",
     "core.amt_reconciliation": "assets",
     # Ambiguous: both are used by the scan engines, but the vendor lookup reads
     # the assets capability's mac_vendor_cache and the classifier decides what
@@ -307,6 +309,10 @@ PREFIXES: dict[str, str] = {
     "scans.legacy_json_builder": "scans",
     "scans.notification_vocabulary": "scans",
     "scans.policy_binding": "scans",
+    # G2 (C7): what the read side asks of the scan records, and what a report
+    # says about its scan (moved out of scan_helpers).
+    "scans.reads": "scans",
+    "scans.report_context": "scans",
     "scans.progress": "scans",
     "scans.report_inputs": "scans",
     "scans.scan_access": "scans",
@@ -917,7 +923,13 @@ CEILINGS = {
     # G6 (C7): the findings capability's reads of assets (it joins hosts
     # through its port), and the assets router's of asset_vulnerabilities,
     # services and tls_details (it asks the findings reads).
-    "foreign_table_references": 46,
+    # G2 (C7's remainder): the dashboard's eleven (it reads each capability
+    # through that capability's read module: core.findings.summaries,
+    # core.asset_reads, scans.reads, core.web.reads), and the reporting
+    # capability's three — the report routes' assets and scans, and the
+    # export's scan_phases, now asked of the asset registry and the scans
+    # capability.
+    "foreign_table_references": 32,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the

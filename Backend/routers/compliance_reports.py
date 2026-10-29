@@ -11,7 +11,6 @@ unchanged; that module mounts the parts' sections in the order the API has
 always listed them.
 """
 
-import io
 from ccure_platform.api import CurrentUser, log_audit_event, require_authorized
 from core import nist_csf
 from core.rate_limiter import limiter
@@ -27,6 +26,7 @@ from db.models.compliance import (
 )
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from reporting.compliance.executive import _generate_executive_pdf
 from reporting.compliance.nist_csf import (
     _csf_verdict,
     _generate_nist_csf_docx,
@@ -36,11 +36,6 @@ from reporting.compliance.soa import (
     _generate_soa_detailed_docx,
     _generate_soa_detailed_pdf,
 )
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from routers.compliance_common import (
     SOA_EXCLUDED_THEME,
     _latest_run_id,
@@ -228,75 +223,8 @@ def download_executive_compliance_report(
         else 0.0
     )
 
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=15 * mm,
-        leftMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
-    )
-
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "ExecutiveTitle",
-        parent=styles["Title"],
-        fontSize=22,
-        textColor=colors.HexColor("#003366"),
-        spaceAfter=15,
-    )
-    metric_style = ParagraphStyle(
-        "MetricLabel",
-        parent=styles["Normal"],
-        fontSize=10,
-        textColor=colors.HexColor("#4A5568"),
-    )
-    value_style = ParagraphStyle(
-        "MetricValue",
-        parent=styles["Normal"],
-        fontSize=28,
-        fontName="Helvetica-Bold",
-        textColor=colors.HexColor("#22C55E"),
-    )
-
-    story = [
-        Paragraph("Executive Compliance Assessment Report", title_style),
-        Paragraph(
-            f"Organization ID: {user.org_id} | Date: {datetime.now().strftime('%d %b %Y')}",
-            styles["Normal"],
-        ),
-        Spacer(1, 10 * mm),
-        Paragraph("<b>1. Compliance Posture Headline Scores</b>", styles["Heading2"]),
-        Spacer(1, 4 * mm),
-    ]
-
-    metrics_table = Table(
-        [
-            [
-                Paragraph("Standard Assessment Score", metric_style),
-                Paragraph("Risk-Weighted Score", metric_style),
-            ],
-            [
-                Paragraph(f"{avg_score}%", value_style),
-                Paragraph(f"{avg_weighted}%", value_style),
-            ],
-        ],
-        colWidths=[90 * mm, 90 * mm],
-    )
-    metrics_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7FAFC")),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-            ]
-        )
-    )
-    story.append(metrics_table)
-    story.append(Spacer(1, 10 * mm))
+    # The date is read where the report always read it: between the two queries.
+    generated_at = datetime.now()
 
     # Add exceptions overview filtered to enabled frameworks
     exceptions_count = (
@@ -318,16 +246,9 @@ def download_executive_compliance_report(
         .count()
     )
 
-    story.append(Paragraph("<b>2. Active Exception Waivers</b>", styles["Heading2"]))
-    story.append(
-        Paragraph(
-            f"Currently, there are {exceptions_count} active exception waivers approved by the compliance officer.",
-            styles["Normal"],
-        )
+    buffer = _generate_executive_pdf(
+        user.org_id, avg_score, avg_weighted, exceptions_count, generated_at
     )
-
-    doc.build(story)
-    buffer.seek(0)
 
     return StreamingResponse(
         buffer,

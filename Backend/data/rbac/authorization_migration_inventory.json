@@ -15,8 +15,8 @@
     "legacy_atoms": "kept only in migration history, documentation, audit data and historical migrations"
   },
   "summary": {
-    "total": 239,
-    "migrated": 235,
+    "total": 238,
+    "migrated": 234,
     "display-only": 2,
     "compatibility-history": 2,
     "legacy": 0,
@@ -1367,7 +1367,7 @@
     },
     {
       "file": "routers/compliance_reports.py",
-      "line": 78,
+      "line": 73,
       "function": "download_statement_of_applicability",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1377,7 +1377,7 @@
     },
     {
       "file": "routers/compliance_reports.py",
-      "line": 196,
+      "line": 191,
       "function": "download_executive_compliance_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1387,7 +1387,7 @@
     },
     {
       "file": "routers/compliance_reports.py",
-      "line": 346,
+      "line": 267,
       "function": "get_compliance_gap_analysis",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.read",
@@ -1397,7 +1397,7 @@
     },
     {
       "file": "routers/compliance_reports.py",
-      "line": 559,
+      "line": 480,
       "function": "download_nist_csf_report",
       "mechanism": "require_authorized",
       "permission": "audit.compliance.export_report",
@@ -1607,7 +1607,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 56,
+      "line": 50,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -1617,7 +1617,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 70,
+      "line": 64,
       "function": "get_dashboard_summary",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1627,7 +1627,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 265,
+      "line": 199,
       "function": "get_risk_breakdown",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1637,7 +1637,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 382,
+      "line": 259,
       "function": "get_vuln_trends",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1647,7 +1647,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 436,
+      "line": 297,
       "function": "get_top_assets",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1657,7 +1657,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 483,
+      "line": 338,
       "function": "get_top_cves",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1667,7 +1667,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 557,
+      "line": 386,
       "function": "get_services_exposure",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1677,7 +1677,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 598,
+      "line": 414,
       "function": "get_tls_health",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1687,7 +1687,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 658,
+      "line": 446,
       "function": "get_http_headers",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1697,7 +1697,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 715,
+      "line": 483,
       "function": "get_compliance",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1707,7 +1707,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 888,
+      "line": 615,
       "function": "get_asset_breakdown",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1717,7 +1717,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 942,
+      "line": 649,
       "function": "get_scan_activity",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1727,7 +1727,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1004,
+      "line": 705,
       "function": "get_insights",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1737,7 +1737,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1159,
+      "line": 806,
       "function": "get_web_scan_summary",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1747,7 +1747,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1335,
+      "line": 867,
       "function": "get_web_owasp_scorecard",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1757,7 +1757,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1397,
+      "line": 923,
       "function": "get_web_scan_trends",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1767,7 +1767,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1478,
+      "line": 984,
       "function": "get_web_findings_drilldown",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -1777,7 +1777,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1558,
+      "line": 1043,
       "function": "get_web_endpoints_drilldown",
       "mechanism": "require_authorized",
       "permission": "audit.dashboard.read",
@@ -2044,36 +2044,6 @@
       "status": "migrated",
       "reason": "in-handler permission check",
       "site_id": "routers/reports.py::_require_reports_delete::has_permission::audit.report.delete#1"
-    },
-    {
-      "file": "routers/reports.py",
-      "line": 385,
-      "function": "_can_read_all_org_scans",
-      "mechanism": "has_permission",
-      "permission": "audit.scan.read_all",
-      "status": "migrated",
-      "reason": "in-handler permission check",
-      "site_id": "routers/reports.py::_can_read_all_org_scans::has_permission::audit.scan.read_all#1"
-    },
-    {
-      "file": "routers/reports.py",
-      "line": 638,
-      "function": "_scan_for_user",
-      "mechanism": "acts_across_organisations",
-      "permission": null,
-      "status": "migrated",
-      "reason": "cross-organisation reach (platform-scope switch grant)",
-      "site_id": "routers/reports.py::_scan_for_user::acts_across_organisations::#1"
-    },
-    {
-      "file": "routers/reports.py",
-      "line": 652,
-      "function": "_scan_for_user",
-      "mechanism": "resource_organisation_allowed",
-      "permission": null,
-      "status": "migrated",
-      "reason": "resource organisation verified server-side",
-      "site_id": "routers/reports.py::_scan_for_user::resource_organisation_allowed::#1"
     },
     {
       "file": "routers/scan_history.py",
@@ -2694,6 +2664,26 @@
       "status": "migrated",
       "reason": "in-handler permission check",
       "site_id": "scans/scan_access.py::user_can_read_all_scans::has_permission::audit.scan.read_all#1"
+    },
+    {
+      "file": "scans/scan_access.py",
+      "line": 67,
+      "function": "report_scan_or_404",
+      "mechanism": "acts_across_organisations",
+      "permission": null,
+      "status": "migrated",
+      "reason": "cross-organisation reach (platform-scope switch grant)",
+      "site_id": "scans/scan_access.py::report_scan_or_404::acts_across_organisations::#1"
+    },
+    {
+      "file": "scans/scan_access.py",
+      "line": 81,
+      "function": "report_scan_or_404",
+      "mechanism": "resource_organisation_allowed",
+      "permission": null,
+      "status": "migrated",
+      "reason": "resource organisation verified server-side",
+      "site_id": "scans/scan_access.py::report_scan_or_404::resource_organisation_allowed::#1"
     }
   ]
 }

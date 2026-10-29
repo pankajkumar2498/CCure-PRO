@@ -21,8 +21,9 @@ from scripts.architecture import library_isolation as li
 from scripts.architecture.import_graph import collect_edges
 from testpaths import BACKEND_ROOT
 
-#: The engines that still load a forbidden package and join in Group 3
-#: (§12.1). They are not declared, and nothing exempts them.
+#: The scan engines that are not D1 libraries. Since Group 3 four of them are
+#: pinned statically by E2 (capability_map.PINNED_ENGINES) and the topology
+#: engine still persists its own links; none is declared, nothing exempts them.
 DEFERRED = {
     "engines.port.port_engine",
     "engines.vulnerability.vulnerability_engine",
@@ -125,6 +126,7 @@ def test_a_rewritten_baseline_cannot_admit_a_forbidden_package(graph):
     measurement = {"unmapped": [], "load_profiles": profiles}
     for key in cm._BASELINE_KEYS[:-1]:
         measurement[key] = cm.load_baseline()[key]
+    measurement["scan_helpers_importers"] = []
     # As if --write-baseline had recorded the new profile.
     baseline = cm.baseline_from(measurement)
 

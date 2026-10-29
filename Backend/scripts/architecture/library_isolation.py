@@ -31,10 +31,12 @@ checkout read-only. This module itself is standard library only, because
 ``capability_map.py`` reads ``LIBRARIES`` and ``FORBIDDEN`` for E2 in the
 stdlib-only pre-commit hook.
 
-Not here, deliberately: the port and network-check engines, the nmap wrapper,
-the version matcher and the topology engine. Each still loads a package in
-``FORBIDDEN`` and joins when Group 3 has taken it out (§12.1). Nothing in this
-module exempts them; they are simply not declared yet.
+Not here: the port and network-check engines, the nmap wrapper, the version
+matcher and the topology engine. Since Group 3 the first four load no package
+in ``FORBIDDEN`` and ``capability_map.PINNED_ENGINES`` pins that statically;
+they are not D1 libraries yet, because each reads the settings module at
+import. The topology engine still persists its own links through SQLAlchemy.
+Nothing in this module exempts any of them; they are simply not declared.
 """
 
 from __future__ import annotations

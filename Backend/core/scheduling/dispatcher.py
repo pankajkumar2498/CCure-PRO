@@ -191,7 +191,7 @@ def _resolve_targets(db: Session, schedule: ScanSchedule) -> List[str]:
     the FastAPI limiter, and this module is imported by a Celery worker that
     has no application instance.
     """
-    from scan_helpers import validate_scan_targets
+    from core.scan_targets import validate_scan_targets
 
     raw = [str(t).strip() for t in (schedule.targets or []) if str(t or "").strip()]
     if not raw:

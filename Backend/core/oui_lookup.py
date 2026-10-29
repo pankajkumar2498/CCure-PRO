@@ -8,18 +8,66 @@ Example: 00:1A:2B -> "Company Name"
 
 Data source: IEEE (www.ieee.org/oui)
 Format: hex OUI (6 chars) tab Org Name
+
+Part of the scan kernel since G3 (docs/architecture/MODULE_INDEPENDENCE_ANALYSIS.md):
+discovery and the device classifier use it, and it names no table. The vendor
+cache every worker shares — the asset registry's ``mac_vendor_cache`` — is
+reached through :func:`register_vendor_cache`, which Audit's composition root
+fills (``ccure_audit/vendor_cache.py``). A process with no cache registered
+behaves as one whose database could not be reached always did: the shared tier
+is skipped with the same warning, and the local registry and the vendor API
+still answer.
 """
 
 import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
+from typing import Dict, Optional, Protocol
 
 import requests
 from core.mac import mac_hex
 
 log = logging.getLogger("ccure.oui")
+
+
+class VendorCache(Protocol):
+    """The vendor cache shared by every worker, keyed by 24-bit OUI."""
+
+    def get(self, oui: str) -> Optional[str]:
+        """The cached vendor for *oui*, or None when there is no entry."""
+
+    def put(self, oui: str, vendor: str) -> None:
+        """Record *vendor* for *oui*, replacing any entry."""
+
+
+class VendorCacheMissing(RuntimeError):
+    """No shared vendor cache is registered in this process."""
+
+
+_vendor_cache: Optional[VendorCache] = None
+
+
+def register_vendor_cache(cache: VendorCache) -> None:
+    """Register who answers for the shared cache. The same cache again does
+    nothing; a second, different one is refused, because which of the two
+    answered would then depend on import order."""
+    global _vendor_cache
+    if _vendor_cache is cache:
+        return
+    if _vendor_cache is not None:
+        raise ValueError("a vendor cache is already registered")
+    _vendor_cache = cache
+
+
+def _shared_cache() -> VendorCache:
+    if _vendor_cache is None:
+        raise VendorCacheMissing(
+            "no vendor cache is registered in this process; Audit's composition "
+            "root, ccure_audit/vendor_cache.py, registers the asset registry's"
+        )
+    return _vendor_cache
+
 
 DEFAULT_VENDOR_API_URL = os.environ.get(
     "MAC_VENDOR_API_URL", "https://api.macvendors.com/"
@@ -231,28 +279,12 @@ class OUIDatabase:
 
             oui = mac_address[:6]
             try:
-                from db.base import SessionLocal
-                from db.models import MacVendorCache
-                from sqlalchemy.dialects.postgresql import insert
-
-                db = SessionLocal()
-                try:
-                    stmt = (
-                        insert(MacVendorCache)
-                        .values(mac_prefix=oui, vendor_name=vendor)
-                        .on_conflict_do_update(
-                            index_elements=["mac_prefix"], set_={"vendor_name": vendor}
-                        )
-                    )
-                    db.execute(stmt)
-                    db.commit()
-                    log.info(
-                        "Cached background vendor lookup to DB for OUI %s -> %s",
-                        oui,
-                        vendor,
-                    )
-                finally:
-                    db.close()
+                _shared_cache().put(oui, vendor)
+                log.info(
+                    "Cached background vendor lookup to DB for OUI %s -> %s",
+                    oui,
+                    vendor,
+                )
             except Exception as e:
                 log.warning("Failed to save background vendor to DB cache: %s", e)
         finally:
@@ -267,20 +299,8 @@ class OUIDatabase:
 
         oui = mac_clean[:6]
         try:
-            from db.base import SessionLocal
-            from db.models import MacVendorCache
-
-            db = SessionLocal()
-            try:
-                cached_entry = (
-                    db.query(MacVendorCache)
-                    .filter(MacVendorCache.mac_prefix == oui)
-                    .first()
-                )
-                if cached_entry:
-                    return
-            finally:
-                db.close()
+            if _shared_cache().get(oui) is not None:
+                return
         except Exception:
             pass
 
@@ -328,20 +348,9 @@ class OUIDatabase:
 
         # 2. Secondary path: Shared database cache table
         try:
-            from db.base import SessionLocal
-            from db.models import MacVendorCache
-
-            db = SessionLocal()
-            try:
-                cached_entry = (
-                    db.query(MacVendorCache)
-                    .filter(MacVendorCache.mac_prefix == oui)
-                    .first()
-                )
-                if cached_entry:
-                    return cached_entry.vendor_name
-            finally:
-                db.close()
+            cached = _shared_cache().get(oui)
+            if cached is not None:
+                return cached
         except Exception as e:
             log.warning("Database OUI cache lookup failed: %s", e)
 
@@ -364,23 +373,7 @@ class OUIDatabase:
         if vendor:
             oui = mac_clean[:6]
             try:
-                from db.base import SessionLocal
-                from db.models import MacVendorCache
-                from sqlalchemy.dialects.postgresql import insert
-
-                db = SessionLocal()
-                try:
-                    stmt = (
-                        insert(MacVendorCache)
-                        .values(mac_prefix=oui, vendor_name=vendor)
-                        .on_conflict_do_update(
-                            index_elements=["mac_prefix"], set_={"vendor_name": vendor}
-                        )
-                    )
-                    db.execute(stmt)
-                    db.commit()
-                finally:
-                    db.close()
+                _shared_cache().put(oui, vendor)
             except Exception as e:
                 log.warning("Failed to save vendor to DB cache synchronously: %s", e)
 

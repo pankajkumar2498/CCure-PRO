@@ -2,7 +2,8 @@
 core/utils.py
 -------------
 Cross-cutting utilities: privilege detection, input validation,
-CVE lookup, version extraction, token-bucket rate limiter.
+version extraction, token-bucket rate limiter. (The CVE lookup is
+engines/vulnerability/cve_lookup.py since G3.)
 No engines are imported here.
 """
 
@@ -19,20 +20,12 @@ from typing import Dict, List, Optional
 
 log = logging.getLogger("ccure.utils")
 
-from core.constants import CVE_HINTS, VER_PATTERNS
+from core.constants import VER_PATTERNS
 
-# -- CVE Database (SQLite with automatic fallback) ----------------------------
-# Created here, beside its only reader, rather than in core/constants.py, where
-# importing any lookup table opened the database. get_cve_database() returns a
-# process-wide singleton, so this is the same object it always was.
-try:
-    from core.cve_database import get_cve_database
-
-    CVE_DB = get_cve_database()
-    CVE_DATABASE_AVAILABLE = CVE_DB.db_available
-except ImportError:
-    CVE_DB = None
-    CVE_DATABASE_AVAILABLE = False
+# The CVE database client and lookup_cve moved beside their one caller, the
+# network checks' CVE plugin: engines/vulnerability/cve_lookup.py (G3). Built
+# here at import, they made every engine importing this module load SQLAlchemy
+# and contact the vulnerability database before it had scanned anything.
 
 # =============================================================================
 # Privilege Manager
@@ -372,61 +365,6 @@ class TokenBucket:
 
         if sleep_time > 0:
             time.sleep(sleep_time)
-
-
-from functools import lru_cache
-
-
-@lru_cache(maxsize=1024)
-def lookup_cve(
-    banner: str, version: str = "", cpes: tuple[str, ...] = ()
-) -> list[dict]:
-    """
-    Candidate CVEs for an observed service.
-
-    ``version`` is the version the scanner actually fingerprinted for this
-    service. It is passed through to the database layer and returned on each
-    record so the report can compare it against the CVE's published vulnerable
-    range. Without it every match is unverifiable and the report can only ever
-    say "potential".
-
-    ``cpes`` are the scanner's own CPE identifiers for the service. When
-    present the database selects candidates by exact vendor/product instead of
-    matching substrings of the banner, which is both far more precise and the
-    difference between a candidate set that fits under the row cap and one that
-    gets truncated by it.
-
-    Cached with LRU to avoid redundant DB hits for common services (e.g. many
-    ports running the same web server) — hence the tuple parameter, which is
-    hashable where a list would not be.
-    """
-    if not banner and not cpes:
-        return []
-
-    banner_lc = (banner or "").lower()
-    found: list[dict] = []
-
-    # Try database first if available
-    if CVE_DB and CVE_DB.db_available:
-        try:
-            db_results = CVE_DB.search_cves_for_service(banner, version, cpes)
-            if db_results:
-                found.extend(db_results)
-        except Exception as e:
-            log.debug("CVE DB search error for '%s': %s", banner, e)
-
-    # Fallback to the hardcoded hint table only when the database is
-    # unavailable. These hints carry no CPE data, so findings derived from them
-    # cannot be version-verified and are reported at low confidence.
-    if not found:
-        for key, hints in CVE_HINTS.items():
-            if key in banner_lc:
-                for hint in hints:
-                    entry = dict(hint)
-                    entry.setdefault("detection_source", "hint_table")
-                    found.append(entry)
-
-    return found
 
 
 # =============================================================================

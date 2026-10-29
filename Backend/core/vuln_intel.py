@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 # names here are those same functions, for every existing caller.
 from core.vuln_scoring import (  # noqa: E402,F401
     _json_safe,
+    build_sql_or_clauses,
     compute_priority,
     merge_alias_fields,
+    normalize_package_names,
     title_case_severity,
 )
 
@@ -89,30 +91,6 @@ def extract_search_terms(raw_text: str, include_aliases: bool = True) -> list[st
         unique_terms.append(normalized)
 
     return unique_terms[:10]
-
-
-def normalize_package_names(name: str) -> list[str]:
-    raw = (name or "").strip().lower()
-    if not raw:
-        return []
-
-    candidates = {raw}
-    candidates.add(raw.replace("_", "-"))
-    candidates.add(raw.replace("-", "_"))
-    candidates.add(raw.replace(" ", "-"))
-    candidates.add(raw.replace(" ", "_"))
-    candidates.add(raw.split(":")[0])
-    candidates.add(re.sub(r"[^a-z0-9.+_-]+", "-", raw).strip("-"))
-
-    no_vendor_prefix = re.sub(r"^(python3-|python-|lib|perl-|php-)", "", raw)
-    if no_vendor_prefix:
-        candidates.add(no_vendor_prefix)
-
-    compact = re.sub(r"[^a-z0-9]+", "", raw)
-    if compact:
-        candidates.add(compact)
-
-    return [item for item in candidates if item]
 
 
 def parse_cpe_identities(cpes: Any) -> list[tuple[str, str]]:
@@ -237,45 +215,6 @@ def get_feed_freshness() -> dict[str, Any]:
     if not row:
         return blank
     return {"last_modified": row[0], "cve_count": row[1]}
-
-
-def build_sql_or_clauses(
-    column_expressions: Sequence[str],
-    values: Sequence[str],
-    param_prefix: str,
-    use_exact: bool = False,
-) -> tuple[str, dict[str, str]]:
-    """
-    Build SQL OR clauses for searching multiple values across columns.
-
-    Parameters
-    ----------
-    column_expressions : Column expressions to search (e.g., "LOWER(p.product)")
-    values : Values to search for
-    param_prefix : Prefix for parameter names
-    use_exact : If True, use exact match (=) instead of LIKE wildcards (%)
-               Use this when indexes exist on the columns for better performance
-
-    Returns
-    -------
-    Tuple of (WHERE clause string, parameter dict)
-    """
-    clauses: list[str] = []
-    params: dict[str, str] = {}
-    idx = 0
-    for value in values:
-        for expr in column_expressions:
-            param_name = f"{param_prefix}_{idx}"
-            if use_exact:
-                # Exact match - uses indexes efficiently
-                clauses.append(f"{expr} = :{param_name}")
-                params[param_name] = value
-            else:
-                # LIKE match - slower but more flexible (handles partial matches)
-                clauses.append(f"{expr} LIKE :{param_name}")
-                params[param_name] = f"%{value}%"
-            idx += 1
-    return (" OR ".join(clauses)) or "FALSE", params
 
 
 def csaf_advisories_for(cve_ids: Sequence[str]) -> Dict[str, List[Dict[str, Any]]]:

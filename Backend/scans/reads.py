@@ -31,6 +31,8 @@ __all__ = [
     "recent_scans",
     "record_report_paths",
     "scan_counts",
+    "scan_by_id",
+    "target_hosts",
 ]
 
 _COMPLETED = ["complete", "completed"]
@@ -144,3 +146,16 @@ def forget_report_paths(db: Session, scan: Scan) -> None:
             setattr(scan, column, None)
     db.add(scan)
     db.commit()
+
+
+def target_hosts(db: Session, scan_id: str) -> List[str]:
+    """The hosts a scan was asked to cover, or none (G3: the topology engine's
+    directory asks this when it is handed no targets)."""
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    return list(scan.target_hosts) if scan and scan.target_hosts else []
+
+
+def scan_by_id(db: Session, scan_id: str) -> Scan | None:
+    """The scan record, or None (G3: the topology API reads it through the
+    topology directory, to check who may see the scan's map)."""
+    return db.query(Scan).filter(Scan.id == scan_id).first()

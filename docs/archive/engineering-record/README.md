@@ -100,3 +100,27 @@ Content that lives **only** here (each with its reason; everything else is also 
 | 4914–5056 | File uploads | [`file-uploads.md`](file-uploads.md) | `.claude/rules/uploads.md` |
 | 5057–5144 | Audit-log retention (phase 6a) | [`audit-log-retention.md`](audit-log-retention.md) | `.claude/rules/audit-retention.md` |
 | 5145–5157 | Reports | [`reporting-and-exports.md`](reporting-and-exports.md) | `.claude/rules/reporting.md` |
+
+## Open verification register (30 Oct 2026)
+
+Statements carried into the live files unchanged, with what the repository and the running
+VM showed when the split was made. **None has been corrected**: corrections are a separate,
+approved change. Status is one of *confirmed current*, *confirmed historical*, *incorrect*
+or *awaiting owner verification*.
+
+| Statement (live file) | Evidence, 30 Oct 2026 | Status |
+| --- | --- | --- |
+| App reached at `ccurepro.cdacb.in` (TLS bullet, `.claude/rules/edge-gateway.md`) | Live host nginx `server_name ccurepro.cdac.in 10.180.22.127 localhost`; `cdacb.in` remains only in the Windows-era `scripts/host-nginx/nginx-host.conf` and `scripts/tls/*.ps1` | Confirmed historical; incorrect as a current address |
+| Host address `10.180.6.14` (TLS bullet, edge-gateway) | Backup crontab and `backups/backup.log` push to `pankaj@10.180.6.30` | Confirmed historical |
+| "`FRONTEND_URL` is the hostname" (TLS bullet, edge-gateway) | Root and `Backend/.env` set `FRONTEND_URL=https://10.180.22.127` | Incorrect for the VM as configured; awaiting owner verification of the intended value |
+| Release ledger ends at `72eb2bb` (`.claude/skills/release/SKILL.md`) | Later release directories: `3212d6b`, `84bad17`, `9040eb9`, `a835ad5`, `f5c6e88`; the running backend image `1a83ead7972d` and frontend image `5e3bd5018467` are those in `release-f5c6e88-credentialed-mac` | Incorrect (incomplete); awaiting owner for the missing rows (times and outages are not derivable) |
+| "the thirteen `*_controls_seed.json` files" (`CLAUDE.md`, Where things live; compliance rule) | 14 seed files; `main.py` names 14 (HIPAA added 28 Sep) | Incorrect |
+| "282 API routes" (`.claude/rules/modules-contracts.md`) | `docs/architecture/phase10/route_table.json` holds 284 entries | Awaiting owner verification (regenerate or confirm) |
+| Known test-suite failures: none (`CLAUDE.md`) | The refactoring log §7 records an intermittent `AppLayout` test failure | Awaiting owner verification |
+| "Restart the host worker after changing anything under `core/`, `scans/` or `orchestrator/`" (scan-lifecycle rule) | Since 13 Oct 2026 the worker runs code baked into its image; a change reaches it only as a release | Incorrect on the VM (the sentence describes the Windows host) |
+| Test-target containers and PowerShell commands (middleware-containers, database-assessment, checks-network-tls rules) | None of the 12 named containers exists on the VM; the standing targets are `scripts/validation/` (`ccure-validation-*`, running) | Confirmed historical |
+| pgAdmin, DBeaver and the tunnel key on the workstation (deployment rule) | Workstation-side; not observable from the VM | Awaiting owner verification |
+| "Feed-schedule scripts were retired" (`CLAUDE.md` reading note) | The crontab runs `scripts/run_feed_sync.sh` four times a day (osv, msrc, exploit intel, csaf); no live instruction describes it | Awaiting owner: the Linux feed schedule is undocumented |
+| Containers never read `Backend/.env`; host scripts do (identity-platform, vuln-feeds) | `SKIP_DOTENV_LOAD` on the services; `config.py` loads `Backend/.env` on the host | Confirmed current (both, in their contexts) |
+| Portainer on `127.0.0.1:9443`, the api publishes no port, PostgreSQL on `127.0.0.1:5432`, `PGSSLMODE=disable`, one beat, `COMPOSE_PROFILES=container-scanner` | Observed on the running containers and `.env` | Confirmed current |
+| HS256 and `JWT_SECRET_KEY` are gone (identity-platform) | No non-comment occurrence in `ccure_platform/identity/`; no such keys in `.env` | Confirmed current |

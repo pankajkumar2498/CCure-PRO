@@ -125,3 +125,13 @@ def test_the_shared_instructions_are_not_ignored_by_git():
     ignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert ".claude/" not in ignore
     assert {"!.claude/rules/", "!.claude/skills/"} <= set(ignore)
+
+
+def test_claude_md_maps_every_rule_and_skill():
+    claude_md = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    for rule in RULE_FILES:
+        assert (
+            f"(.claude/rules/{rule.name})" in claude_md
+        ), f"CLAUDE.md does not map {rule.name}"
+    for skill in SKILL_FILES:
+        assert f"(.claude/skills/{skill.parent.name}/SKILL.md)" in claude_md

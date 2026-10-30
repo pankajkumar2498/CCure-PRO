@@ -21,6 +21,12 @@ paths:
 
 > Scoped instructions. Claude Code loads this file when it reads or edits a file matching the `paths` above; every other agent is routed here by `AGENTS.md`. The text was moved verbatim from `CLAUDE.md` at `9bb84d9` (lines 1091–1226, 1341–1360, 1420–1432) and is maintained here. Frozen original: `docs/archive/engineering-record/deployment-linux-vm.md`, `docs/archive/engineering-record/releases.md`, `docs/archive/engineering-record/runtime-architecture-and-edge-security.md`. The repository-wide rules in `CLAUDE.md` still apply.
 
+> If TLS to PostgreSQL ever comes back (see the TLS bullet below), the Windows deployment's
+> `verify-full` set-up and the three things that bit it (backslashes in a libpq URI, every
+> hostname a client dials on the certificate, checking `pg_stat_ssl` before `hostssl`) are
+> in the **Database** bullet of
+> `docs/archive/engineering-record/runtime-architecture-and-edge-security.md`.
+
 ## Deployment: Linux VM (`ccurepro`, 10.180.22.127) — since 17 Sep 2026
 
 The application now runs on an Ubuntu 24.04 VM (15 GB, 8 CPUs) with

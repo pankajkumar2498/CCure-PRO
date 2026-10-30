@@ -4336,6 +4336,103 @@ D-5 (§7) is therefore still open.
 - **A branch with an open GitHub pull request** runs the guards twice (push and merge ref).
   Accepted: review happens on GitLab.
 
+### Group 6 — D3: behavioural equivalence at the branch tip
+
+Validation only, at `ace34c6`, 29–30 Oct 2026. No code changed.
+
+**The scope** (analysis §10, D3; the grouped plan's Group 6): the four existing goldens at the
+tip against their recorded baselines, on one restored dump; the network pipeline's hand-off
+through a real broker and worker; the full backend, frontend and browser suites. Failures were
+to be recorded, not fixed. The live scans of the standing targets that §10's D3 also names were
+not part of this request and did not run.
+
+#### The goldens
+
+One dump, `backups/ccure_db_20261024_131604_full.dump`, restored into both golden servers (the
+findings server, previously on the 22 Oct dump, was recreated from it: 11 scans, 3,706 CVEs in
+the intel subset). Each baseline is the golden's own recorded "before" commit; `capture.py` is
+the tip's in every capture, and every capture used a fresh template copy of the restored
+database.
+
+| Golden          | Baseline → tip        | Files | Result                                                     |
+| --------------- | --------------------- | ----- | ---------------------------------------------------------- |
+| Findings (G3)   | `595f068` → `ace34c6` | 412   | 4 differ: one intended fix, below                          |
+| Pipeline (G5)   | `4b77625` → `ace34c6` | 20    | **Identical**                                              |
+| Compliance (G4) | `f00056c` → `ace34c6` | 38    | **Identical**                                              |
+| API (G6)        | `b6ae9bf` → `ace34c6` | 855   | 63 query plans differ, the C7 change recorded at `bf7390d` |
+
+- **Findings.** `asset_change_log.txt` and its digest, in `on_top` and `from_empty`. Host
+  10.180.6.45's `mac_address` change (`2c:58:b9:87:0b:b3`) is attributed to the credentialed
+  audit `scn_cdac_0a428ec0_14oct26_qhmt` rather than to the later synthetic standalone scan
+  `…qhmt_golden_c0`. Same rows (3,675 and 14,069), same values. That is `f3f602f`, "the
+  credentialed audit records the MAC it read", a bug fix merged into the branch on 28 Oct, not
+  the refactoring. `replay` and every other table are identical.
+- **API.** All 63 are certificate and service-host listing plans, and each loses the second,
+  redundant join to `assets` with nothing added (17 an index scan under a nested loop, 46 a
+  sequential scan under a join filter): the change the log recorded for C7. Every response,
+  PDF and DOCX digest, broker message and table is identical.
+
+#### The hand-off through a real broker
+
+The pipeline golden runs Celery eager, so a hand-off never leaves the process. A harness built
+for this group (`rt/` in the evidence below; not in the repository) imports the golden's
+`capture.py` unchanged and runs its sixteen scenarios with `CELERY_TASK_ALWAYS_EAGER=False`:
+each dispatch is serialised by kombu to the golden's throwaway Redis, consumed by a Celery
+worker (`celery.contrib.testing`, solo pool, in-process so it shares the recorder, consuming
+`compliance, default, scanner, web_audit, web_crawl, web_dast, web_recon`), decoded and run.
+The orchestrator is the golden's recorder: no engine ran and nothing touched a network.
+
+- **53 messages crossed the broker; all 53 arrived as sent**, compared as `repr` (types
+  included) and as JSON. The broker-refusal scenarios publish nothing, as they should.
+- **Equal to the eager capture of the same commit:** every dispatch, every orchestrator call
+  (what each phase received), every result and every progress frame's content, in all sixteen
+  scenarios.
+- **Two differences, both eager mode's, not the code's.** Eager runs the next phase inside the
+  dispatch call, so writes made after `hand_over` returns land after the later phases':
+
+  - `scans.current_task_id` (`scans/tasks/phases.py` writes `next_task.id` after the
+    hand-off): through the broker an audit ends with phase 3's id, which is right; the eager
+    golden records phase 2's.
+  - In five failure, cancellation and refusal scenarios (08, 09, 10, 12, 14) the two frames on
+    (scan, phase 1) swap: the broker sends phase 1's `complete` before the failure frame, the
+    right order; eager sends the failure first.
+
+  So the eager pipeline golden does not represent production in these two places. Recorded for
+  review; nothing was changed.
+
+#### The suites
+
+| Suite                                                        | Result                                                                            | Time     |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- | -------- |
+| Backend, `local_guard_tests.sh tests` (throwaway containers) | **8,342 passed, 0 failed, 211 skipped**                                           | 22.5 min |
+| Frontend, `npx vitest run`                                   | **3,193 passed** in 125 files, 0 skipped                                          | 2.4 min  |
+| Frontend build, `VITE_API_BASE_URL=/api npm run build`       | exit 0, `ux4g:check` PASS; the 3 dist-reading files (54 tests) re-run on it: pass | —        |
+| `npm run test:browser` (Chromium, Firefox, WebKit)           | **720 passed**, 0 failed, 0 flaky, 0 skipped                                      | 20.9 min |
+
+Backend skips, all environmental: 165 need the DBA-installed audit chain, 43 phase 6a retention
+and 1 its DBA bootstrap, 1 the live OSV npm feed, 1 the Alembic rehearsal on an activated
+`alembic.ini`. The frontend's logged errors are the error-boundary tests' intended
+`SYNTHETIC_PRIVATE_TOKEN` output.
+
+#### Environment limitations
+
+- **The backend image** is `ccure-audit-pro-backend:latest`, built from `3212d6b` (Python
+  3.11); the tip's `Backend/Dockerfile` differs only in the base image's pinned digest, and the
+  requirements are the same. CI runs 3.12.
+- **Node 20** here; CI uses 22, the frontend image 25. WebKit ran with
+  `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1`.
+- **The round-trip worker** is in-process with the solo pool: prefork, forking and the deployed
+  worker's start-up command were not exercised.
+- **Not run:** the D1 harness (it passed in Group 5 on the same code; everything since is
+  documentation); the live scans §10's D3 names; any GitHub workflow.
+
+#### Evidence
+
+`backups/d3-validation-20261030/` (mode 700, 1.5 GB, `MANIFEST.sha256` over 2,724 files): the
+nine captures, the round-trip harness and its comparison, and every suite's log. The captures
+hold restored tenant data and stay outside the repository. Both golden servers were removed with
+their `run.sh down`.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |

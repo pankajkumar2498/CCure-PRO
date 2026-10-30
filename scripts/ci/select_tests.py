@@ -120,6 +120,9 @@ BASELINE_ONLY = (
     "README.md",
     "CLAUDE.md",
     "AGENTS.md",
+    # The agents' scoped rules and skills; the baseline's tests/repo checks
+    # their routing (test_agent_instruction_routing).
+    ".claude/",
 )
 
 # Frontend paths that change what every vitest file sees.

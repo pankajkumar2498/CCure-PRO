@@ -14,14 +14,24 @@ TestClient with auth_headers").
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import logging
+import time
+import uuid
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
+from jose import JWTError
 from jose import jwt as jose_jwt
 
-from ccure_platform.identity import jwt_handler, keys, tokens
+from ccure_platform.identity import jwt_handler, keys, tokens, verification
 from ccure_platform.identity.dependencies import get_current_user_flexible
 from config import JWTConfig
 from db.models import RefreshTokenSession
@@ -368,3 +378,150 @@ def test_an_hs256_token_is_refused_and_logged_with_its_reason(
     (line,) = _refusal_lines(caplog)
     assert "reason=missing_kid" in line.getMessage()
     assert hs256 not in caplog.text
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _public_bytes(public_key, encoding: str) -> bytes:
+    return public_key.public_bytes(
+        getattr(serialization.Encoding, encoding),
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
+def _forge_hs256(signed_token: str, kid: str, secret: bytes) -> str:
+    """``signed_token``'s claims under ``kid``, re-signed HS256 with ``secret``,
+    by hand, so python-jose's own HMAC key guard is not what refuses it."""
+    claims = signed_token.split(".")[1]
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT", "kid": kid}).encode())
+    signing_input = f"{header}.{claims}".encode("ascii")
+    signature = _b64url(hmac.new(secret, signing_input, hashlib.sha256).digest())
+    return f"{header}.{claims}.{signature}"
+
+
+def _jwks_key_source():
+    """The key source the gateway builds (``gateway/token_check/jwks.py``):
+    public members only, from the published JWK Set, ``alg`` fixed to ES256."""
+
+    def coordinate(value: str) -> int:
+        return int.from_bytes(
+            base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)), "big"
+        )
+
+    found = {}
+    for jwk in tokens.public_jwks()["keys"]:
+        assert (jwk["kty"], jwk["crv"], jwk["alg"]) == ("EC", "P-256", "ES256")
+        public = ec.EllipticCurvePublicNumbers(
+            coordinate(jwk["x"]), coordinate(jwk["y"]), ec.SECP256R1()
+        ).public_key()
+        found[jwk["kid"]] = SimpleNamespace(
+            kid=jwk["kid"],
+            alg="ES256",
+            public_pem=_public_bytes(public, "PEM").decode("ascii"),
+        )
+    return SimpleNamespace(verification_key=found.get)
+
+
+@pytest.mark.parametrize("encoding", ["DER", "PEM"])
+def test_an_hs256_token_keyed_with_the_public_key_is_refused(
+    caplog, db_session, test_user, encoding
+):
+    """PYSEC-2026-4298 (CVE-2026-85394): python-jose through 3.5.0 accepts a
+    DER-encoded public key as an HMAC secret, so a verifier that lets the
+    token's ``alg`` choose can be handed an HS256 token signed with the public
+    key. The accepted-advisory entry rests on this being refused on every
+    verification entry point: a real access token's claims under the active
+    key's ``kid``, re-signed HS256 with that key's public bytes, is refused by
+
+    * ``tokens.verify`` (every bearer, ticket and refresh check),
+    * ``tokens.decode_any_kind`` (``decode_token``: the WebSocket ticket logins),
+    * ``verification.verify`` over the gateway's JWKS-only key source, and
+    * python-jose itself with ``algorithms=[ES256]``, as ``decode`` calls it.
+
+    Each path first accepts the genuine token, so the refusal can only be the
+    algorithm's.
+    """
+    key = tokens.signing_key()
+    real = _mint(test_user, "access", db_session)
+    forged = _forge_hs256(
+        real, key.kid, _public_bytes(key.private_key.public_key(), encoding)
+    )
+    gateway = _jwks_key_source()
+
+    def through_gateway(token):
+        return verification.verify(
+            token,
+            expected_kind="access",
+            issuer=tokens.ISSUER,
+            audience=tokens.USER_AUDIENCE,
+            keyset=lambda: gateway,
+        )
+
+    assert _verify(real, "access") is not None
+    assert tokens.decode_any_kind(real) is not None
+    assert isinstance(through_gateway(real), dict)
+
+    caplog.set_level(logging.INFO, logger="ccure.tokens")
+    assert _verify(forged, "access") is None
+    assert tokens.decode_any_kind(forged) is None
+    reasons = [r.getMessage() for r in _refusal_lines(caplog)]
+    assert len(reasons) == 2 and all("reason=alg_mismatch" in m for m in reasons)
+
+    refusal = through_gateway(forged)
+    assert isinstance(refusal, verification.Refusal)
+    assert refusal.reason == "alg_mismatch"
+
+    with pytest.raises(JWTError, match="alg value is not allowed"):
+        jose_jwt.decode(
+            forged,
+            key.public_pem,
+            algorithms=[key.alg],
+            audience=tokens.USER_AUDIENCE,
+            issuer=tokens.ISSUER,
+        )
+
+
+@pytest.mark.parametrize("encoding", ["DER", "PEM"])
+def test_an_hs256_service_assertion_keyed_with_the_public_key_is_refused(
+    caplog, encoding
+):
+    """The same attack on ``/auth/service-token``'s client assertion: a
+    service's registered public key used as the HMAC secret, under its own
+    ``kid``. Refused before decoding, and the genuine ES256 assertion with the
+    same claims is accepted."""
+    service_id, kid = "svc-pysec-2026-4298", "svc-kid-1"
+    private = ec.generate_private_key(ec.SECP256R1())
+    registered = SimpleNamespace(
+        kid=kid,
+        alg="ES256",
+        public_pem=_public_bytes(private.public_key(), "PEM").decode("ascii"),
+    )
+
+    def key_for(sid, k):
+        return registered if (sid, k) == (service_id, kid) else None
+
+    now = int(time.time())
+    claims = {
+        "iss": service_id,
+        "sub": service_id,
+        "aud": tokens.SERVICE_ASSERTION_AUDIENCE,
+        "jti": uuid.uuid4().hex,
+        "iat": now,
+        "exp": now + 30,
+    }
+    private_pem = private.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode("ascii")
+    real = jose_jwt.encode(claims, private_pem, algorithm="ES256", headers={"kid": kid})
+    forged = _forge_hs256(real, kid, _public_bytes(private.public_key(), encoding))
+
+    assert tokens.verify_service_assertion(real, key_for=key_for) == claims
+
+    caplog.set_level(logging.INFO, logger="ccure.tokens")
+    assert tokens.verify_service_assertion(forged, key_for=key_for) is None
+    (line,) = _refusal_lines(caplog)
+    assert "reason=alg_mismatch" in line.getMessage()

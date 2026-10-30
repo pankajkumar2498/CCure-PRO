@@ -221,8 +221,7 @@ const bodyText = () => squash(document.body);
 const gets = () => api.get.mock.calls.map(([u]) => u);
 const REQUESTS_URL = "/compliance/remediations/requests";
 const requestReads = () => gets().filter((u) => u === REQUESTS_URL).length;
-const credentialReads = () =>
-  gets().filter((u) => u === "/compliance/credentials").length;
+const credentialReads = () => gets().filter((u) => u === "/credentials").length;
 
 const tabBar = () =>
   [...document.querySelectorAll("div")].find(
@@ -354,8 +353,13 @@ beforeEach(() => {
       return Promise.resolve({
         data: { data: requests.map((r) => ({ ...r })) },
       });
-    if (url === "/compliance/credentials")
-      return Promise.resolve({ data: STORED.map((c) => ({ ...c })) });
+    if (url === "/credentials")
+      return Promise.resolve({
+        data: {
+          credentials: STORED.map((c) => ({ ...c })),
+          total: STORED.length,
+        },
+      });
     if (url.startsWith("/compliance/findings"))
       return Promise.resolve({ data: { data: FINDINGS } });
     if (url === "/compliance/marketplace")
@@ -1092,6 +1096,12 @@ describe("ComplianceWorkspace credential-bearing execution — batch 30", () => 
       path.join(AUDIT_SRC, "pages/ComplianceWorkspace.jsx"),
       "utf8",
     ).replace(/\r\n/g, "\n");
+    // The tabs' markup lives in their own files since F1; the page renders them.
+    const part = (name) =>
+      readFileSync(
+        path.join(AUDIT_SRC, "components/compliance/workspace", name),
+        "utf8",
+      ).replace(/\r\n/g, "\n");
     expect(source).toMatch(
       /import\s+["']\.\.\/styles\/compliance-execution\.css["']/,
     );
@@ -1100,10 +1110,13 @@ describe("ComplianceWorkspace credential-bearing execution — batch 30", () => 
       expect(i).toBeGreaterThan(-1);
       return i;
     };
-    const approvals = source.slice(
-      at('{activeTab === "approvals" && ('),
-      at("{/* Dynamic Popups Modals */}"),
-    );
+    expect(
+      source.slice(
+        at('{activeTab === "approvals" && ('),
+        at("{/* Dynamic Popups Modals */}"),
+      ),
+    ).toMatch(/<ComplianceApprovalsTab\b/);
+    const approvals = part("ComplianceApprovalsTab.jsx");
     const dialog = source.slice(
       at('{(modalType === "remediate" || modalType === "rollback") &&'),
       at("</CcureModal>"),

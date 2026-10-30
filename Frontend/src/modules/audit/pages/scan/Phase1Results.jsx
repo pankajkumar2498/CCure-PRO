@@ -30,7 +30,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
-import ScanStepper from "@audit/components/layout/ScanStepper";
+import ScanStepper from "@audit/components/scan/ScanStepper";
 import ExportPanel from "@audit/components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
 import {

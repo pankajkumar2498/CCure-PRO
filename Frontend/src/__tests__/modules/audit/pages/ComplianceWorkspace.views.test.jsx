@@ -323,7 +323,7 @@ const answer = (url, config) => {
     return { data: { data: POLICIES } };
   if (url.startsWith("/compliance/findings"))
     return { data: { data: FINDINGS } };
-  if (url === "/compliance/credentials") return { data: [] };
+  if (url === "/credentials") return { data: { credentials: [], total: 0 } };
   if (/^\/compliance\/controls\/[^/]+\/evidence$/.test(url))
     return { data: { data: [] } };
   if (url.startsWith("/compliance/reports/"))
@@ -335,7 +335,7 @@ const answer = (url, config) => {
 };
 
 const ALLOWED_READS =
-  /^\/compliance\/(marketplace|summary(\?[a-z0-9_=&]+)?|frameworks\/[a-z0-9_]+\/controls(\?[A-Za-z0-9_=&%.-]+)?|policies(\?[a-z0-9_=&]+)?|policies\/[a-z0-9-]+\/rules|findings\?limit=10000(&[a-z0-9_]+=[a-z0-9_]+)*|credentials|controls\/[A-Za-z0-9_.-]+\/evidence|reports\/[a-z0-9_]+(\?[a-z0-9_=&]+)?)$/;
+  /^(?:\/credentials|\/compliance\/(?:marketplace|summary(\?[a-z0-9_=&]+)?|frameworks\/[a-z0-9_]+\/controls(\?[A-Za-z0-9_=&%.-]+)?|policies(\?[a-z0-9_=&]+)?|policies\/[a-z0-9-]+\/rules|findings\?limit=10000(&[a-z0-9_]+=[a-z0-9_]+)*|controls\/[A-Za-z0-9_.-]+\/evidence|reports\/[a-z0-9_]+(\?[a-z0-9_=&]+)?))$/;
 
 const flush = async () => {
   for (let i = 0; i < 12; i += 1) {
@@ -470,7 +470,7 @@ afterEach(() => {
   expect(api.delete).not.toHaveBeenCalled();
   for (const [url] of api.get.mock.calls) {
     expect(url).toMatch(ALLOWED_READS);
-    if (url === "/compliance/credentials") expect(allowCredentials).toBe(true);
+    if (url === "/credentials") expect(allowCredentials).toBe(true);
   }
   consoleError.mockRestore();
   delete HTMLAnchorElement.prototype.click;
@@ -1242,7 +1242,7 @@ describe("ComplianceWorkspace views — contract", () => {
       );
       await flush();
       expectDialog("Remediate Finding");
-      expect(since(n)).toEqual([["/compliance/credentials"]]);
+      expect(since(n)).toEqual([["/credentials", { params: {} }]]);
     });
 
     it("Waiver opens the waiver dialog and reads nothing", async () => {
@@ -1569,25 +1569,27 @@ describe("ComplianceWorkspace views — batch 26b", () => {
         path.join(AUDIT_SRC, "pages/ComplianceWorkspace.jsx"),
         "utf8",
       ).replace(/\r\n/g, "\n");
+      // The tabs' markup lives in their own files since F1; the page renders them.
+      const part = (name) =>
+        readFileSync(
+          path.join(AUDIT_SRC, "components/compliance/workspace", name),
+          "utf8",
+        ).replace(/\r\n/g, "\n");
       expect(source).toMatch(
         /import\s+["']\.\.\/styles\/compliance-views\.css["']/,
       );
-      const at = (needle, from = 0) => {
-        const i = source.indexOf(needle, from);
-        expect(i).toBeGreaterThan(-1);
-        return i;
-      };
-      const dashboard = at('{activeTab === "dashboard" && summary && (');
-      const marketplace = at('{activeTab === "marketplace" && (');
-      const policies = at('{activeTab === "policies" && (', marketplace);
-      const controls = at('{activeTab === "controls" && (');
-      const findings = at('{activeTab === "findings" &&');
-      const exceptions = at('{activeTab === "exceptions" && (');
+      for (const component of [
+        "ComplianceDashboardTab",
+        "CompliancePoliciesTab",
+        "ComplianceControlsTab",
+        "ComplianceFindingsTab",
+      ])
+        expect(source).toMatch(new RegExp(`<${component}\\b`));
       for (const block of [
-        source.slice(dashboard, marketplace),
-        source.slice(policies, controls),
-        source.slice(controls, findings),
-        source.slice(findings, exceptions),
+        part("ComplianceDashboardTab.jsx"),
+        part("CompliancePoliciesTab.jsx"),
+        part("ComplianceControlsTab.jsx"),
+        part("ComplianceFindingsTab.jsx"),
       ]) {
         expect(block).not.toMatch(/style=\{/);
         expect(block.match(/#[0-9a-fA-F]{3,8}\b/g) || []).toEqual([]);

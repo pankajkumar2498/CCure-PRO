@@ -48,6 +48,19 @@ celery_app.conf.imports = (
     # credentialed scan's report reads hosts, and raises HostDirectoryMissing
     # without it.
     "ccure_audit.host_directory",
+    # The scan kernel's shared MAC-vendor cache (G3): core.oui_lookup reads and
+    # writes the asset registry's through it, and skips it when none is
+    # registered.
+    "ccure_audit.vendor_cache",
+    # What the scan engines are handed (G3): the Nmap wrapper's Redis lease and
+    # cache, and the credentialed version matcher's CVE repository.
+    "ccure_audit.engine_ports",
+    # The topology engine's directory (G3): it reads and enrols assets, and
+    # reads its scan's targets, through it, and raises without it.
+    "ccure_audit.topology_directory",
+    # The web engine's settings (Group 4): it reads them through
+    # core.web.settings, and raises WebSettingsMissing without them.
+    "ccure_audit.web_settings",
 )
 
 # Optional but recommended configuration for security and stability

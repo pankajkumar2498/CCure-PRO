@@ -1,6 +1,6 @@
 """
-API golden: drive the findings, remediation, asset and compliance APIs through
-the application, on a restored copy of the database with one commit's code,
+API golden: drive the findings, remediation, asset, compliance, dashboard and
+report APIs through the application, on a restored copy of the database with one commit's code,
 and capture every response, every message sent to the broker and what the
 writes leave behind, so two commits can be compared byte for byte.
 
@@ -14,7 +14,8 @@ with ``api_golden_``.
 Requests go through ``main.app`` with FastAPI's test client, so routing,
 dependencies, permissions, validation and serialisation are the commit's own.
 Only who is signed in is supplied: the installation's platform administrator,
-by overriding the identity dependency; every permission is still decided by
+by overriding the identity dependencies (bearer, and the report routes' ticket or
+bearer); every permission is still decided by
 the RBAC engine against the restored grants. The limiter is switched off.
 
 **The broker is real.** Celery is not eager: a dispatch is serialised by kombu
@@ -36,8 +37,11 @@ Captured:
     application rendered it (key order kept); a PDF as its SHA-256 (ReportLab
     in invariant mode); a DOCX or XLSX as each member's SHA-256; text as text.
 ``plans/``
-    for the findings, remediation and asset reads, ``EXPLAIN (COSTS OFF)`` of
-    every SELECT the request ran, in order.
+    for the findings, remediation, asset, dashboard and report reads,
+    ``EXPLAIN (COSTS OFF)`` of every SELECT the request ran, in order.
+``report_files.json``
+    the SHA-256 of every file the report routes wrote: the regenerated PDFs,
+    the CSVs, and each member of the workbooks.
 ``broker.jsonl``
     every message, in the order it was sent, with the request that sent it.
 ``direct/``
@@ -221,7 +225,11 @@ from fastapi.testclient import TestClient  # noqa: E402
 from kombu.serialization import loads as kombu_loads  # noqa: E402
 from sqlalchemy import event, text  # noqa: E402
 
-from ccure_platform.api import CurrentUser, has_permission  # noqa: E402
+from ccure_platform.api import (  # noqa: E402
+    CurrentUser,
+    current_user_flexible,
+    has_permission,
+)
 from ccure_platform.identity.dependencies import get_current_user  # noqa: E402
 from core import compliance_frameworks  # noqa: E402
 from core.celery_app import celery_app, registered_task  # noqa: E402
@@ -483,6 +491,101 @@ FROM (SELECT * FROM asset_vulnerabilities WHERE asset_id = 'ast_g4_lnx'
 
 def setup_other_org(db) -> None:
     db.execute(text(SETUP_OTHER_ORG))
+    db.commit()
+
+
+#: What the dashboard and the web drill-downs read, beyond the restored data:
+#: a recent web scan, one still running and one in the other organisation;
+#: web findings carrying OWASP categories, tools and verification; discovered
+#: endpoints (the restored copy has none) with distinct timestamps, so no
+#: ordering rests on a tie; and HTTP security details (none restored) on two
+#: hosts here and one in the other organisation.
+SETUP_DASHBOARD = """
+INSERT INTO web_scans
+SELECT (jsonb_populate_record(NULL::web_scans, to_jsonb(src) || jsonb_build_object(
+  'id', v.id, 'org_id', v.org, 'status', v.status, 'scan_name', v.name,
+  'target_domain', v.domain, 'created_at', v.created, 'completed_at', v.completed,
+  'is_deleted', false, 'critical_count', v.c, 'high_count', v.h,
+  'medium_count', v.m, 'low_count', v.l, 'info_count', v.i,
+  'total_endpoints', v.e))).*
+FROM (SELECT * FROM web_scans WHERE id = 'ws_g4_latest') src,
+(VALUES
+  ('ws_api_recent', 'org_development', 'complete', 'API golden recent',
+   'portal.example.test', '2026-10-21T09:00:00+00:00', '2026-10-22T08:00:00+00:00',
+   1, 2, 1, 0, 3, 4),
+  ('ws_api_running', 'org_development', 'running', 'API golden running',
+   'portal.example.test', '2026-10-23T09:00:00+00:00', NULL, 0, 0, 0, 0, 0, 0),
+  ('ws_api_other', 'org_self-service', 'complete', 'API golden other',
+   'other.example.test', '2026-10-20T09:00:00+00:00', '2026-10-20T10:00:00+00:00',
+   0, 1, 0, 0, 0, 1)
+) AS v(id, org, status, name, domain, created, completed, c, h, m, l, i, e);
+
+INSERT INTO web_findings
+SELECT (jsonb_populate_record(NULL::web_findings, to_jsonb(src) || jsonb_build_object(
+  'id', v.id, 'web_scan_id', v.scan, 'org_id', v.org, 'severity', v.sev,
+  'status', v.status, 'owasp_category', v.owasp, 'detected_by', v.tool,
+  'finding_type', v.ftype, 'is_verified', v.verified, 'created_at', v.created))).*
+FROM (SELECT * FROM web_findings WHERE id = 'wf_g4_1') src,
+(VALUES
+  ('wf_api_1', 'ws_api_recent', 'org_development', 'critical', 'open',
+   'A03:2021 – Injection', 'nuclei', 'sqli', true, '2026-10-22T08:01:00+00:00'),
+  ('wf_api_2', 'ws_api_recent', 'org_development', 'high', 'open',
+   'A05:2021 – Security Misconfiguration', 'zap', 'misconfiguration', false,
+   '2026-10-22T08:02:00+00:00'),
+  ('wf_api_3', 'ws_api_recent', 'org_development', 'high', 'open',
+   'A02:2021 – Cryptographic Failures', 'sslyze', 'tls_issue', true,
+   '2026-10-22T08:03:00+00:00'),
+  ('wf_api_4', 'ws_api_recent', 'org_development', 'medium', 'accepted_risk',
+   'A05:2021 – Security Misconfiguration', 'nuclei', 'misconfiguration', false,
+   '2026-10-22T08:04:00+00:00'),
+  ('wf_api_5', 'ws_api_recent', 'org_development', 'info', 'open',
+   'A06:2021 – Vulnerable and Outdated Components', 'ffuf', 'info_disclosure', false,
+   '2026-10-22T08:05:00+00:00'),
+  ('wf_api_6', 'ws_api_other', 'org_self-service', 'high', 'open',
+   'A01:2021 – Broken Access Control', 'zap', 'access_control', true,
+   '2026-10-20T10:01:00+00:00')
+) AS v(id, scan, org, sev, status, owasp, tool, ftype, verified, created);
+
+INSERT INTO web_assets (id, web_scan_id, url, method, content_type, response_code,
+  auth_required, is_api, is_form, has_file_upload, source, response_size,
+  response_time, created_at, updated_at)
+VALUES
+  ('wa_api_1', 'ws_api_recent', 'https://portal.example.test/', 'GET', 'text/html',
+   200, false, false, false, false, 'crawler', 5120, 0.12, '2026-10-22T07:01:00+00:00', '2026-10-22T07:01:00+00:00'),
+  ('wa_api_2', 'ws_api_recent', 'https://portal.example.test/login', 'POST',
+   'text/html', 200, false, false, true, false, 'crawler', 2048, 0.08,
+   '2026-10-22T07:02:00+00:00', '2026-10-22T07:02:00+00:00'),
+  ('wa_api_3', 'ws_api_recent', 'https://portal.example.test/api/v1/users', 'GET',
+   'application/json', 401, true, true, false, false, 'openapi', 64, 0.03,
+   '2026-10-22T07:03:00+00:00', '2026-10-22T07:03:00+00:00'),
+  ('wa_api_4', 'ws_api_recent', 'https://portal.example.test/upload', 'POST',
+   'text/html', 200, true, false, true, true, 'ffuf', 1024, 0.05,
+   '2026-10-22T07:04:00+00:00', '2026-10-22T07:04:00+00:00'),
+  ('wa_api_5', 'ws_g4_latest', 'https://10.250.0.12:8443/admin', 'GET', 'text/html',
+   403, true, false, false, false, 'ffuf', 512, 0.02, '2026-10-10T07:05:00+00:00', '2026-10-10T07:05:00+00:00'),
+  ('wa_api_6', 'ws_api_other', 'https://other.example.test/', 'GET', 'text/html',
+   200, false, false, false, false, 'crawler', 900, 0.04, '2026-10-20T09:30:00+00:00', '2026-10-20T09:30:00+00:00');
+
+INSERT INTO http_security_details (service_id, status_code, server_header,
+  content_type, has_hsts, hsts_max_age, has_csp, csp_value, x_frame_options,
+  x_content_type, x_xss_protection, referrer_policy, permissions_policy,
+  redirects_to_https, missing_headers, security_score, created_at)
+VALUES
+  ('svc_ast_org_80029f7f_10_180_6_30_443_tcp', 200, 'nginx', 'text/html', true,
+   31536000, true, 'default-src ''self''', 'DENY', true, NULL, 'no-referrer', NULL,
+   false, '[]', 92, '2026-10-21T08:00:00+00:00'),
+  ('svc_ast_org_80029f7f_10_180_6_30_80_tcp', 301, 'nginx', 'text/html', false,
+   NULL, false, NULL, NULL, false, NULL, NULL, NULL, true,
+   '["Strict-Transport-Security", "Content-Security-Policy"]', 35,
+   '2026-10-21T08:00:00+00:00'),
+  ('svc_api_svc_g4_lnx_443', 200, 'Apache', 'text/html', false, NULL, true,
+   'default-src *', 'SAMEORIGIN', true, NULL, NULL, NULL, false,
+   '["Strict-Transport-Security"]', 60, '2026-10-20T08:00:00+00:00');
+"""
+
+
+def setup_dashboard(db) -> None:
+    db.execute(text(SETUP_DASHBOARD))
     db.commit()
 
 
@@ -1226,6 +1329,171 @@ def exceptions(db) -> None:
     )
 
 
+def dashboard(db) -> None:
+    """Every dashboard route, in both organisations, under its filters."""
+    for org in (None, OTHER_ORG):
+        tag = "other" if org else "own"
+        scope = {"org_id": org} if org else {}
+        for path in (
+            "summary",
+            "risk-breakdown",
+            "vuln-trends",
+            "top-assets",
+            "top-cves",
+            "services-exposure",
+            "tls-health",
+            "http-headers",
+            "compliance",
+            "asset-breakdown",
+            "scan-activity",
+            "insights",
+            "web-scan-summary",
+            "web-owasp-scorecard",
+            "web-scan-trends",
+            "web-findings",
+            "web-endpoints",
+        ):
+            get(f"dash_{path}_{tag}", f"/dashboard/{path}", scope, plans=True)
+    variants = (
+        ("vuln-trends", {"days": 7}),
+        ("vuln-trends", {"days": 90}),
+        ("vuln-trends", {"days": 5}),
+        ("top-assets", {"limit": 1}),
+        ("top-assets", {"limit": 50}),
+        ("top-cves", {"limit": 50}),
+        ("top-cves", {"severity": "critical,high"}),
+        ("top-cves", {"severity": "Medium"}),
+        ("scan-activity", {"limit": 20}),
+        ("scan-activity", {"limit": 1}),
+        ("web-scan-trends", {"days": 7}),
+        ("web-scan-trends", {"days": 90}),
+        ("web-findings", {"severity": "HIGH"}),
+        ("web-findings", {"owasp": "A05"}),
+        ("web-findings", {"finding_type": "sqli"}),
+        ("web-findings", {"detected_by": "nuc"}),
+        ("web-findings", {"status": "open"}),
+        ("web-findings", {"date": "2026-10-22"}),
+        ("web-findings", {"date": "not-a-date"}),
+        ("web-findings", {"scan_id": "ws_g4_byname"}),
+        ("web-findings", {"page": 2, "per_page": 3}),
+        ("web-endpoints", {"source": "crawler"}),
+        ("web-endpoints", {"is_api": "true"}),
+        ("web-endpoints", {"is_api": "false"}),
+        ("web-endpoints", {"scan_id": "ws_api_recent"}),
+        ("web-endpoints", {"page": 2, "per_page": 2}),
+    )
+    for k, (path, params) in enumerate(variants):
+        get(f"dash_{path}_v{k}", f"/dashboard/{path}", params, plans=True)
+
+
+REPORTS_DIR = "/tmp/api-golden-reports"
+
+
+def reports_api(db) -> None:
+    """The three report routes: every download format, the export's formats,
+    datasets and filters, and deleting a scan's reports, which the next
+    download regenerates. The stored report files are not in this checkout,
+    so the first download of each regenerates it, into a directory of the
+    run's own."""
+    import routers.reports as reports_router
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    reports_router._REPORTS_DIR = REPORTS_DIR
+    scans = dict(
+        db.execute(
+            text(
+                "select scan_no, id from scans where org_id = :o "
+                "and not is_deleted order by scan_no"
+            ),
+            {"o": ORG},
+        ).all()
+    )
+    audit, basic, unreachable, asset = scans[6], scans[7], scans[8], scans[11]
+
+    for name, sid in (
+        ("audit", audit),
+        ("basic", basic),
+        ("unreachable", unreachable),
+        ("asset", asset),
+    ):
+        for fmt in ("JSON", "XML", "CSV", "XLSX"):
+            get(
+                f"dl_{name}_{fmt}", f"/reports/download/{sid}", {"fmt": fmt}, plans=True
+            )
+    get(
+        "dl_audit_again", f"/reports/download/{audit}", {"fmt": "executive"}, plans=True
+    )
+    get("dl_type_csv", f"/reports/download/{basic}", {"type": "CSV"}, plans=True)
+    get("dl_bad_fmt", f"/reports/download/{basic}", {"fmt": "DOCX"}, plans=True)
+    get("dl_missing", "/reports/download/scn_does_not_exist", plans=True)
+
+    for fmt, dataset in (
+        ("xlsx", "all"),
+        ("json", "all"),
+        ("csv", "hosts"),
+        ("csv", "compliance"),
+        ("csv", "findings"),
+        ("csv", "comparison"),
+        ("json", "findings"),
+        ("csv", "all"),
+        ("pdf", "all"),
+        ("json", "nothing"),
+    ):
+        get(
+            f"export_audit_{fmt}_{dataset}",
+            f"/reports/export/{audit}",
+            {"fmt": fmt, "dataset": dataset},
+            plans=True,
+        )
+    for k, params in enumerate(
+        (
+            {"fmt": "json", "dataset": "findings", "severity": ["critical", "high"]},
+            {"fmt": "json", "dataset": "findings", "scope": "asset"},
+            {"fmt": "json", "dataset": "compliance", "verdict": ["FAIL"]},
+            {"fmt": "json", "dataset": "comparison", "baseline": scans[5]},
+            {"fmt": "json", "dataset": "comparison", "baseline": "scn_nope"},
+            {"fmt": "json", "dataset": "hosts", "org_id": OTHER_ORG},
+        )
+    ):
+        get(f"export_audit_v{k}", f"/reports/export/{audit}", params, plans=True)
+    get(
+        "export_asset_json",
+        f"/reports/export/{asset}",
+        {"fmt": "json", "dataset": "all"},
+        plans=True,
+    )
+
+    call("delete_basic", "DELETE", f"/reports/{basic}", plans=True)
+    call("delete_missing", "DELETE", "/reports/scn_does_not_exist", plans=True)
+    get(
+        "dl_basic_after_delete",
+        f"/reports/download/{basic}",
+        {"fmt": "XML"},
+        plans=True,
+    )
+    (OUT / "report_files.json").write_text(
+        jdump(
+            {
+                name: _file_digest(Path(REPORTS_DIR) / name)
+                for name in sorted(os.listdir(REPORTS_DIR))
+            }
+        )
+    )
+
+
+def _file_digest(path: Path):
+    """A file's SHA-256; a workbook's, member by member, because a zip entry
+    carries the wall-clock time it was written."""
+    data = path.read_bytes()
+    if data[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            return {
+                name: hashlib.sha256(archive.read(name)).hexdigest()
+                for name in sorted(archive.namelist())
+            }
+    return hashlib.sha256(data).hexdigest()
+
+
 def direct(db, out: Path) -> None:
     from core.remediation import remediation_report_payload
 
@@ -1348,10 +1616,13 @@ def main_() -> int:
     _broker().flushall()
 
     setup_other_org(db)
+    setup_dashboard(db)
     global USER_DB
     USER_DB = SessionLocal()
     user = _platform_administrator(USER_DB)
     main.app.dependency_overrides[get_current_user] = lambda: user
+    # The report routes take a download ticket or a bearer token.
+    main.app.dependency_overrides[current_user_flexible] = lambda: user
     CLIENT = TestClient(main.app, raise_server_exceptions=True)
 
     summary = {}
@@ -1361,6 +1632,8 @@ def main_() -> int:
         asset_reads,
         findings_writes,
         compliance,
+        dashboard,
+        reports_api,
     ):
         try:
             step(db)

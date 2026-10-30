@@ -95,25 +95,25 @@ class LocalOastClient:
 
 def build_oast(scan_id: Optional[str] = None) -> Optional[Tuple["object", "object"]]:
     """
-    Build (OastSession, client) from WebScanConfig, or None when active OOB
+    Build (OastSession, client) from the web settings, or None when active OOB
     probing is not configured.
 
     Returns None — meaning "the scan will not actively probe blind classes" —
     unless a self-hosted collaborator is configured. Never falls back to the
     public interact.sh for CCure's own probes.
     """
-    from config import WebScanConfig
+    from core.web import settings as web_settings
     from core.web.oast.session import OastSession
 
-    if not getattr(WebScanConfig, "OAST_ENABLED", False):
+    if not getattr(web_settings.current(), "OAST_ENABLED", False):
         return None
-    if not getattr(WebScanConfig, "OAST_ACTIVE_PROBES", True):
+    if not getattr(web_settings.current(), "OAST_ACTIVE_PROBES", True):
         return None
 
-    server = (getattr(WebScanConfig, "OAST_SERVER", "") or "").strip()
-    domain = (getattr(WebScanConfig, "OAST_DOMAIN", "") or "").strip()
-    http_url = (getattr(WebScanConfig, "OAST_HTTP_URL", "") or "").strip()
-    token = (getattr(WebScanConfig, "OAST_TOKEN", "") or "").strip()
+    server = (getattr(web_settings.current(), "OAST_SERVER", "") or "").strip()
+    domain = (getattr(web_settings.current(), "OAST_DOMAIN", "") or "").strip()
+    http_url = (getattr(web_settings.current(), "OAST_HTTP_URL", "") or "").strip()
+    token = (getattr(web_settings.current(), "OAST_TOKEN", "") or "").strip()
 
     # A self-hosted collaborator must be identifiable. Prefer an explicit
     # control URL / domain; otherwise derive from OAST_SERVER.

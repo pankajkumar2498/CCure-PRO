@@ -4,17 +4,18 @@ routers/dashboard.py
 Security Dashboard aggregated analytics endpoints.
 All queries are org-scoped. Superadmin can pass ?org_id= to view any org.
 
-All imports verified against actual codebase files:
-  - ccure_platform.api  → require_authorized(permission key)
-  - db/base.py          → get_db, utcnow
-  - db/models/*.py      → exact model + field names
-  - core/vuln_intel.py  → compute_priority(cvss_score, epss_score, in_kev, has_exploit)
+The dashboard is a read model: it reads each capability through that
+capability's own read module and names no table (G2, the remainder of C7 in
+docs/architecture/MODULE_INDEPENDENCE_ANALYSIS.md):
 
-VulnerabilityDefinition NOTE:
-  This model has NO epss_score, in_kev, has_exploit, cvss_v3_vector columns.
-  It has: cvss_v3_score, cvss_v2_score, cvss_vector, severity, cwe_ids, references,
-          published_at, title, description, source, is_custom, affected_software.
-  Priority is computed passing 0/False for missing fields (safe default).
+  - core/findings/summaries.py → findings, services, TLS and HTTP details,
+                                 scoped by organisation through the host port
+  - core/asset_reads.py        → assets and their change log
+  - scans/reads.py             → scan records
+  - core/web/reads.py          → web scans, their findings and endpoints
+
+The queries moved there unchanged; what stays here is the shape of each
+response.
 """
 
 import logging
@@ -26,21 +27,14 @@ from ccure_platform.api import (
     require_authorized,
     resolve_active_organisation,
 )
+from core import asset_reads
+from core.findings import summaries as findings
 from core.vuln_intel import compute_priority
-from db.base import get_db, utcnow
-from db.models.assets import Asset, AssetChangeLog
-from db.models.findings import (
-    OBSERVED_SERVICE_STATES,
-    AssetVulnerability,
-    HttpSecurityDetail,
-    Service,
-    TLSDetail,
-    VulnerabilityDefinition,
-)
-from db.models.scans import Scan
+from core.web import reads as web
+from db.base import get_db
 from fastapi import APIRouter, Depends, Query
+from scans import reads as scans
 from scans.cvss import canonical_severity, display_severity
-from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.dashboard")
@@ -97,16 +91,7 @@ def get_dashboard_summary(
     # counts are summed rather than overwritten. The CHECK constraint added in
     # z9e0f1g2h3i4 stops the mixed spellings recurring; this is the second line
     # of defence, and the one that keeps old rows correct.
-    sev_expr = func.lower(AssetVulnerability.severity)
-    sev_rows = (
-        db.query(
-            sev_expr.label("severity"), func.count(AssetVulnerability.id).label("cnt")
-        )
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org, AssetVulnerability.status == "open")
-        .group_by(sev_expr)
-        .all()
-    )
+    sev_rows = findings.open_severity_counts(db, org)
     sev_map: dict[str, int] = {}
     for r in sev_rows:
         sev_map[canonical_severity(r.severity)] = (
@@ -124,17 +109,7 @@ def get_dashboard_summary(
     unscored = sev_map.get("unscored", 0)
 
     # ── Calculate Deltas from last scan ───────────────────────────────────────
-    last_scans = (
-        db.query(Scan)
-        .filter(
-            Scan.org_id == org,
-            Scan.status.in_(["complete", "completed"]),
-            Scan.is_deleted == False,
-        )
-        .order_by(Scan.completed_at.desc())
-        .limit(2)
-        .all()
-    )
+    last_scans = scans.latest_completed_scans(db, org, 2)
 
     sev_deltas = {"critical": 0, "high": 0, "medium": 0, "low_info": 0}
     if len(last_scans) >= 2:
@@ -153,47 +128,16 @@ def get_dashboard_summary(
         sev_deltas["low_info"] = (s1.low_count or 0) + (s1.info_count or 0)
 
     # ── Asset stats ────────────────────────────────────────────────────────────
-    ast_row = (
-        db.query(
-            func.count(Asset.id).label("total"),
-            func.count(case((Asset.is_managed == False, 1))).label("unmanaged"),
-            func.count(case((Asset.first_seen_at >= w7d, 1))).label("new_7d"),
-            func.count(case((Asset.first_seen_at >= w24h, 1))).label("new_24h"),
-            func.avg(Asset.risk_score).label("avg_risk"),
-        )
-        .filter(Asset.org_id == org)
-        .one()
-    )
+    ast_row = asset_reads.asset_overview(db, org, w24h, w7d)
 
     # Calculate risk delta (approximate: current avg vs avg of assets older than 7d)
     old_avg_risk = (
-        db.query(func.avg(Asset.risk_score))
-        .filter(Asset.org_id == org, Asset.first_seen_at < w7d)
-        .scalar()
-        or ast_row.avg_risk
-        or 0
+        asset_reads.average_risk_seen_before(db, org, w7d) or ast_row.avg_risk or 0
     )
     risk_delta_7d = round(float(ast_row.avg_risk or 0) - float(old_avg_risk), 1)
 
     # ── Scan stats ─────────────────────────────────────────────────────────────
-    scans_24h = (
-        db.query(func.count(Scan.id))
-        .filter(Scan.org_id == org, Scan.queued_at >= w24h, Scan.is_deleted == False)
-        .scalar()
-        or 0
-    )
-    running = (
-        db.query(func.count(Scan.id))
-        .filter(Scan.org_id == org, Scan.status == "running", Scan.is_deleted == False)
-        .scalar()
-        or 0
-    )
-    queued = (
-        db.query(func.count(Scan.id))
-        .filter(Scan.org_id == org, Scan.status == "queued", Scan.is_deleted == False)
-        .scalar()
-        or 0
-    )
+    scans_24h, running, queued = scans.scan_counts(db, org, w24h)
 
     # ── Known-exploited count ────────────────────────────────────────────────
     # Read from the finding's own in_kev flag, set during the scan from the
@@ -202,17 +146,7 @@ def get_dashboard_summary(
     # source 'nvd', 'scanner' or 'credentialed' and never 'kev'. The dashboard
     # therefore reported zero known-exploited vulnerabilities while the
     # executive PDF, reading the same scan, named three.
-    kev_count = (
-        db.query(func.count(AssetVulnerability.id))
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(
-            Asset.org_id == org,
-            AssetVulnerability.status == "open",
-            AssetVulnerability.in_kev.is_(True),
-        )
-        .scalar()
-        or 0
-    )
+    kev_count = findings.open_kev_count(db, org) or 0
 
     avg_risk = round(float(ast_row.avg_risk or 0), 1)
     risk_level = (
@@ -267,80 +201,23 @@ def get_risk_breakdown(
     org = _resolve_org(user, org_id)
 
     # Asset risk level distribution
-    level_rows = (
-        db.query(Asset.risk_level, func.count(Asset.id).label("cnt"))
-        .filter(Asset.org_id == org)
-        .group_by(Asset.risk_level)
-        .all()
-    )
+    level_rows = asset_reads.risk_level_counts(db, org)
     level_map = {(r.risk_level or "info").lower(): r.cnt for r in level_rows}
 
-    avg_risk = (
-        db.query(func.avg(Asset.risk_score)).filter(Asset.org_id == org).scalar() or 0.0
-    )
+    avg_risk = asset_reads.average_risk(db, org) or 0.0
 
     # Priority distribution, from the per-finding scan data.
-    p0 = (
-        db.query(func.count(AssetVulnerability.id))
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(
-            Asset.org_id == org,
-            AssetVulnerability.status == "open",
-            AssetVulnerability.in_kev.is_(True),
-        )
-        .scalar()
-        or 0
-    )
-    p2 = (
-        db.query(func.count(AssetVulnerability.id))
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(
-            Asset.org_id == org,
-            AssetVulnerability.status == "open",
-            AssetVulnerability.cvss_score >= 9.0,
-        )
-        .scalar()
-        or 0
-    )
+    p0 = findings.open_kev_count(db, org) or 0
+    p2 = findings.open_count_at_or_above_cvss(db, org, 9.0) or 0
 
     # TLS issues
-    tls_row = (
-        db.query(
-            func.count(case((TLSDetail.cert_not_after < utcnow(), 1))).label("expired"),
-            func.count(case((TLSDetail.cert_is_self_signed == True, 1))).label(
-                "self_signed"
-            ),
-            func.count(case((TLSDetail.is_weak_cipher == True, 1))).label(
-                "weak_cipher"
-            ),
-            func.count(case((TLSDetail.grade == "F", 1))).label("grade_f"),
-        )
-        .join(Service, TLSDetail.service_id == Service.id)
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org, TLSDetail.is_enabled == True)
-        .one()
-    )
+    tls_row = findings.tls_issue_counts(db, org)
 
     # HTTP avg score
-    http_avg = (
-        db.query(func.avg(HttpSecurityDetail.security_score))
-        .join(Service, HttpSecurityDetail.service_id == Service.id)
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
-        .scalar()
-        or 0
-    )
+    http_avg = findings.http_average_score(db, org) or 0
 
     # Finding status breakdown
-    status_rows = (
-        db.query(
-            AssetVulnerability.status, func.count(AssetVulnerability.id).label("cnt")
-        )
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
-        .group_by(AssetVulnerability.status)
-        .all()
-    )
+    status_rows = findings.finding_status_counts(db, org)
     status_map = {r.status: r.cnt for r in status_rows}
 
     return {
@@ -384,23 +261,7 @@ def get_vuln_trends(
     org = _resolve_org(user, org_id)
     since = _now() - timedelta(days=days)
 
-    rows = (
-        db.query(
-            Scan.completed_at,
-            Scan.critical_count,
-            Scan.high_count,
-            Scan.medium_count,
-            Scan.low_count,
-        )
-        .filter(
-            Scan.org_id == org,
-            Scan.completed_at >= since,
-            Scan.status.in_(["complete", "completed"]),
-            Scan.is_deleted == False,
-        )
-        .order_by(Scan.completed_at.asc())
-        .all()
-    )
+    rows = scans.completed_scan_counts(db, org, since)
 
     daily: dict = {}
     for r in rows:
@@ -436,13 +297,7 @@ def get_top_assets(
     user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
-    assets = (
-        db.query(Asset)
-        .filter(Asset.org_id == org, Asset.is_active == True)
-        .order_by(Asset.risk_score.desc())
-        .limit(limit)
-        .all()
-    )
+    assets = asset_reads.riskiest_active_assets(db, org, limit)
 
     result = []
     for a in assets:
@@ -487,37 +342,11 @@ def get_top_cves(
     # Aggregated from the findings, so severity, score and exploit intelligence
     # are the values measured against these hosts rather than the catalogue's
     # shared defaults.
-    q = (
-        db.query(
-            VulnerabilityDefinition,
-            func.count(AssetVulnerability.asset_id.distinct()).label("affected_assets"),
-            func.max(AssetVulnerability.cvss_score).label("cvss"),
-            func.max(func.lower(AssetVulnerability.severity)).label("severity"),
-            func.bool_or(AssetVulnerability.in_kev).label("in_kev"),
-            func.bool_or(AssetVulnerability.has_exploit).label("has_exploit"),
-            func.max(AssetVulnerability.epss_score).label("epss"),
-        )
-        .join(
-            AssetVulnerability, AssetVulnerability.vuln_id == VulnerabilityDefinition.id
-        )
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org, AssetVulnerability.status == "open")
-        .group_by(VulnerabilityDefinition.id)
-    )
-
+    sev_list = None
     if severity:
         sev_list = [canonical_severity(s) for s in severity.split(",") if s.strip()]
-        if sev_list:
-            q = q.filter(func.lower(AssetVulnerability.severity).in_(sev_list))
 
-    rows = (
-        q.order_by(
-            func.max(AssetVulnerability.cvss_score).desc().nullslast(),
-            func.count(AssetVulnerability.asset_id.distinct()).desc(),
-        )
-        .limit(limit)
-        .all()
-    )
+    rows = findings.top_cves(db, org, limit, sev_list)
 
     result = []
     for vuln, affected, cvss, sev, is_kev, has_exploit, epss in rows:
@@ -559,20 +388,7 @@ def get_services_exposure(
     org = _resolve_org(user, org_id)
     HIGH_RISK_PORTS = {21, 23, 69, 110, 111, 139, 445, 512, 513, 514, 3389, 5900, 5985}
 
-    rows = (
-        db.query(
-            Service.port,
-            Service.protocol,
-            Service.service_name,
-            func.count(Service.asset_id.distinct()).label("asset_count"),
-        )
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org, Service.state.in_(OBSERVED_SERVICE_STATES))
-        .group_by(Service.port, Service.protocol, Service.service_name)
-        .order_by(func.count(Service.asset_id.distinct()).desc())
-        .limit(20)
-        .all()
-    )
+    rows = findings.exposed_services(db, org)
 
     return {
         "services": [
@@ -601,37 +417,9 @@ def get_tls_health(
     now = _now()
     in_30d = now + timedelta(days=30)
 
-    grade_rows = (
-        db.query(TLSDetail.grade, func.count(TLSDetail.id).label("cnt"))
-        .join(Service, TLSDetail.service_id == Service.id)
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org, TLSDetail.is_enabled == True)
-        .group_by(TLSDetail.grade)
-        .all()
-    )
-
-    expiring = (
-        db.query(func.count(TLSDetail.id))
-        .join(Service, TLSDetail.service_id == Service.id)
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(
-            Asset.org_id == org,
-            TLSDetail.is_enabled == True,
-            TLSDetail.cert_not_after <= in_30d,
-            TLSDetail.cert_not_after >= now,
-        )
-        .scalar()
-        or 0
-    )
-
-    total = (
-        db.query(func.count(TLSDetail.id))
-        .join(Service, TLSDetail.service_id == Service.id)
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org, TLSDetail.is_enabled == True)
-        .scalar()
-        or 0
-    )
+    grade_rows = findings.tls_grade_counts(db, org)
+    expiring = findings.tls_expiring_count(db, org, now, in_30d) or 0
+    total = findings.tls_service_count(db, org) or 0
 
     grade_map = {r.grade: r.cnt for r in grade_rows}
 
@@ -659,27 +447,7 @@ def get_http_headers(
 ):
     org = _resolve_org(user, org_id)
 
-    agg = (
-        db.query(
-            func.count(HttpSecurityDetail.id).label("total"),
-            func.count(case((HttpSecurityDetail.has_hsts == True, 1))).label("hsts"),
-            func.count(case((HttpSecurityDetail.has_csp == True, 1))).label("csp"),
-            func.count(case((HttpSecurityDetail.x_content_type == True, 1))).label(
-                "x_content_type"
-            ),
-            func.count(case((HttpSecurityDetail.x_frame_options != None, 1))).label(
-                "x_frame"
-            ),
-            func.count(case((HttpSecurityDetail.referrer_policy != None, 1))).label(
-                "referrer_policy"
-            ),
-            func.avg(HttpSecurityDetail.security_score).label("avg_score"),
-        )
-        .join(Service, HttpSecurityDetail.service_id == Service.id)
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
-        .one()
-    )
+    agg = findings.http_header_coverage(db, org)
 
     total = agg.total or 1
 
@@ -716,55 +484,14 @@ def get_compliance(
 ):
     org = _resolve_org(user, org_id)
 
-    total_assets = (
-        db.query(func.count(Asset.id)).filter(Asset.org_id == org).scalar() or 1
-    )
-    scanned_assets = (
-        db.query(func.count(Asset.id))
-        .filter(Asset.org_id == org, Asset.last_scan_id != None)
-        .scalar()
-        or 0
-    )
-    open_critical = (
-        db.query(func.count(AssetVulnerability.id))
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .join(
-            VulnerabilityDefinition,
-            AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
-        )
-        .filter(
-            Asset.org_id == org,
-            AssetVulnerability.status == "open",
-            func.lower(AssetVulnerability.severity) == "critical",
-        )
-        .scalar()
-        or 0
-    )
+    total_assets = asset_reads.asset_count(db, org) or 1
+    scanned_assets = asset_reads.scanned_asset_count(db, org) or 0
+    open_critical = findings.open_critical_count(db, org) or 0
     cleartext_svcs = (
-        db.query(func.count(Service.id.distinct()))
-        .join(Asset, Service.asset_id == Asset.id)
-        .filter(
-            Asset.org_id == org,
-            Service.port.in_([21, 23, 80, 110, 143]),
-            Service.state.in_(OBSERVED_SERVICE_STATES),
-        )
-        .scalar()
-        or 0
+        findings.cleartext_service_count(db, org, [21, 23, 80, 110, 143]) or 0
     )
-    fixed_findings = (
-        db.query(func.count(AssetVulnerability.id))
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org, AssetVulnerability.status == "fixed")
-        .scalar()
-        or 0
-    )
-    total_findings = (
-        db.query(func.count(AssetVulnerability.id))
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(Asset.org_id == org)
-        .scalar()
-        or 1
-    )
+    fixed_findings = findings.finding_count(db, org, "fixed") or 0
+    total_findings = findings.finding_count(db, org) or 1
 
     coverage_rate = round(scanned_assets / total_assets * 100, 1)
     remediation_rate = round(fixed_findings / total_findings * 100, 1)
@@ -889,29 +616,9 @@ def get_asset_breakdown(
 ):
     org = _resolve_org(user, org_id)
 
-    os_rows = (
-        db.query(Asset.os_family, func.count(Asset.id).label("cnt"))
-        .filter(Asset.org_id == org)
-        .group_by(Asset.os_family)
-        .all()
-    )
-    cat_rows = (
-        db.query(Asset.device_category, func.count(Asset.id).label("cnt"))
-        .filter(Asset.org_id == org)
-        .group_by(Asset.device_category)
-        .all()
-    )
-    totals = (
-        db.query(
-            func.count(Asset.id).label("total"),
-            func.count(case((Asset.is_managed == True, 1))).label("managed"),
-            func.count(case((Asset.is_managed == False, 1))).label("unmanaged"),
-            func.count(case((Asset.is_active == True, 1))).label("active"),
-            func.count(case((Asset.is_active == False, 1))).label("offline"),
-        )
-        .filter(Asset.org_id == org)
-        .one()
-    )
+    os_rows = asset_reads.os_family_counts(db, org)
+    cat_rows = asset_reads.category_counts(db, org)
+    totals = asset_reads.asset_totals(db, org)
 
     return {
         "totals": {
@@ -943,16 +650,10 @@ def get_scan_activity(
 ):
     org = _resolve_org(user, org_id)
 
-    scans = (
-        db.query(Scan)
-        .filter(Scan.org_id == org, Scan.is_deleted == False)
-        .order_by(Scan.queued_at.desc())
-        .limit(limit)
-        .all()
-    )
+    recent = scans.recent_scans(db, org, limit)
 
     result = []
-    for s in scans:
+    for s in recent:
         phases = sorted(
             getattr(s, "phases", []) or [], key=lambda p: p.phase_order or 0
         )
@@ -1009,13 +710,7 @@ def get_insights(
 
     # 1. Highest-risk subnet
     try:
-        sub = (
-            db.query(Asset.subnet, func.avg(Asset.risk_score).label("avg_r"))
-            .filter(Asset.org_id == org, Asset.subnet != None)
-            .group_by(Asset.subnet)
-            .order_by(func.avg(Asset.risk_score).desc())
-            .first()
-        )
+        sub = asset_reads.riskiest_subnet(db, org)
         if sub and sub.avg_r and float(sub.avg_r) >= 50:
             insights.append(
                 {
@@ -1031,22 +726,7 @@ def get_insights(
 
     # 2. Stale critical/high findings (>30 days open)
     try:
-        stale = (
-            db.query(func.count(AssetVulnerability.id))
-            .join(Asset, AssetVulnerability.asset_id == Asset.id)
-            .join(
-                VulnerabilityDefinition,
-                AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
-            )
-            .filter(
-                Asset.org_id == org,
-                AssetVulnerability.status == "open",
-                AssetVulnerability.first_found_at <= now - timedelta(days=30),
-                func.lower(AssetVulnerability.severity).in_(["critical", "high"]),
-            )
-            .scalar()
-            or 0
-        )
+        stale = findings.stale_high_count(db, org, now - timedelta(days=30)) or 0
         if stale:
             insights.append(
                 {
@@ -1063,15 +743,7 @@ def get_insights(
     # 3. New attack surface (ports opened in last 7 days)
     try:
         new_ports = (
-            db.query(func.count(AssetChangeLog.id))
-            .join(Asset, AssetChangeLog.asset_id == Asset.id)
-            .filter(
-                Asset.org_id == org,
-                AssetChangeLog.change_type == "port_opened",
-                AssetChangeLog.detected_at >= now - timedelta(days=7),
-            )
-            .scalar()
-            or 0
+            asset_reads.ports_opened_since(db, org, now - timedelta(days=7)) or 0
         )
         if new_ports:
             insights.append(
@@ -1089,13 +761,7 @@ def get_insights(
     # 4. Scan coverage gap (assets not seen in 14+ days)
     try:
         stale_assets = (
-            db.query(func.count(Asset.id))
-            .filter(
-                Asset.org_id == org,
-                Asset.last_seen_at < now - timedelta(days=14),
-                Asset.is_active == True,
-            )
-            .scalar()
+            asset_reads.active_assets_unseen_since(db, org, now - timedelta(days=14))
             or 0
         )
         if stale_assets:
@@ -1113,26 +779,7 @@ def get_insights(
 
     # 5. Most-recurring high+ CVE
     try:
-        top_cve = (
-            db.query(
-                VulnerabilityDefinition.id,
-                VulnerabilityDefinition.title,
-                func.count(AssetVulnerability.asset_id.distinct()).label("cnt"),
-            )
-            .join(
-                AssetVulnerability,
-                AssetVulnerability.vuln_id == VulnerabilityDefinition.id,
-            )
-            .join(Asset, AssetVulnerability.asset_id == Asset.id)
-            .filter(
-                Asset.org_id == org,
-                AssetVulnerability.status == "open",
-                func.lower(AssetVulnerability.severity).in_(["critical", "high"]),
-            )
-            .group_by(VulnerabilityDefinition.id, VulnerabilityDefinition.title)
-            .order_by(func.count(AssetVulnerability.asset_id.distinct()).desc())
-            .first()
-        )
+        top_cve = findings.top_recurring_cve(db, org)
         if top_cve and top_cve.cnt >= 2:
             insights.append(
                 {
@@ -1162,135 +809,20 @@ def get_web_scan_summary(
     Aggregate statistics for web application scans.
     Mirrors the network /summary endpoint but for DAST results.
     """
-    from db.models.web_scans import WebAsset, WebFinding, WebScan
-
     org = _resolve_org(user, org_id)
-    now = _now()
-    w24h = now - timedelta(hours=24)
-    w7d = now - timedelta(days=7)
-
-    # ── Scan counts ────────────────────────────────────────────────────────
-    total_scans = (
-        db.query(func.count(WebScan.id))
-        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
-        .scalar()
-        or 0
-    )
-    running_scans = (
-        db.query(func.count(WebScan.id))
-        .filter(
-            WebScan.org_id == org,
-            WebScan.status == "running",
-            WebScan.is_deleted == False,
-        )
-        .scalar()
-        or 0
-    )
-    completed_scans = (
-        db.query(func.count(WebScan.id))
-        .filter(
-            WebScan.org_id == org,
-            WebScan.status == "complete",
-            WebScan.is_deleted == False,
-        )
-        .scalar()
-        or 0
-    )
-    scans_7d = (
-        db.query(func.count(WebScan.id))
-        .filter(
-            WebScan.org_id == org,
-            WebScan.created_at >= w7d,
-            WebScan.is_deleted == False,
-        )
-        .scalar()
-        or 0
-    )
-    w30d = now - timedelta(days=30)
-    scans_30d = (
-        db.query(func.count(WebScan.id))
-        .filter(
-            WebScan.org_id == org,
-            WebScan.created_at >= w30d,
-            WebScan.is_deleted == False,
-        )
-        .scalar()
-        or 0
-    )
-    # "Active" is any scan still in flight, not only the one a worker is running.
-    active_scans = (
-        db.query(func.count(WebScan.id))
-        .filter(
-            WebScan.org_id == org,
-            WebScan.status.in_(["queued", "pending", "running"]),
-            WebScan.is_deleted == False,
-        )
-        .scalar()
-        or 0
-    )
-
-    # ── Finding severity counts (open only) ────────────────────────────────
-    sev_rows = (
-        db.query(
-            WebFinding.severity,
-            func.count(WebFinding.id).label("cnt"),
-        )
-        .filter(WebFinding.org_id == org, WebFinding.status == "open")
-        .group_by(WebFinding.severity)
-        .all()
-    )
-    sev_map = {(r.severity or "info").lower(): r.cnt for r in sev_rows}
-
-    # ── Total endpoints discovered ─────────────────────────────────────────
-    total_endpoints = (
-        db.query(func.count(WebAsset.id))
-        .join(WebScan, WebAsset.web_scan_id == WebScan.id)
-        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
-        .scalar()
-        or 0
-    )
-
-    # ── Unique domains scanned ─────────────────────────────────────────────
-    unique_domains = (
-        db.query(func.count(WebScan.target_domain.distinct()))
-        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
-        .scalar()
-        or 0
-    )
-
-    # ── Verified findings count ────────────────────────────────────────────
-    verified = (
-        db.query(func.count(WebFinding.id))
-        .filter(
-            WebFinding.org_id == org,
-            WebFinding.is_verified == True,
-            WebFinding.status == "open",
-        )
-        .scalar()
-        or 0
-    )
-
-    # ── Finding status breakdown ───────────────────────────────────────────
-    status_rows = (
-        db.query(WebFinding.status, func.count(WebFinding.id).label("cnt"))
-        .filter(WebFinding.org_id == org)
-        .group_by(WebFinding.status)
-        .all()
-    )
-    status_map = {r.status: r.cnt for r in status_rows}
-
-    # ── Top detected tools ─────────────────────────────────────────────────
-    tool_rows = (
-        db.query(
-            WebFinding.detected_by,
-            func.count(WebFinding.id).label("cnt"),
-        )
-        .filter(WebFinding.org_id == org, WebFinding.status == "open")
-        .group_by(WebFinding.detected_by)
-        .order_by(func.count(WebFinding.id).desc())
-        .limit(5)
-        .all()
-    )
+    figures = web.web_scan_figures(db, org, _now())
+    sev_map = {(r.severity or "info").lower(): r.cnt for r in figures.severity_rows}
+    status_map = {r.status: r.cnt for r in figures.status_rows}
+    total_scans = figures.total_scans
+    running_scans = figures.running_scans
+    active_scans = figures.active_scans
+    completed_scans = figures.completed_scans
+    scans_7d = figures.scans_7d
+    scans_30d = figures.scans_30d
+    total_endpoints = figures.total_endpoints
+    unique_domains = figures.unique_domains
+    verified = figures.verified
+    tool_rows = figures.tool_rows
 
     return {
         "scans": {
@@ -1338,8 +870,6 @@ def get_web_owasp_scorecard(
     OWASP Top 10 (2021) coverage from web scan findings.
     Shows how many open findings map to each OWASP category.
     """
-    from db.models.web_scans import WebFinding
-
     org = _resolve_org(user, org_id)
 
     owasp_categories = {
@@ -1355,11 +885,7 @@ def get_web_owasp_scorecard(
         "A10": "Server-Side Request Forgery (SSRF)",
     }
 
-    findings = (
-        db.query(WebFinding.owasp_category, WebFinding.severity)
-        .filter(WebFinding.org_id == org, WebFinding.status == "open")
-        .all()
-    )
+    open_findings = web.open_finding_categories(db, org)
 
     scorecard = {}
     for code, name in owasp_categories.items():
@@ -1372,7 +898,7 @@ def get_web_owasp_scorecard(
             "low": 0,
         }
 
-    for f in findings:
+    for f in open_findings:
         owasp = f.owasp_category or ""
         code = owasp.split(":")[0] if ":" in owasp else ""
         if code in scorecard:
@@ -1400,30 +926,10 @@ def get_web_scan_trends(
     Web scan finding trends over time — similar to /vuln-trends but for DAST.
     Aggregates by scan completion date.
     """
-    from db.models.web_scans import WebScan
-
     org = _resolve_org(user, org_id)
     since = _now() - timedelta(days=days)
 
-    rows = (
-        db.query(
-            WebScan.completed_at,
-            WebScan.critical_count,
-            WebScan.high_count,
-            WebScan.medium_count,
-            WebScan.low_count,
-            WebScan.info_count,
-            WebScan.total_endpoints,
-        )
-        .filter(
-            WebScan.org_id == org,
-            WebScan.completed_at >= since,
-            WebScan.status == "complete",
-            WebScan.is_deleted == False,
-        )
-        .order_by(WebScan.completed_at.asc())
-        .all()
-    )
+    rows = web.completed_web_scan_counts(db, org, since)
 
     daily: dict = {}
     for r in rows:
@@ -1478,44 +984,23 @@ def get_web_findings_drilldown(
     user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """Org-wide web findings with the same filters the dashboard counts use."""
-    from datetime import datetime
-
     from core.web.finding_view import finding_detail as _finding_detail
-    from db.models.web_scans import WebFinding, WebScan
 
     org = _resolve_org(user, org_id)
-    q = (
-        db.query(WebFinding, WebScan.scan_name, WebScan.target_domain)
-        .join(WebScan, WebFinding.web_scan_id == WebScan.id)
-        .filter(WebFinding.org_id == org, WebScan.is_deleted == False)
-    )
-    if severity:
-        q = q.filter(WebFinding.severity == severity.lower())
-    if owasp:
-        # owasp_category is stored like "A05:2021 – …"; match on the code prefix.
-        q = q.filter(WebFinding.owasp_category.ilike(f"{owasp}%"))
-    if finding_type:
-        q = q.filter(WebFinding.finding_type == finding_type)
-    if detected_by:
-        q = q.filter(WebFinding.detected_by.ilike(f"%{detected_by}%"))
-    if status:
-        q = q.filter(WebFinding.status == status)
-    if scan_id:
-        q = q.filter(WebFinding.web_scan_id == scan_id)
-    if date:
-        try:
-            d0 = datetime.strptime(date, "%Y-%m-%d")
-            d1 = d0 + timedelta(days=1)
-            q = q.filter(WebScan.completed_at >= d0, WebScan.completed_at < d1)
-        except ValueError:
-            pass
-
-    total = q.count()
-    rows = (
-        q.order_by(WebFinding.severity.desc(), WebFinding.created_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
+    total, rows = web.finding_page(
+        db,
+        org,
+        web.FindingFilters(
+            severity=severity,
+            owasp=owasp,
+            finding_type=finding_type,
+            detected_by=detected_by,
+            status=status,
+            date=date,
+            scan_id=scan_id,
+        ),
+        page,
+        per_page,
     )
     data = []
     for finding, scan_name, target_domain in rows:
@@ -1558,27 +1043,15 @@ def get_web_endpoints_drilldown(
     user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """Org-wide discovered endpoints — backs the 'Total Endpoints Discovered' card."""
-    from db.models.web_scans import WebAsset, WebScan
-
     org = _resolve_org(user, org_id)
-    q = (
-        db.query(WebAsset, WebScan.scan_name)
-        .join(WebScan, WebAsset.web_scan_id == WebScan.id)
-        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
-    )
-    if source:
-        q = q.filter(WebAsset.source == source)
-    if is_api is not None:
-        q = q.filter(WebAsset.is_api == is_api)
-    if scan_id:
-        q = q.filter(WebAsset.web_scan_id == scan_id)
-
-    total = q.count()
-    rows = (
-        q.order_by(WebAsset.created_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
+    total, rows = web.endpoint_page(
+        db,
+        org,
+        source=source,
+        is_api=is_api,
+        scan_id=scan_id,
+        page=page,
+        per_page=per_page,
     )
     data = []
     for asset, scan_name in rows:

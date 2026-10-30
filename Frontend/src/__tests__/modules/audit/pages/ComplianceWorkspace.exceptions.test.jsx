@@ -605,13 +605,20 @@ describe("ComplianceWorkspace Exceptions — batch 26a", () => {
       path.join(AUDIT_SRC, "pages/ComplianceWorkspace.jsx"),
       "utf8",
     ).replace(/\r\n/g, "\n");
+    // The tabs' markup lives in their own files since F1; the page renders them.
+    const part = (name) =>
+      readFileSync(
+        path.join(AUDIT_SRC, "components/compliance/workspace", name),
+        "utf8",
+      ).replace(/\r\n/g, "\n");
     expect(source).toMatch(
       /import\s+["']\.\.\/styles\/compliance-exceptions\.css["']/,
     );
     expect(source).toMatch(/from\s+["'](?:\.\.\/)+design-system["']/);
-    const start = source.indexOf("function ExceptionsPanel(");
+    const panel = part("ExceptionsPanel.jsx");
+    const start = panel.indexOf("function ExceptionsPanel(");
     expect(start).toBeGreaterThan(-1);
-    const block = source.slice(start, source.indexOf("\n}\n", start));
+    const block = panel.slice(start, panel.indexOf("\n}\n", start));
     expect(block).not.toMatch(/style=\{/);
     expect(block.match(/#[0-9a-fA-F]{3,8}\b/g) || []).toEqual([]);
     expect(block).not.toMatch(/\b(?:rgba?|hsla?)\(|var\(--/);

@@ -70,7 +70,7 @@ class CredentialResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# These three routes predate /credentials and three screens still call them, so
+# These three routes predate /credentials. No screen calls them since F3, but
 # their request and response shapes, status codes and messages are kept. Their
 # rules are not their own any more: they are adapters over core.credential_vault,
 # the service /credentials uses. They used to authorise on audit.compliance.read

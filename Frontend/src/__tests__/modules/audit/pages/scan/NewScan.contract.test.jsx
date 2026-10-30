@@ -344,8 +344,8 @@ beforeEach(() => {
     return { data: { success: true, scan_id: SCAN, scan_no: 4501 } };
   };
   getReply = (url) =>
-    url === "/compliance/credentials"
-      ? { data: CREDS }
+    url === "/credentials"
+      ? { data: { credentials: CREDS, total: CREDS.length } }
       : { data: record("running", { results: {} }) };
   for (const verb of ["get", "post", "put", "patch", "delete"])
     api[verb].mockReset();
@@ -376,7 +376,7 @@ afterEach(() => {
     );
   }
   for (const [url] of api.get.mock.calls) {
-    expect(url).toMatch(/^\/scans\/ns-9$|^\/compliance\/credentials$/);
+    expect(url).toMatch(/^\/scans\/ns-9$|^\/credentials$/);
   }
   for (const s of sockets) expect(s.url).toBe(TICKET_URL);
   consoleError.mockRestore();
@@ -761,10 +761,10 @@ describe("NewScan — contract", () => {
 
       await mount("/scan/new", { cc_pipelineMode: "vulnerability_audit" });
       await openSettings();
-      expect(gets("/compliance/credentials")).toHaveLength(0);
+      expect(gets("/credentials")).toHaveLength(0);
       fireEvent.click(switchNear(/Authenticated Checks/i));
       await flush();
-      expect(gets("/compliance/credentials")).toHaveLength(1);
+      expect(gets("/credentials")).toHaveLength(1);
       expect(bodyText()).toContain("Select the credentials to try.");
       expect(
         squash(
@@ -784,13 +784,13 @@ describe("NewScan — contract", () => {
       await flush();
       fireEvent.click(switchNear(/Authenticated Checks/i));
       await flush();
-      expect(gets("/compliance/credentials")).toHaveLength(1);
+      expect(gets("/credentials")).toHaveLength(1);
     });
 
     it("with none stored, it explains, links to Compliance, and asks again each time", async () => {
       getReply = (url) =>
-        url === "/compliance/credentials"
-          ? { data: [] }
+        url === "/credentials"
+          ? { data: { credentials: [], total: 0 } }
           : { data: record("running") };
       await mount("/scan/new", { cc_pipelineMode: "vulnerability_audit" });
       await openSettings();
@@ -803,7 +803,7 @@ describe("NewScan — contract", () => {
       await flush();
       fireEvent.click(switchNear(/Authenticated Checks/i));
       await flush();
-      expect(gets("/compliance/credentials")).toHaveLength(2);
+      expect(gets("/credentials")).toHaveLength(2);
       fireEvent.click(screen.getByRole("button", { name: "Compliance" }));
       await flush();
       expect(here().path).toBe("/compliance");

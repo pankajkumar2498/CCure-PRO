@@ -24,7 +24,7 @@ import uuid
 from typing import Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 
 log = logging.getLogger("ccure.web.crawler")
 
@@ -174,15 +174,17 @@ class PlaywrightCrawler:
         settle_timeout: int | None = None,
         rate_limit: int | None = None,
     ):
-        self.max_depth = max_depth or WebScanConfig.MAX_CRAWL_DEPTH
-        self.max_urls = max_urls or WebScanConfig.MAX_CRAWL_URLS
-        self.timeout = timeout or WebScanConfig.PLAYWRIGHT_TIMEOUT
-        self.concurrency = concurrency or WebScanConfig.CRAWL_CONCURRENCY
+        self.max_depth = max_depth or web_settings.current().MAX_CRAWL_DEPTH
+        self.max_urls = max_urls or web_settings.current().MAX_CRAWL_URLS
+        self.timeout = timeout or web_settings.current().PLAYWRIGHT_TIMEOUT
+        self.concurrency = concurrency or web_settings.current().CRAWL_CONCURRENCY
         #: Shared navigation-start rate ceiling across all concurrent workers.
-        self.rate_limit = rate_limit or WebScanConfig.CRAWL_RATE_LIMIT
+        self.rate_limit = rate_limit or web_settings.current().CRAWL_RATE_LIMIT
         #: How long to wait for a page to go quiet after the document loads,
         #: bounded so a page that never goes quiet cannot stall the crawl.
-        self.settle_timeout = settle_timeout or WebScanConfig.CRAWL_SETTLE_TIMEOUT
+        self.settle_timeout = (
+            settle_timeout or web_settings.current().CRAWL_SETTLE_TIMEOUT
+        )
 
     async def crawl(
         self,

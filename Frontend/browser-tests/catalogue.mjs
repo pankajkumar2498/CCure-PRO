@@ -189,7 +189,6 @@ const extraStubs = {
   "/assets/a-1/services": { services: [] },
   "/assets/a-1/findings": VB_FINDINGS,
   "/assets/a-1/changelog": { timeline: [], raw_changelog: [], admin_logs: [] },
-  "/compliance/credentials": { credentials: [] },
   "/web-scans/web-1": data.web.SCAN,
   "/web-scans/web-1/assets": {
     data: data.web.ASSETS,

@@ -70,7 +70,7 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
   ),
 }));
 
-vi.mock("@audit/components/layout/ScanStepper", () => ({
+vi.mock("@audit/components/scan/ScanStepper", () => ({
   default: ({ current }) => (
     <div data-testid="scan-stepper" data-current={current} />
   ),

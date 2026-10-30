@@ -835,14 +835,9 @@ def _scan_hosts(db: Session, scan: Any) -> List[Dict[str, Any]]:
     carries everything an earlier one found plus its own results, so the
     highest phase with hosts is the scan's inventory.
     """
-    from db.models.scans import ScanPhase
+    from scans.reads import phases_newest_first
 
-    phases = (
-        db.query(ScanPhase)
-        .filter(ScanPhase.scan_id == str(getattr(scan, "id", "") or ""))
-        .order_by(ScanPhase.phase_order.desc())
-        .all()
-    )
+    phases = phases_newest_first(db, str(getattr(scan, "id", "") or ""))
     for phase in phases:
         data = (
             (phase.summary or {}).get("_phase_data")

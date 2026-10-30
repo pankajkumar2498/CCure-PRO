@@ -430,8 +430,14 @@ class _Engine:
 def _matcher(rows):
     from engines.credentialed.vuln_matcher import VulnMatcher
 
+    from core.vuln_intel_repository import REPOSITORY
+
     matcher = VulnMatcher.__new__(VulnMatcher)
     matcher.engine = _Engine(rows)
+    # Built without __init__: the SQL construct and the errors the matcher
+    # is handed by its repository (G3) are set the same way.
+    matcher._sql = REPOSITORY.sql
+    matcher._db_errors = REPOSITORY.errors
     return matcher
 
 

@@ -45,6 +45,7 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 from core.topology.identity import (
     Endpoint,
@@ -54,7 +55,7 @@ from core.topology.identity import (
     normalize_mac,
 )
 from db.base import gen_asset_id, gen_network_link_id, utcnow
-from db.models import Asset, Scan
+from core.topology.directory import directory
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -564,21 +565,21 @@ class AssetIndex:
     def __init__(self, db: Session, org_id: str):
         self.db = db
         self.org_id = org_id
-        self.by_mac: dict[str, Asset] = {}
-        self.by_ip: dict[str, Asset] = {}
-        self.by_hostname: dict[str, Asset] = {}
+        self.by_mac: dict[str, Any] = {}
+        self.by_ip: dict[str, Any] = {}
+        self.by_hostname: dict[str, Any] = {}
         #: Hostnames held by more than one asset. A default model name shared
         #: across an estate identifies nothing, so it must never resolve.
         self._ambiguous_hostnames: set[str] = set()
-        self.created: list[Asset] = []
+        self.created: list[Any] = []
         #: endpoint key → asset-anchored identity, memoised because an FDB walk
         #: can present the same endpoint thousands of times.
         self._canonical_cache: dict[str, Endpoint] = {}
 
-        for asset in db.query(Asset).filter(Asset.org_id == org_id).all():
+        for asset in directory().organisation_assets(db, org_id):
             self.register(asset)
 
-    def register(self, asset: Asset) -> None:
+    def register(self, asset: Any) -> None:
         """Index an asset under every identifier it carries."""
         mac = normalize_mac(asset.mac_address)
         if mac:
@@ -594,7 +595,7 @@ class AssetIndex:
                 # match one of them arbitrarily.
                 self._ambiguous_hostnames.add(hostname)
 
-    def resolve(self, endpoint: Endpoint) -> Asset | None:
+    def resolve(self, endpoint: Endpoint) -> Any | None:
         """
         Find the asset an endpoint refers to.
 
@@ -639,7 +640,7 @@ class AssetIndex:
 
     def get_or_create(
         self, endpoint: Endpoint, device_category: str | None
-    ) -> Asset | None:
+    ) -> Any | None:
         """
         Resolve an endpoint, enrolling a placeholder asset when it is unknown.
 
@@ -659,14 +660,16 @@ class AssetIndex:
             return None
 
         asset_id = gen_asset_id(self.org_id, seed)
-        existing = self.db.get(Asset, asset_id)
+        existing = directory().asset(self.db, asset_id)
         if existing is not None:
             self.register(existing)
             self._enrich(existing, endpoint, device_category)
             return existing
 
         now = utcnow()
-        asset = Asset(
+        # Flushed by the directory, so the PK is available for the link's FK.
+        asset = directory().enrol(
+            self.db,
             id=asset_id,
             org_id=self.org_id,
             ip_address=endpoint.ip,
@@ -678,8 +681,6 @@ class AssetIndex:
             created_at=now,
             updated_at=now,
         )
-        self.db.add(asset)
-        self.db.flush()  # Make the PK available for the link's FK.
         self.register(asset)
         self.created.append(asset)
         return asset
@@ -718,7 +719,7 @@ class AssetIndex:
         return canonical
 
     def _enrich(
-        self, asset: Asset, endpoint: Endpoint, device_category: str | None
+        self, asset: Any, endpoint: Endpoint, device_category: str | None
     ) -> None:
         """Fill gaps on an existing asset without overwriting better data."""
         if not asset.mac_address and endpoint.mac:
@@ -869,8 +870,7 @@ def run_topology_mapping(
     creds = SNMPCredentials.from_dict(snmp_config)
 
     if not target_ips:
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        target_ips = list(scan.target_hosts) if scan and scan.target_hosts else []
+        target_ips = directory().scan_targets(db, scan_id)
 
     # De-duplicate while preserving order — the same host can appear in several
     # phase summaries.
@@ -1563,7 +1563,7 @@ _GROUP_TOKENS = {
 }
 
 
-def _classify_node_group(link, asset: Asset | None) -> str:
+def _classify_node_group(link, asset: Any | None) -> str:
     """Classify a node into a visual group for the frontend graph."""
     if asset is not None:
         cat = (asset.device_category or "").strip().lower()

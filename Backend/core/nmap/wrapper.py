@@ -45,9 +45,49 @@ from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
 
 from config import AppConfig
-from core.redis_client import get_redis_client
 
 log = logging.getLogger("ccure.nmap")
+
+
+# ── Shared state, injected (G3) ──────────────────────────────────────────────
+# The global Nmap limiter and the result cache share state across workers
+# through Redis. The wrapper does not open Redis itself: Audit's composition
+# root (ccure_audit/engine_ports.py) registers how, and a process that
+# registers nothing behaves as one whose Redis could not be reached always did
+# — the limiter falls back to its local semaphore and the cache is off, each
+# with its warning. So the wrapper loads no Redis client.
+
+
+class SharedStateMissing(RuntimeError):
+    """No shared state was registered for the Nmap limiter or cache."""
+
+
+_lease_client = None
+_cache_client = None
+
+
+def register_shared_state(*, lease_client, cache_client) -> None:
+    """
+    Register the two Redis connections the wrapper uses, as callables:
+    ``lease_client()`` opens the global limiter's connection and
+    ``cache_client()`` returns the result cache's. Registering the same pair
+    again does nothing; a different pair is refused.
+    """
+    global _lease_client, _cache_client
+    if (_lease_client, _cache_client) == (lease_client, cache_client):
+        return
+    if _lease_client is not None or _cache_client is not None:
+        raise ValueError("the Nmap wrapper's shared state is already registered")
+    _lease_client, _cache_client = lease_client, cache_client
+
+
+def _registered(provider):
+    if provider is None:
+        raise SharedStateMissing(
+            "no shared state is registered for the Nmap wrapper in this process; "
+            "Audit's composition root, ccure_audit/engine_ports.py, registers it"
+        )
+    return provider()
 
 
 class _NmapProcessLimiter:
@@ -78,14 +118,7 @@ class _NmapProcessLimiter:
         if self._redis is not None:
             return self._redis
         try:
-            import redis
-
-            self._redis = redis.from_url(
-                AppConfig.CELERY_BROKER_URL,
-                socket_timeout=3,
-                socket_connect_timeout=3,
-                decode_responses=True,
-            )
+            self._redis = _registered(_lease_client)
             self._redis.ping()
             return self._redis
         except Exception as exc:
@@ -447,7 +480,7 @@ class NmapScanner:
     def _init_redis(self) -> bool:
         """Initialize Redis connection for caching (non-fatal if fails)."""
         try:
-            self._redis = get_redis_client()
+            self._redis = _registered(_cache_client)
             if self._redis:
                 self._redis.ping()
                 log.info("Redis cache enabled for Nmap results")

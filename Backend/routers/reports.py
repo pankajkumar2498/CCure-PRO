@@ -6,30 +6,37 @@ PDF report download endpoint.
 Endpoints
 ─────────
   GET /reports/download/{scan_id} → Download JSON or XML PDF report
+
+The report routes are the read side: they read scans through the scans
+capability (which scan a caller may read, what its report says about it,
+where its reports are recorded) and hosts through the asset registry, and
+name no table of either (G2, the remainder of C7 in
+docs/architecture/MODULE_INDEPENDENCE_ANALYSIS.md).
 """
 
+import logging
 import os
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from ccure_platform.api import CurrentUser, current_user_flexible
 from ccure_platform.api import log_audit_event
 from db.base import get_db
 from ccure_platform import api as platform_api
-from ccure_platform.api import acts_across_organisations, resource_organisation_allowed
-from db.models import Scan
+from core.asset_reads import lifecycle_dates
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from core.rate_limiter import limiter
 from fastapi.responses import FileResponse
 from reporting.pdf_generator import ScanReportGenerator
+from scans import reads as scan_reads
+from scans.report_context import apply_phase1_summary_hints, resolve_report_context
 from scans.report_inputs import with_report_inputs
-from scan_helpers import (
-    apply_phase1_summary_hints,
-    log,
-    resolve_report_context,
-)
 from scans.legacy_json_builder import build_legacy_scan_results
+from scans.scan_access import report_scan_or_404
 from sqlalchemy.orm import Session
+
+# The logger scan_helpers named, so the lines this module writes are unchanged.
+log = logging.getLogger("ccure.api")
 
 router = APIRouter(tags=["Reports"])
 
@@ -108,7 +115,7 @@ def cleanup_old_reports(days_old: int = 7) -> None:
         log.info(f"Cleaned up {count} report(s) older than {days_old} days.")
 
 
-def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
+def _load_scan_report_paths(db: Session, scan: Any) -> dict:
     """Generate report PDFs from stored scan phase payloads when no file path exists."""
     if not scan.phases:
         return {}
@@ -184,12 +191,12 @@ def _load_scan_report_paths(db: Session, scan: Scan) -> dict:
     )
     report_paths = {k: v for k, v in report_paths.items() if v and os.path.isfile(v)}
     if report_paths:
-        if report_paths.get("executive_pdf"):
-            scan.report_executive_path = report_paths["executive_pdf"]
-        if report_paths.get("technical_pdf"):
-            scan.report_technical_path = report_paths["technical_pdf"]
-        db.commit()
-        db.refresh(scan)
+        scan_reads.record_report_paths(
+            db,
+            scan,
+            executive=report_paths.get("executive_pdf"),
+            technical=report_paths.get("technical_pdf"),
+        )
 
     return report_paths
 
@@ -283,7 +290,7 @@ def _flatten_credentialed_payload(key: str, payload: dict) -> dict:
     return {**payload, "data": merged}
 
 
-def _attach_asset_lifecycle_dates(db: Session, scan: Scan, payload: dict) -> None:
+def _attach_asset_lifecycle_dates(db: Session, scan: Any, payload: dict) -> None:
     """
     Fill each exported host's ``first_seen_at`` / ``last_seen_at`` from the registry.
 
@@ -311,14 +318,7 @@ def _attach_asset_lifecycle_dates(db: Session, scan: Scan, payload: dict) -> Non
         return
 
     try:
-        from db.models.assets import Asset
-
-        rows = (
-            db.query(Asset.ip_address, Asset.first_seen_at, Asset.last_seen_at)
-            .filter(Asset.org_id == scan.org_id, Asset.ip_address.in_(ips))
-            .all()
-        )
-        lifecycle = {str(ip): (first, last) for ip, first, last in rows}
+        lifecycle = lifecycle_dates(db, scan.org_id, ips)
     except Exception as exc:  # an export must not fail over an enrichment
         log.debug("Could not attach lifecycle dates for scan %s: %s", scan.id, exc)
         return
@@ -375,14 +375,6 @@ def _require_reports_delete(user: CurrentUser, db: Session) -> None:
             status_code=403,
             detail="Insufficient privileges. Missing permission: audit.report.delete.",
         )
-
-
-def _can_read_all_org_scans(
-    user: CurrentUser, db: Session, org_id: str | None = None
-) -> bool:
-    # read_all is organisation-wide visibility *within one organisation*: the
-    # permission is evaluated for the scan's own organisation (RBAC-5).
-    return platform_api.has_permission(db, user, "audit.scan.read_all", org_id=org_id)
 
 
 def _audit_report_download(
@@ -620,47 +612,13 @@ def _safe_export_name(*parts: str) -> str:
     return "_".join(cleaned) or "export"
 
 
-def _scan_for_user(
-    db: Session, user: CurrentUser, scan_id: str, org_id: str | None = None
-) -> Scan:
-    """
-    The scan, or 404 — under this caller's own visibility rules.
-
-    Exactly the scoping the download endpoint has always applied: a superadmin
-    sees any organisation, everybody else is confined to their own, and a user
-    without ``scans:read_all`` sees only the scans they started. Expressed once
-    so an export route cannot drift from it, which is the shape a cross-tenant
-    export takes: not a missing check, a second copy of one that fell behind.
-
-    404 rather than 403 for a scan in another organisation, deliberately — a
-    403 would confirm the id exists.
-    """
-    reach = acts_across_organisations(user)
-    query = db.query(Scan).filter(Scan.id == scan_id)
-    if reach:
-        if org_id:
-            query = query.filter(Scan.org_id == org_id)
-    else:
-        query = query.filter(Scan.org_id == user.org_id)
-
-    scan = query.first()
-    # The scan's own organisation, read from the stored row, decides the rest: the
-    # account must be allowed to act there, and holds read_all for it or started
-    # the scan (RBAC-5; a client-supplied organisation id proves nothing).
-    if (
-        not scan
-        or not resource_organisation_allowed(user, scan.org_id)
-        or (
-            str(scan.created_by) != str(user.id)
-            and not _can_read_all_org_scans(user, db, scan.org_id)
-        )
-    ):
-        raise HTTPException(status_code=404, detail="Scan not found.")
-    return scan
+#: The scan, or 404, under the caller's own visibility rules. Moved to the scans
+#: capability unchanged (G2); the name every report route used stays.
+_scan_for_user = report_scan_or_404
 
 
 def _comparison_for(
-    db: Session, scan: Scan, baseline_id: str | None, user: CurrentUser | None
+    db: Session, scan: Any, baseline_id: str | None, user: CurrentUser | None
 ):
     """
     The GAP-13 comparison for this scan, or None.
@@ -701,7 +659,7 @@ def _comparison_for(
 
 
 def _build_scan_workbook(
-    db: Session, scan: Scan, *, user: CurrentUser | None = None, **filters
+    db: Session, scan: Any, *, user: CurrentUser | None = None, **filters
 ) -> tuple[str, str]:
     """
     Assemble the whole-scan workbook and return ``(path, filename)``.
@@ -973,11 +931,7 @@ def delete_report(
     scan = _scan_for_user(db, user, scan_id)
 
     deleted_files = 0
-    for path_attr in (
-        "report_executive_path",
-        "report_technical_path",
-        "report_pdf_path",
-    ):
+    for path_attr in scan_reads.REPORT_PATH_COLUMNS:
         report_path = getattr(scan, path_attr, None)
         if not report_path:
             continue
@@ -993,10 +947,7 @@ def delete_report(
             except Exception as exc:
                 log.warning("Failed to delete report file '%s': %s", abs_path, exc)
 
-        setattr(scan, path_attr, None)
-
-    db.add(scan)
-    db.commit()
+    scan_reads.forget_report_paths(db, scan)
     return {
         "detail": f"Report artifacts deleted for scan {scan_id}",
         "deleted_files": deleted_files,

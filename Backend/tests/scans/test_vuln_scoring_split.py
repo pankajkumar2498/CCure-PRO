@@ -58,7 +58,16 @@ def test_the_scoring_module_imports_only_the_standard_library():
             imported |= {alias.name.split(".")[0] for alias in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add((node.module or "").split(".")[0])
-    assert imported <= {"__future__", "datetime", "decimal", "typing"}
+    # re and collections.abc came with the version matcher's two query helpers
+    # (G3), both standard library.
+    assert imported <= {
+        "__future__",
+        "collections",
+        "datetime",
+        "decimal",
+        "re",
+        "typing",
+    }
 
 
 def test_core_risk_does_not_import_the_vuln_intel_database_modules():

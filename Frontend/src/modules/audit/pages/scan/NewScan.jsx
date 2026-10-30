@@ -24,6 +24,7 @@ import AppLayout from "@audit/components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "@audit/context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "@audit/config/scanConfig";
 import api from "@shell/api/axiosInstance";
+import { listCredentials } from "@audit/api/credentials";
 import { stopScan } from "@audit/api/scans";
 import { can } from "@shell/auth/permissions";
 import { useAuth } from "@shell/auth/AuthContext";
@@ -913,10 +914,9 @@ export default function NewScan() {
   useEffect(() => {
     if (!credentialedEnabled || credentialsList.length) return;
     let cancelled = false;
-    api
-      .get("/compliance/credentials")
-      .then((res) => {
-        if (!cancelled) setCredentialsList(res.data || []);
+    listCredentials()
+      .then((data) => {
+        if (!cancelled) setCredentialsList(data?.credentials || []);
       })
       .catch((err) => {
         console.error("Failed to load credentials for scan", err);

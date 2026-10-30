@@ -1,0 +1,138 @@
+name: Architecture Guards
+
+# E3 (docs/architecture/MODULE_INDEPENDENCE_ANALYSIS.md §10): the architecture
+# guards run on every push to GitHub, not only on master.
+#
+# ci.yml covers pull requests, pushes to main/master, tags, the nightly run and
+# manual runs; its Backend Validation job runs check.py, tests/repo (with
+# tests/security) and the D1 harness on every one of them.
+# This workflow covers the rest: a push of any other branch, which ci.yml
+# deliberately ignores (its branch filter is what stops a PR running the
+# whole pipeline twice). The branch filters below are the complement of
+# ci.yml's, so no push starts both workflows. A branch with an open GitHub
+# pull request still runs these guards twice, once here for the push and once
+# in ci.yml for the merge ref; review happens on GitLab, so that is rare, and
+# this job is the small one.
+#
+# What runs is scripts/ci/local_guard_tests.sh's default set, on a hosted
+# runner instead of the backend image:
+#
+#   1. Backend/scripts/architecture/check.py, the stdlib guards the
+#      pre-commit hook runs (layering, cycles, identity boundary,
+#      organisation settings, capability ratchet, secret handling);
+#   2. the database-backed guard tests: tests/repo, the sudo-password guard
+#      and the credential-API authorization tests;
+#   3. the library isolation harness (D1).
+#
+# tests/repo/test_ci_architecture_guards.py pins the triggers and keeps the
+# test targets equal to the local script's.
+#
+# GitLab is not wired here: its merge requests reach these checks only when
+# the commit is also pushed to the `github` remote (decision D-5).
+
+on:
+  push:
+    branches-ignore: [main, master]
+
+# Read-only token; no step references a secret.
+permissions:
+  contents: read
+
+# Only the newest push of a branch can still matter.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
+
+jobs:
+  architecture-guards:
+    name: Architecture Guards
+    runs-on: ubuntu-latest
+    # The guard tests take about 7 minutes in the backend image and the
+    # dependency install about 3; 30 is headroom, not a target.
+    timeout-minutes: 30
+    # Disposable CI credentials for the throwaway services below, never
+    # production ones.
+    env:
+      DATABASE_URL: postgresql://ccure_user:ci_guard_test_password@localhost:5432/pytest_architecture_guards
+      TEST_DATABASE_URL: postgresql://ccure_user:ci_guard_test_password@localhost:5432/pytest_architecture_guards
+      VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ci_guard_test_password@localhost:5432/pytest_architecture_guards
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/0
+      MFA_ENCRYPTION_KEY: test_mfa_key_32_chars_minimum_value
+      SKIP_DOTENV_LOAD: "1"
+      MOCK_SCANNERS: "true"
+
+    services:
+      postgres:
+        # The same image as ci.yml's (test_ci_architecture_guards.py), which
+        # test_ci_postgres_version.py holds to docker-compose.yml's `db`.
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: pytest_architecture_guards
+          POSTGRES_USER: ccure_user
+          POSTGRES_PASSWORD: ci_guard_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ccure_user -d pytest_architecture_guards"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Standard library only, so it runs before anything is installed and a
+      # breach fails in seconds.
+      - name: Architecture Guards (stdlib)
+        run: python3 Backend/scripts/architecture/check.py
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python Dependencies
+        id: install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r Backend/requirements.txt
+          pip install "pytest==7.4.4"
+
+      - name: Bootstrap Database Schema & Seeding
+        run: |
+          cd Backend
+          python db/migrate_production_schema.py
+          python -m scripts.seed_compliance
+          python -m scripts.seed_real_rules
+
+      - name: Architecture Guard Tests
+        run: |
+          cd Backend
+          python -m pytest -p no:cacheprovider -q -rfEs \
+            tests/repo \
+            tests/credentialed/test_sudo_password_safety.py \
+            tests/security/test_credential_api_consolidation.py
+
+      # Runs whether or not the tests above passed, as the local script does,
+      # so one push reports both. The harness hands each child interpreter
+      # none of the job's environment (no URLs, keys or settings).
+      - name: Library Isolation Harness (D1)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          cd Backend
+          python -m scripts.architecture.library_isolation

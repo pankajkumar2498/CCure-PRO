@@ -100,6 +100,13 @@
       "reason": "the same request hint on a streaming URL; validated by the backend"
     },
     {
+      "file": "src/modules/audit/components/common/ReportExportPanel.jsx",
+      "line": 144,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
       "file": "src/modules/audit/components/layout/AppLayout.jsx",
       "line": 135,
       "kind": "atom_config",
@@ -123,13 +130,6 @@
     {
       "file": "src/modules/audit/components/scan/ExportPanel.jsx",
       "line": 37,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/components/scan/ReportExportPanel.jsx",
-      "line": 144,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -171,21 +171,21 @@
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 742,
+      "line": 386,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 750,
+      "line": 394,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 754,
+      "line": 398,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -346,7 +346,7 @@
     },
     {
       "file": "src/modules/audit/pages/scan/NewScan.jsx",
-      "line": 825,
+      "line": 826,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"

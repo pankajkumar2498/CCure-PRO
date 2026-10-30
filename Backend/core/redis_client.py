@@ -94,3 +94,20 @@ def publish_notification_sync(user_id: str, event: dict) -> None:
             user_id,
             exc.__class__.__name__,
         )
+
+
+def connect_nmap_lease_client():
+    """
+    A fresh connection for the Nmap wrapper's global process limiter, on the
+    Celery broker. Moved from the wrapper unchanged (G3); the caller pings it.
+    """
+    import redis
+
+    from config import AppConfig
+
+    return redis.from_url(
+        AppConfig.CELERY_BROKER_URL,
+        socket_timeout=3,
+        socket_connect_timeout=3,
+        decode_responses=True,
+    )

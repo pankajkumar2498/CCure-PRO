@@ -160,19 +160,19 @@ pip-audit prints 93 because it lists each advisory twice; the real count is 48.
 `.github/security/pip-audit-accepted.txt` as the pre-existing backlog. They are
 classified as dependency issues needing later remediation, not as safe.
 
-| Package          | Installed | Advisories | Fix                | Note                                                                              |
-| ---------------- | --------- | ---------- | ------------------ | --------------------------------------------------------------------------------- |
-| pillow           | 10.3.0    | 17         | 12.x               | reportlab uses it for images in PDF reports. Major upgrade.                       |
-| python-multipart | 0.0.9     | 7          | 0.0.31             | Parses the two upload endpoints' request bodies.                                  |
-| starlette        | 0.37.2    | 7          | 1.3.1              | Comes with FastAPI; upgrading it means upgrading FastAPI.                         |
-| pyasn1           | 0.5.1     | 4          | 0.6.x              | Held below 0.6 on purpose for pysnmp-lextudio.                                    |
-| cryptography     | 46.0.7    | 4          | 50.0.0             | Held below 48 by sslyze's bound.                                                  |
-| python-jose      | 3.3.0     | 3          | 3.4.0 (1 has none) | JWT signing and verification for authentication.                                  |
-| urllib3          | 2.6.3     | 2          | 2.7.0              | **Paid down.** Pinned 2.8.0 since 7 Oct (`d90bb51`); block removed 9 Oct.         |
-| ecdsa            | 0.19.2    | 1          | none               | Transitive, via python-jose.                                                      |
-| paramiko         | 4.0.0     | 1          | none               | SSH transport for credentialed scanning.                                          |
-| pytest           | 7.4.4     | 1          | 9.0.3              | Installed from `requirements.txt`, so the test runner ships in the runtime image. |
-| python-dotenv    | 1.0.0     | 1          | 1.2.2              |                                                                                   |
+| Package          | Installed | Advisories | Fix                | Note                                                                                          |
+| ---------------- | --------- | ---------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| pillow           | 10.3.0    | 17         | 12.x               | **Paid down.** 13.0.0 since 30 Oct 2026, which also fixes 33 later advisories; block removed. |
+| python-multipart | 0.0.9     | 7          | 0.0.31             | Parses the two upload endpoints' request bodies.                                              |
+| starlette        | 0.37.2    | 7          | 1.3.1              | Comes with FastAPI; upgrading it means upgrading FastAPI.                                     |
+| pyasn1           | 0.5.1     | 4          | 0.6.x              | Held below 0.6 on purpose for pysnmp-lextudio.                                                |
+| cryptography     | 46.0.7    | 4          | 50.0.0             | Held below 48 by sslyze's bound.                                                              |
+| python-jose      | 3.3.0     | 3          | 3.4.0 (1 has none) | JWT signing and verification for authentication.                                              |
+| urllib3          | 2.6.3     | 2          | 2.7.0              | **Paid down.** Pinned 2.8.0 since 7 Oct (`d90bb51`); block removed 9 Oct.                     |
+| ecdsa            | 0.19.2    | 1          | none               | Transitive, via python-jose.                                                                  |
+| paramiko         | 4.0.0     | 1          | none               | SSH transport for credentialed scanning.                                                      |
+| pytest           | 7.4.4     | 1          | 9.0.3              | Installed from `requirements.txt`, so the test runner ships in the runtime image.             |
+| python-dotenv    | 1.0.0     | 1          | 1.2.2              |                                                                                               |
 
 ### npm: 3 advisories, none blocking
 
@@ -180,6 +180,89 @@ classified as dependency issues needing later remediation, not as safe.
 | --------------------------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `react-router` / `react-router-dom` 6.x | moderate | runtime  | Dependency issue; the fix needs a major upgrade to 7.x. The open-redirect advisory needs a navigation target an attacker controls. The only stored-destination navigation (`Login.jsx`) builds its target from router state the app sets itself and a sessionStorage value the app writes, so neither comes from a link. Not exploitable as currently used, as far as inspected. |
 | `js-yaml` 4.0.0–4.3.1                   | high     | dev only | Dependency issue, fix available (`npm audit fix`). It's reached only by build tooling parsing this repository's own YAML.                                                                                                                                                                                                                                                        |
+
+## Triage decisions
+
+Advisories added to the accepted backlog after 24 Sep 2026, each with the
+analysis behind it. An entry here is a decision with a review trigger, not a
+statement that the code is safe in general.
+
+### python-jose: PYSEC-2026-4298
+
+Recorded 30 Oct 2026. It was failing the gate on `master`'s nightly Security
+run and on PR #53's.
+
+- **The advisory.** `PYSEC-2026-4298` (CVE-2026-85394, GHSA-3qf3-8w2g-rqmx),
+  published 15 Oct 2026, CVSS 3.1 9.1. python-jose through 3.5.0 accepts a
+  DER-encoded public key as an HMAC secret: it refuses PEM-armoured and
+  `ssh-` keys but not DER. A verifier that lets the token's `alg` header pick
+  the algorithm can therefore be given an HS256 token signed with the
+  service's public key, which an attacker has from `/auth/jwks.json`. It is an
+  incomplete fix for CVE-2024-33663 (`PYSEC-2024-232`, already accepted). No
+  fixed release exists: 3.5.0 is the latest and is affected.
+- **Where the library is used.** Only `ccure_platform/identity/tokens.py`
+  (signing) and `ccure_platform/identity/verification.py` (verification), in
+  the API and in `gateway-auth`, whose image carries the same
+  `verification.py` and pins the same version
+  (`gateway/token_check/requirements.txt`). Nothing uses JWE.
+- **Why it does not apply here.** The attack needs a verifier that lets the
+  token's header choose HS256. Every verification goes through one of two
+  functions in `verification.py`, and neither does:
+
+  - **`decode`**, behind `verify` and `decode_any_kind`: every bearer, ticket,
+    refresh and MFA check, the WebSocket ticket logins (`decode_token`) and
+    the gateway's `checker.py`. It refuses a token with no `kid` or an
+    unknown one, refuses one whose `alg` is not its key's (`alg_mismatch`),
+    then calls `jwt.decode(..., algorithms=[key.alg])`. A key's `alg` never
+    comes from the token. The API's keyset admits only ES256 P-256 keys
+    (`keys.py`). The gateway's key source (`gateway/token_check/jwks.py`)
+    skips any JWK that is not `EC` / `P-256` / `ES256` and sets
+    `alg="ES256"` itself.
+  - **`verify_service_assertion`**, behind `/auth/service-token`: it refuses
+    any `alg` but ES256, then decodes with `algorithms=["ES256"]`.
+
+  So a forged HS256 token meets three barriers:
+
+  - the `alg` check;
+  - python-jose's algorithm list, which is checked before any key is used;
+  - the key material: both functions hand python-jose PEM text, which its
+    HMAC key guard refuses. The advisory's bypass needs a verifier holding
+    the key as DER bytes.
+
+  The remaining unverified reads (`header_of`, `claims_of`, and the service
+  router's `unverified_*` calls) only extract fields for logs and refusals;
+  nothing they return reaches a decision.
+
+- **Mitigation, proven by tests.** Two tests in
+  `tests/auth/test_token_issuance.py` build the attack with the public key's
+  DER and PEM bytes. The HMAC is computed by hand, so python-jose's key guard
+  is not what stops it.
+
+  - `test_an_hs256_token_keyed_with_the_public_key_is_refused` takes a real
+    access token's claims under the active `kid`. It must be refused by
+    `tokens.verify`, by `tokens.decode_any_kind`, by `verification.verify`
+    over a key source built from the published JWKS as the gateway builds
+    it, and by python-jose with `algorithms=[ES256]`.
+  - `test_an_hs256_service_assertion_keyed_with_the_public_key_is_refused`
+    does the same to a service's client assertion.
+
+  Each path first accepts the genuine ES256 token. Checked by mutation on
+  30 Oct 2026: with the `alg` checks removed and the header's `alg` passed to
+  `jwt.decode`, all four cases fail. With DER key material added as well,
+  `tokens.verify` accepts the DER-keyed forgery, which is the advisory
+  reproduced, and the test fails on it.
+
+- **Decision.** Accept, as `PYSEC-2026-4298` in
+  `.github/security/pip-audit-accepted.txt`, next to the three python-jose
+  entries already there. Upgrading would not help: 3.4.0 and 3.5.0 fix two of
+  those three (`PYSEC-2024-232`, `PYSEC-2024-233`) but not this one, and the
+  move is a separate change to the authentication path.
+- **Review it when:**
+  - python-jose publishes a fixed release;
+  - any verifier stops passing an explicit single-algorithm list;
+  - a symmetric (HS\*) key or algorithm is reintroduced anywhere;
+  - or the decision to stay on python-jose is revisited. It sees few releases,
+    and a maintained JOSE library would retire all four entries.
 
 ## Open actions
 
@@ -195,8 +278,8 @@ Nothing in CI can close these. They need a person.
    the account owner can check this.
 3. **Decide the four accepted risks** above.
 4. **Pay down the Python backlog**, easiest first: python-dotenv,
-   python-multipart and python-jose are patch or minor upgrades (urllib3 is done); pillow,
-   starlette/FastAPI and cryptography are majors, each needing a full backend
-   suite run.
+   python-multipart and python-jose are patch or minor upgrades (urllib3 and
+   pillow are done); starlette/FastAPI and cryptography are majors, each
+   needing a full backend suite run.
 5. **Move pytest out of `requirements.txt`** into a dev requirements file, so
    the test runner stops shipping in the runtime image.

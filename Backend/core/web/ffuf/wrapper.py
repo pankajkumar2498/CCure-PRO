@@ -11,7 +11,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 from core.web.base_wrapper import ToolWrapper
 
 log = logging.getLogger("ccure.web.ffuf")
@@ -70,11 +70,11 @@ class FfufWrapper(ToolWrapper):
         timeout: int = 600,
     ):
         super().__init__(
-            binary_path=binary_path or WebScanConfig.FFUF_BINARY,
+            binary_path=binary_path or web_settings.current().FFUF_BINARY,
             timeout=timeout,
             name="ffuf",
         )
-        self.wordlist = wordlist or WebScanConfig.FFUF_WORDLIST
+        self.wordlist = wordlist or web_settings.current().FFUF_WORDLIST
 
     #: Adaptive content-discovery tiers (Phase 11).
     DISCOVERY_TIERS = ("small", "standard", "deep")
@@ -88,9 +88,9 @@ class FfufWrapper(ToolWrapper):
         brute force there is mostly wasted time; a large surface is where deep
         discovery earns its cost.
         """
-        if endpoint_count <= WebScanConfig.FFUF_SMALL_MAX_ENDPOINTS:
+        if endpoint_count <= web_settings.current().FFUF_SMALL_MAX_ENDPOINTS:
             return "small"
-        if endpoint_count <= WebScanConfig.FFUF_MEDIUM_MAX_ENDPOINTS:
+        if endpoint_count <= web_settings.current().FFUF_MEDIUM_MAX_ENDPOINTS:
             return "standard"
         return "deep"
 
@@ -99,13 +99,19 @@ class FfufWrapper(ToolWrapper):
         """Return (wordlist_path, max_words) for a tier."""
         if tier == "small":
             return (
-                WebScanConfig.FFUF_WORDLIST_SMALL,
-                WebScanConfig.FFUF_MAX_WORDS_SMALL,
+                web_settings.current().FFUF_WORDLIST_SMALL,
+                web_settings.current().FFUF_MAX_WORDS_SMALL,
             )
         if tier == "deep":
-            wl = WebScanConfig.FFUF_WORDLIST_DEEP or WebScanConfig.FFUF_WORDLIST
-            return wl, WebScanConfig.FFUF_MAX_WORDS_DEEP
-        return WebScanConfig.FFUF_WORDLIST, WebScanConfig.FFUF_MAX_WORDS_STANDARD
+            wl = (
+                web_settings.current().FFUF_WORDLIST_DEEP
+                or web_settings.current().FFUF_WORDLIST
+            )
+            return wl, web_settings.current().FFUF_MAX_WORDS_DEEP
+        return (
+            web_settings.current().FFUF_WORDLIST,
+            web_settings.current().FFUF_MAX_WORDS_STANDARD,
+        )
 
     def _is_acceptable_exit_code(self, code: int) -> bool:
         """ffuf returns 0 on success regardless of findings count."""
@@ -204,7 +210,7 @@ class FfufWrapper(ToolWrapper):
             args.extend(["-fc", ",".join(str(c) for c in filter_codes)])
 
         # Rate limiting
-        effective_rate = rate_limit or WebScanConfig.SCAN_RATE_LIMIT
+        effective_rate = rate_limit or web_settings.current().SCAN_RATE_LIMIT
         args.extend(["-rate", str(effective_rate)])
 
         # Extensions

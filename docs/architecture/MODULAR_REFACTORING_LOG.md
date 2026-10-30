@@ -3648,6 +3648,791 @@ The compliance router loads its eight parts and ten renderer modules.
 - **The network pipeline's broker round trip** (G5's §7 row) is still unverified: G6 measured the
   compliance dispatches only.
 
+### F1 — the compliance workspace calls through `api/compliance.js`, and is split by tab
+
+Commits, on top of `f3f602f`:
+
+- `cc5670c` — the workspace's calls go through `src/modules/audit/api/compliance.js`;
+- `38902a2` — the page is split by tab.
+
+**The scope** (analysis §10, "Frontend, in parallel and low risk"): "Compliance calls go through
+an `api/compliance.js` module, and `ComplianceWorkspace.jsx` is split by tab." F2 and F3 are not
+started. The credential calls are still the compliance alias of the vault's API
+(`/compliance/credentials`); moving the screens to one credential API is F3.
+
+#### The API module (`cc5670c`)
+
+The analysis counted 31 direct calls. There were **34**: three more were written as chains
+(`axiosInstance\n  .get(…)\n  .then(…)`) that a one-line search does not see — the marketplace's
+active-framework read on mount, the dashboard's per-framework summaries, and the credential list
+the remediation dialog loads. All 34 go through 29 functions, each sending the method, path,
+query, body and config the page sent, built the same way: a one-argument `post` stays
+one-argument, the multipart header and `responseType: "arraybuffer"` are the module's, and the
+exception decision still encodes its id. The workspace tests assert the requests on the wire
+(`expect(api.post.mock.calls).toEqual(…)`) and passed unchanged.
+
+`ComplianceWorkspace.api.test.js` keeps the HTTP client out of the page and its tab parts.
+Mutation: an `axiosInstance` import put back into the page fails it.
+
+#### The split (`38902a2`)
+
+The page went from 5,183 lines to **3,040**. What moved, verbatim, to
+`src/modules/audit/components/compliance/workspace/`:
+
+| Part                           | Lines | Props | What it is                                                   |
+| ------------------------------ | ----- | ----- | ------------------------------------------------------------ |
+| `ComplianceDashboardTab.jsx`   | 476   | 26    | the Dashboard tab                                            |
+| `ComplianceMarketplaceTab.jsx` | 134   | 8     | the Marketplace tab                                          |
+| `CompliancePoliciesTab.jsx`    | 249   | 8     | the Policies tab                                             |
+| `ComplianceControlsTab.jsx`    | 211   | 8     | the Controls tab                                             |
+| `ComplianceFindingsTab.jsx`    | 328   | 21    | the Findings tab                                             |
+| `ExceptionsPanel.jsx`          | 175   | —     | the Exceptions tab, already a component in the page          |
+| `ComplianceCredentialsTab.jsx` | 294   | 24    | the Credentials Manager tab                                  |
+| `ComplianceApprovalsTab.jsx`   | 378   | 14    | the Approvals Queue tab                                      |
+| `shared.jsx`                   | 230   | —     | score bands, theme labels and badges, and the paging control |
+
+The Schedules tab was already its own component (`ComplianceSchedules.jsx`) and is rendered as it
+was.
+
+**The page keeps the state, the requests, the handlers and the dialogs.** The dialogs are opened
+from several tabs (an attestation from Controls and Findings, a rule edit from Policies and
+Findings), so they belong to the page that owns the state they share. A tab is a function of
+its props and holds no hook; the page renders it under the same `activeTab` condition, in the
+same place, so the DOM is the one it was. `useId` values do not move either: React 18 numbers
+them in mount order on the client, and a component that calls no hook adds none.
+
+**The stylesheets stay imported by the page**, in the order they were, so the bundle's CSS order
+and the cascade are unchanged.
+
+**How the props were chosen.** A script parsed the page (`espree`, `eslint-scope`) and, for each
+tab's JSX, listed every name it reads that the component's scope defines (a prop) or the
+module defines (an import, or a helper moved to `shared.jsx`). JSX element names are not
+references to `eslint-scope`, so they were collected from the tree. ESLint then checked the
+result with `no-undef`, `react/jsx-no-undef` and `no-unused-vars` on: nothing undefined, nothing
+unused, in the page or any part. The unused imports the page was left with were removed the
+same way.
+
+**Prettier re-wrapped three labels, and the browser saw it.** At the tabs' shallower indentation
+Prettier joined text it had split before: `Download{" "}` / `{reportFmt.toUpperCase()} Report`
+became `Download {reportFmt.toUpperCase()}{" "}` / `Report`, and `Rule Code:{" "}` and
+`Target Host:{" "}` became `Rule Code: ` and `Target Host: `. The words are the same, but React
+renders each JSX child as its own text node, so the nodes were not (`" Download"`, `" "`, `"PDF"`,
+`" Report"` became `" Download "`, `"PDF"`, `" "`, `"Report"`), and how Chrome draws a label
+depends on how it is split. The harness's first after-capture showed it: 42 pixels of the
+dashboard's "Download PDF Report" button, on the "Re", in every dashboard and gap-analysis state, by up to
+57 levels, and in no capture of the same build twice. The three labels now write their text
+pieces as string children (`{"Rule Code:"}`, `{" Download"}`, `{" Report"}`), which Prettier
+cannot merge with the whitespace beside them, and the nodes are the page's again.
+
+The harness's DOM comparison did not catch this: it records an element's text as a hash of the
+content, not of its nodes. A token comparison did, once written: each moved block before and
+after, through `espree`'s tokenizer, with JSX text reduced the way the JSX transform reduces it and a string
+literal alone in braces read as the text child it is. All seven tabs, `ExceptionsPanel` and the
+five shared helpers are identical under it, and so are the page's unmoved regions (the
+component body, the panel's other children, the dialogs, and the module-level code left in
+place). Putting one of the joined labels back makes it fail.
+
+**The tests that read the source.** Six workspace tests sliced a tab's markup out of the page by
+its `{activeTab === "…" && (` marker and asserted on it (design-system parts only, no inline
+style, no hand-built control). They now read the tab's own file and assert that the page
+renders the tab at that marker; the dialog slices and the stylesheet checks are unchanged.
+
+#### Verification
+
+All on the final code unless named.
+
+- **The workspace's tests**, the eight files that render it and assert its requests, the API
+  guard and the module-boundary test: 10 files, 271 tests passed. `vitest related` over the
+  changed files, before the label fix: 10 files, 289 passed.
+- **The full frontend unit suite**, which the CI selector asks for because the authorization
+  inventory changed: 123 files, **3,187 passed**, 0 failed.
+- **Lint and the UX4G gates:** `npm run lint`, `ux4g:check -- --dependencies-only`,
+  `ux4g:architecture`, the build with `VITE_API_BASE_URL=/api` (its two runs byte-identical),
+  `ux4g:verify`, `ux4g:check -- --dist` and the authorization inventory's `--check`: all pass.
+- **The backend groups the selector names**, `tests/repo` and `tests/security`, in throwaway
+  containers (`scripts/ci/local_guard_tests.sh`): **1,145 passed**, 1 skipped
+  (`test_alembic_module_branches`, which skips where `alembic.ini` is already activated).
+- **The token comparison** above: the seven tabs, `ExceptionsPanel`, the five shared helpers and
+  the page's unmoved regions identical; the mutation caught.
+- **The browser, before and after.** The UX4G harness built `cc5670c` and the split as
+  production images and captured the 55 compliance states (95 captures, light and dark where a
+  state has both) twice each, with every request answered from fixtures. No capture showed a
+  refused write, an unstubbed read, an off-origin request, a CSP report or a page exception.
+  Before against after, in all four pairings, every category but the screenshot (accessible
+  names, roles, ARIA states, text, classes, computed styles, element boxes, contrast, tab order,
+  requests among them) identical in every capture; 88 to 93 of the 95 screenshots identical.
+  Every screenshot that differs differs in the same 25 × 4 px of the header (x 1323–1348,
+  y 18–22), in the light theme, by at most 6 levels, and the same area differs between two
+  captures of one build (4 captures before, 5 after), so it is the environment, not the change.
+  The first after-capture also differed in the download button (above); the second did not.
+
+#### What is left
+
+- **The page is still 3,040 lines**, about 760 of them the dialogs. F1 split it by tab, as
+  planned; splitting the dialogs out is a further step, if wanted (§7).
+- **The prop lists are long** (26 for the dashboard, most of them the report's scoping filters
+  and their setters). They are what the markup reads; grouping them would change the tabs' interfaces and was not F1's
+  business.
+- **The harness's determinism gate does not pass on this VM.** Two captures of one build
+  differ in 4 or 5 of 95 screenshots, always in the header area above. The gate was read with
+  that recorded rather than loosened (§7).
+- **`npm run test:browser` was not run.** The selector reports `browser: false` for these files;
+  the harness covered the compliance states instead.
+- **`AppLayout.test.jsx` is intermittent.** One test failed in about one run in three on its own
+  while this was verified; it imports nothing F1 changed, `vitest related` does not select it,
+  and it passed in the full run (§7).
+
+### F2 — scans and credentialed results meet only in Audit's shared layer
+
+Commit `2a055e1`, on top of `8b27a7a`.
+
+**The scope** (analysis §10): "`ScanContext` moves out of the shared layout's imports, and the
+components shared by scans and credentialed results move to Audit's shared layer." §7.3 measured
+it as "scans ↔ credentialed import each other; the shared layout imports `ScanContext`".
+
+**What was coupled.** `components/layout/` held `ScanStepper`, the one layout file that read
+`ScanContext`; only the three phase-results pages use it. `components/scan/` held two kinds of
+file besides the scan screens' own: two components both features use, and seven sections only
+`CredentialedResults` renders (one of them, `FindingsListSection`, says it was extracted from
+that page). So the credentialed page imported eight files from the scans feature's folder.
+
+**What moved**, by use rather than by name, each with `git mv`:
+
+| File                                                                                                                                                                     | From      | To                    | Used by                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | --------------------- | --------------------------------------- |
+| `ScanStepper`                                                                                                                                                            | `layout/` | `scan/`               | the three phase-results pages           |
+| `ReportExportPanel`                                                                                                                                                      | `scan/`   | `common/`             | `ScanComparison`, `CredentialedResults` |
+| `RiskBadge`                                                                                                                                                              | `scan/`   | `common/`             | `ScanHistory`, `CredentialedResults`    |
+| `ConfigAuditSection`, `FindingsListSection`, `FindingEnrichment`, `PackageCoverageSection`, `PackageInventorySection`, `ScanPolicySnapshot`, `SuppressedFindingsSection` | `scan/`   | `credentialed/` (new) | `CredentialedResults` only              |
+
+`scripts/audit/manifests/field_coverage.json` already listed the seven sections as the
+credentialed renderers. `RiskBadge` keeps its deprecation: it is the adapter its header says it
+is, now in the folder its two consumers share. Seven test files moved with their components;
+`Phase1RealResponse.test.jsx` exercises only credentialed sections, with the credentialed
+fixture, so it went with them.
+
+**Nothing else changed in the files**: seven moved byte-identical, and `ScanStepper` and
+`RiskBadge` differ only in the path their header names. **The production bundle is
+byte-identical before and after** — every file in `dist/`, compared by content — so nothing the
+browser receives changed, and no harness capture was needed to show it.
+
+**What still crosses.** The credentialed screens call the scan APIs (`api/scans.js` for the scan
+record, `api/scanPolicies.js` for the policy snapshot). Those are the HTTP boundary, not the scans
+feature, and the guard allows them.
+
+**The guard**, `src/__tests__/modules/audit/featureBoundaries.test.js`: the shared layout
+imports no scan state, no feature component and no page; the credentialed screens and
+`components/credentialed/` import nothing of the scan screens, `components/scan/` or
+`ScanContext`; and the reverse. Each of the three rules fails its mutation (a `ScanContext`
+import in `AppLayout`, `ExportPanel` in `CredentialedResults`, `ConfigAuditSection` in
+`ScanHistory`). Audit's README describes the folders.
+
+#### Verification
+
+- The full frontend unit suite before the guard was written: 123 files, **3,187 passed**, the
+  same counts as before the move (the tests moved; none was lost). The guard's 4 tests pass, and
+  F3's full run below includes them.
+- Lint, `ux4g:check -- --dependencies-only`, `ux4g:architecture`, the build with
+  `VITE_API_BASE_URL=/api`, `ux4g:verify` (byte-identical over two runs) and the authorization
+  inventory's `--check` (one entry moved with `ReportExportPanel`): all pass.
+- The bundle comparison above.
+- Backend, in throwaway containers: the selector's `tests/repo` and `tests/security`, plus
+  `tests/reports/test_report_field_coverage.py`, which reads the manifest the move edited and the
+  selector does not name: **1,200 passed**, 1 skipped (`test_alembic_module_branches`, which
+  skips where `alembic.ini` is already activated).
+
+### F3 — the credential screens use one API
+
+Commit `debf8c1`, on top of `2a055e1`.
+
+**The scope** (analysis §10, after S2): "The credential screens use one API." S2 left the backend
+with one credential service and one permission set, and kept `/compliance/credentials` as an
+adapter over it for "the three screens [that] still call [it]": the scan setup
+(`NewScan.jsx`), the credentialed scan (`CredentialedScan.jsx`) and the compliance workspace
+(its Credentials Manager tab and its remediation dialog). `ScanCredentials.jsx` already used
+`/credentials`.
+
+**What changed.** All three read and write through `api/credentials.js`, the credential store's
+client: `listCredentials()`, `createCredential()`, `deleteCredential()`. `api/compliance.js`
+loses its three credential functions. No frontend source names `/compliance/credentials`
+any more.
+
+**What the screens now send and read.** The rows are the same — both routes list through
+`credential_vault.list_for_org` with no type filter, and the screens read only `id`, `name`,
+`username`, `port` and `auth_method`, which both carry. The differences are the store's
+contract:
+
+- **The list** arrives as `{credentials, total}` instead of a bare array; the screens read
+  `credentials`.
+- **Create** sends the store's body: `credential_type: "ssh"` (what the alias created by
+  default), `private_key` instead of `key_content`, the unused secret omitted rather than null,
+  and `domain: null` and `options: {}`. Both routes create through `credential_vault.create`.
+- **Refusals** carry the store's wording: a duplicate name is 409 "A credential named 'x'
+  already exists." where the alias answered 400 "A credential with this name already exists".
+  The workspace prints whatever `detail` says, so the toast follows.
+- **Delete** answers `{success, id, name, schedules_affected, note}`. The workspace still says
+  "Credential deleted successfully." and does not show the note (§7).
+
+**One behaviour changes, in the right direction: the organisation.** The alias always acted in
+the user's home organisation — it never read the `org_id` the client sends with every request
+(`resolve_active_organisation(user)`). A superadmin switched into another organisation was
+offered, and could create and delete, the home organisation's credentials, while the scan the
+picker fed ran in the switched one. `/credentials` resolves the requested organisation like
+every other Audit route, so the screens now show the credentials of the organisation they are
+in. For anyone not switched, nothing changes.
+
+**The alias stays.** Its routes, shapes and tests are unchanged; only its comment, which said
+three screens still call it, is corrected (same line count, so the RBAC migration inventory is
+unchanged). Retiring it is decision D-3 (§7).
+
+**The tests.** Seven test files followed the screens: the five workspace files, `NewScan`'s
+contract test and the credentialed-scan test now mock `/credentials` with the store's envelope
+and assert its body and paths. The UX4G harness's fixtures and the Playwright catalogue serve
+`/credentials` for these screens; the catalogue's alias stub, now reached by nothing, is gone.
+`src/__tests__/modules/audit/credentialApi.test.js` keeps it so: nothing names
+`/compliance/credentials`, and only `api/credentials.js` names `/credentials`. Both rules fail
+their mutation.
+
+#### Verification
+
+- **The affected tests**: the five workspace files, `NewScan`'s contract test, the
+  credentialed-scan test and `ScanCredentials`' tests: 13 files, 427 tests, all passing once
+  `NewScan`'s read allow-list named `/credentials` (8 failed until then, all on that check).
+- **The full frontend unit suite**, which the selector asks for because the authorization
+  inventory moved (one `NewScan` site, by a line): 125 files, **3,193 passed**, 0 failed — F2's
+  and F3's guards included.
+- **Lint and the UX4G gates**: `npm run lint`, `ux4g:check -- --dependencies-only`,
+  `ux4g:architecture`, the build with `VITE_API_BASE_URL=/api`, `ux4g:verify` (byte-identical over
+  two runs) and the inventory's `--check`: all pass.
+- **Backend**, in throwaway containers: the selector's `tests/compliance`, `tests/repo` and
+  `tests/security` (for the router comment), plus `tests/credentialed/test_auth_methods.py`, which
+  pins `/credentials`' contract the screens now depend on (`tests/security/` holds the alias's
+  consolidation tests): **1,462 passed**, 1 skipped (the same `alembic.ini` skip).
+- **The browser, before and after.** The UX4G harness built `2a055e1` and F3 and captured the
+  compliance workspace's and the scan setup's states (114 captures each), each with its own
+  commit's fixtures. Every capture ready in both; none with an unstubbed read, a refused write,
+  an off-origin request, a CSP report or an exception. In 23 captures the requests differ, and in
+  every one the difference is the same single swap — `GET /api/compliance/credentials?org_id=o-1`
+  out, `GET /api/credentials?org_id=o-1` in — with the count unchanged. In 5 the screenshot
+  differs, all in the header's noisy area recorded under F1 (four at x 1323–1348, one at
+  x 326–352 on the phone-width mission view, where the same element sits), by at most 6 levels.
+  Every other category is identical in every capture.
+
+#### What is left
+
+- **The workspace does not show the store's delete note** ("N schedule(s) referenced this
+  credential and will now fail …"), which Scan Credentials can; the alias never sent one (§7).
+- **The scan setup's empty state still points to Compliance** to register a credential, though
+  the credential store's own page is Scan Credentials (§7).
+- **The workspace's credential buttons are still gated on `manage_frameworks`** — the §7 row
+  from S2, unchanged by F3, which moved the calls and not the gates.
+- **`npm run test:browser` was not run**; the selector reports `browser: false`. The Playwright
+  catalogue's stubs were changed with the screens and are exercised only by that suite.
+
+### Group 1 — D1 and E2: the engine libraries, isolated and pinned
+
+**The scope** (analysis §10, Phases D and E; the grouped plan's Group 1): D1's harness for
+the libraries that should already pass, and E2's forbidden-package pin for the same set.
+
+**D1 — `Backend/scripts/architecture/library_isolation.py`.** `LIBRARIES` declares eight
+libraries: each one's entry points, the first-party module prefixes and the third-party
+packages it may use, and its existing tests. Each is checked twice, each time in a fresh
+interpreter started with `-P`, holding no settings, database URL or credentials and only
+the parent's package directories on its path:
+
+- **import:** every first-party import is checked against the declaration. Afterwards
+  nothing undeclared may be in `sys.modules`, nothing first-party may have loaded from
+  outside the checkout (the backend image also carries its baked `/app`), and none of
+  SQLAlchemy, FastAPI, Celery or Redis may have loaded, whoever imported it;
+- **exercise:** its existing tests run under pytest without `tests/conftest.py`. The tests
+  may import anything; every import the library's own code makes is checked. The guard
+  sits on `builtins.__import__` as well as `sys.meta_path`, because a module the tests
+  already loaded is answered from `sys.modules` without asking any finder.
+
+A refused import raises `ImportError` and is recorded, so a library that catches it and
+carries on still fails.
+
+**E2 — `capability_map.library_problems`.** Every declared entry point's load profile may
+hold none of `FORBIDDEN`. The ratchet runs it on the tree, and `--write-baseline` refuses
+a measurement that breaks it, so unlike a load-profile ratchet entry no rewritten
+baseline admits one. The ceilings are unchanged.
+
+**Not declared, deliberately:** the port and network-check engines, the nmap wrapper,
+the version matcher and the topology engine. Each loads a forbidden package (§12.1) and
+joins in Group 3. Nothing exempts them.
+
+**Integration.** `scripts/ci/local_guard_tests.sh`, with its default set, runs the harness
+after pytest in the backend image, with no network and the staged checkout read-only.
+
+#### Results
+
+| Library           | First-party modules loaded | Its tests in isolation                                                       |
+| ----------------- | -------------------------: | ---------------------------------------------------------------------------- |
+| `ssh_transport`   |                          3 | `test_sudo_password_safety.py`: 44 passed                                    |
+| `winrm_transport` |                          4 | `test_windows_winrm.py`, its transport tests by name: 15 passed              |
+| `smb_transport`   |                          4 | `test_smb_transport.py`: 63 passed                                           |
+| `config_audit`    |                         23 | `test_config_audit_engine.py`, `test_config_audit_collectors.py`: 106 passed |
+| `scap_compiler`   |                         32 | `test_scap_parsers.py`, `test_scap_evaluation.py`: 100 passed                |
+| `check_kernel`    |                          8 | `test_check_framework.py`: 32 passed                                         |
+| `renderers`       |                         16 | `test_export_workbook.py`, `test_report_integrity.py`: 76 passed             |
+| `discovery`       |                         17 | `test_host_identity_precedence.py`, `test_ot_probes.py`: 39 passed           |
+
+No library fails isolation, and no import was refused. The module counts equal the static
+closures `import_graph` computes, so the real imports and the static measurement agree.
+
+The first run's one failure was test selection, not the library: 16 tests in
+`test_windows_winrm.py` exercise the credential API, its validation and its audit trail
+through `conftest`'s database fixtures. The declaration now names the file's transport
+tests (`TestWinRMConfiguration`, `TestWinRMThreadSafety`, the shell-type test).
+
+#### Verification
+
+- `scripts/ci/local_guard_tests.sh`, default set, in `ccure-audit-pro-backend:latest`:
+  `tests/repo`, the sudo-password tests and the credential-API tests **970 passed, 0 failed,
+  1 skipped** (the `alembic.ini` rehearsal); the harness **8 isolated, 0 failed**; exit 0.
+- `tests/repo/test_library_isolation.py` (12 tests, inside that run), the mutations among
+  them:
+  - **SQLAlchemy in an engine:** appended to `core/config_audit/engine.py`. E2 names it
+    from the load profiles, and D1 refuses it in a copy of the source.
+  - **`config` in discovery:** appended to `core/discovery/engine.py`; D1 refuses it. E2
+    cannot see this one: discovery already loads the `infra` capability.
+  - Each D1 mutation runs on a copy that passes first, so a pass is not vacuous.
+  - A baseline recording a forbidden package still fails the ratchet.
+  - A library's lazy import of a module its tests already loaded is still refused.
+- `capability_map --check` and the `architecture-guards` hook: hold.
+
+#### What is left
+
+- **D1 vouches only for the paths its tests reach.** Discovery's tests never run ARP, the
+  path that lazily imports `core.oui_lookup` and through it `db.models` (log §7, from B3).
+- **The harness runs locally only** until CI runs again (D-5; Group 5).
+- **Five engines join in Group 3.**
+
+### Group 2 — the dashboard and the report routes read through their owners (C7's remainder)
+
+Commits `b6db6f7` (the golden, before the change) and `0687924` (the change), on top of
+`a019399`.
+
+**The scope** (analysis §10, C7; the grouped plan's Group 2): the read side G6 left — the
+dashboard's 17 routes and the three report routes — reads each capability through that
+capability's own lower-layer read module; `routers.reports` stops importing `scan_helpers`;
+and the executive compliance PDF, the one document still drawn inside a route, becomes a
+renderer.
+
+#### Before the change: the API golden extended
+
+`Backend/scripts/verification/api_golden/` (`b6db6f7`) now drives, besides everything G6
+drove:
+
+- **all 17 dashboard routes** in both organisations, and 26 variants: every window, limit
+  and severity filter, every web drill-down filter and page, an invalid date and an
+  out-of-range window;
+- **the three report routes:** download in every format and alias for four scans (a
+  credentialed audit, a basic scan, an unreachable one and an asset discovery), a bad
+  format and a missing scan; the export in every format and dataset, with severity,
+  verdict, scope, baseline and organisation filters, and its four refusals; deleting a
+  scan's reports, then the download that regenerates them.
+
+The restored copy held no discovered endpoints and no HTTP security details, and its web
+findings carried no OWASP category, tool or verification, so the golden seeds them: a recent,
+a running and an other-organisation web scan, six web findings, six endpoints (distinct
+timestamps, so no ordering rests on a tie) and three HTTP detail rows. The report routes
+authenticate with a ticket or a bearer token (`current_user_flexible`), overridden like the
+bearer dependency; they write into a directory of the run's own, since the stored report
+files are not in the checkout and the first download of each regenerates it.
+
+Two captures of `a019399` were byte-identical (855 files) once two things were fixed in the
+golden: an endpoint row's `updated_at` defaulted to the server clock, and a workbook's file
+digest carried each zip entry's write time (the files are now recorded member by member, as
+the responses already were).
+
+#### The change (`0687924`)
+
+| Read                                                  | Was                                         | Now                                                                                |
+| ----------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Findings, services, TLS and HTTP details (17 queries) | the dashboard, joining the asset model      | `core/findings/summaries.py`, scoped through the host port `core.findings.hosts`   |
+| Assets and the change log (14 queries)                | the dashboard; the export's lifecycle dates | `core/asset_reads.py`                                                              |
+| Scan records (6 queries), a scan's stored phases      | the dashboard; `reporting.exports`          | `scans/reads.py`                                                                   |
+| Web scans, findings and endpoints (16 queries)        | the dashboard                               | `core/web/reads.py`                                                                |
+| The export lookup (`_scan_for_user`)                  | `routers/reports.py`                        | `scans.scan_access.report_scan_or_404`, moved unchanged; the router keeps the name |
+| What a report says about its scan                     | `scan_helpers`                              | `scans/report_context.py`, moved unchanged; `scan_helpers` re-exports every name   |
+| Recording and clearing a scan's report paths          | the report routes, by attribute             | `scans.reads.record_report_paths` / `forget_report_paths`                          |
+| The executive compliance PDF                          | drawn in the route                          | `reporting/compliance/executive.py`; the route keeps its two queries               |
+
+Every query is moved unchanged but for the host port, so a response is byte for byte what it
+was. The routers keep routing, permissions, organisation resolution and the arithmetic that
+shapes each response; every route's docstring, which is its OpenAPI description, is
+unchanged. The writes of a scan's report paths were not counted by the ratchet (an
+attribute assignment is a reference), and went through the owner anyway, as G6 did for the
+findings → assets write.
+
+#### Verification
+
+- **The API golden, `a019399` against `0687924`:** byte-identical in all 855 files — every
+  response (the 20 new routes' included), every report file (8 PDFs, 9 CSVs and 5
+  workbooks, member by member), every broker message, every table, and every query plan:
+  scoping through the host port's subquery gives the same plans as the join to the asset
+  table did.
+- **Golden mutations**, one scratch commit (`3ed72b5`, on no branch): the web drill-down
+  without its organisation filter, the finding-status counts without theirs, and a label in
+  the moved executive PDF. All three caught: 9 responses and 13 plans differ — the
+  executive report's digest, risk-breakdown in both organisations, and the web drill-down in
+  both organisations and four variants (the other variants' filters already confine them to
+  one organisation's rows, so only their plans moved).
+- **Interfaces**, `interface_snapshot` in the backend image, `a019399` against the change:
+  identical — routes, limiter keys, the OpenAPI digest, the task registry and beat.
+- **Tests:** the selector's 14 groups (assets, audit, audit_boundary, auth, compliance, credentialed, modules, rbac, repo, reports, scans, security, topology, web) on `0687924`, in throwaway containers: **8,271 passed, 0 failed, 211 skipped** (18 min). The skips are the environment ones every run on this branch has: the DBA-installed audit chain and retention, the live OSV feed, the Alembic rehearsal. A first run was cut off at 44% when its session ended, clean until its database container went with the session; it was rerun whole. No frontend file changed (the selector: frontend none).
+- **The ratchet:** foreign-table references 46 → 32 (the dashboard's 11, the reporting
+  capability's 3); the ceiling is lowered, the baseline rewritten (14 entries removed, none
+  added). Cycles, upward and lateral edges, writes and load profiles are unchanged.
+  `tests/repo/test_compliance_router_split.py` counts 21 generators (20 from G6, the
+  executive report's from G2).
+
+#### What is left
+
+- **Neither capability is in a cycle, and both now meet their §12 foreign-table targets:**
+  the dashboard and reporting reference no foreign table. Reporting's §12 row also asks
+  that the renderers be in no cycle; they are still in the 4-capability cycle through
+  `ccure_platform.audit_log.export` (log §7, from B7).
+- **The routers still hold ORM rows** the read modules return — a `Scan`, an `Asset`, a
+  `WebFinding` — rather than views. Converting them is a change to the renderers and the
+  exports, which take the same rows.
+- **§12.1** is the dated E4 measurement and is not regenerated here.
+
+### Group 3 — E1 and the rest of E2: the engine boundaries
+
+Commit `a9e7859`, on top of `fabcd57`.
+
+**The scope** (analysis §10, Phase E; the grouped plan's Group 3): the six boundary changes
+approved from §7, then E1's layer rules and E2 for the remaining scan engines, without
+weakening any ceiling.
+
+#### The six changes
+
+| Change                                                    | What moved                                                                                                                                                                                                                                                                                                                                                                           | Behaviour                                                                                                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OUI lookup and device classification into the scan kernel | `core.oui_lookup` and `core.device_classifier` reclassified; the lookup's four reads and writes of `mac_vendor_cache` behind a port, `register_vendor_cache`, answered by `core/mac_vendor_cache.py` (assets) and registered by `ccure_audit/vendor_cache.py`                                                                                                                        | Unchanged. With no cache registered the shared tier fails inside the same `try` blocks, with the same warning, as an unreachable database always did |
+| `routers.credentialed` reclassified                       | `"routers.credentialed": "scans"` in the capability map                                                                                                                                                                                                                                                                                                                              | Metadata only                                                                                                                                        |
+| Scheduling validation through the kernel                  | `validate_scan_targets` and its helpers moved verbatim to `core/scan_targets.py`; `scan_helpers` re-exports them; the dispatcher and the schedule API ask the kernel                                                                                                                                                                                                                 | Unchanged                                                                                                                                            |
+| The CVE client out of `core.utils`                        | `lookup_cve` moved verbatim to `engines/vulnerability/cve_lookup.py`; the client is made by `cve_database()` at the first lookup, once, under a lock                                                                                                                                                                                                                                 | **The vulnerability database is first contacted at the first CVE lookup, not when `core.utils` is imported** (the trade §7 named)                    |
+| The topology port                                         | `core/topology/directory.py`: assets of an organisation, one asset, enrolment, a scan's targets and the scan; the asset registry answers (`core/topology_assets.py`) and the scans capability (`scans.reads`); `ccure_audit/topology_directory.py` registers them. The topology API reads its scan there too                                                                         | Unchanged; a process without the directory raises `TopologyDirectoryMissing`, as the host directory does                                             |
+| Injected Redis lease and CVE repository                   | The Nmap wrapper's lease and cache clients are registered callables (`connect_nmap_lease_client` moved to `core.redis_client`); the version matcher takes a `CveRepository` — engine, SQL construct, errors — or the registered `core/vuln_intel_repository.py`; both registered by `ccure_audit/engine_ports.py`. The matcher's two pure query helpers moved to `core.vuln_scoring` | Unchanged. Unregistered, the Nmap limiter is local and its cache off, as with Redis unreachable; the matcher refuses to start without a repository   |
+
+The registrations are three new names in Celery's `imports`, which the worker loads at start-up
+and `main.py`, the live harness and the goldens load through `import_default_modules()`.
+
+#### The rules
+
+Stated in `capability_map.py` over capabilities, not in `layer_rules.py` over module prefixes,
+and absolute like E2 (`layer_rule_problems`; the ratchet runs it and `--write-baseline`
+refuses a breach):
+
+- **engines-are-libraries, widened to every layer-3 module:** no module of a layer-3
+  capability imports a higher layer. The module rule could not simply be widened: a layer-3
+  capability's modules sit in several packages, and web DAST and topology legitimately use the
+  database layer for their own tables, which the module rule forbids as `db`.
+- **`scan_helpers` is the scans capability's:** nothing else imports it but `main`.
+- **The platform loads no Audit model:** a platform entry point loads only infra, the platform
+  and contracts.
+- **E2, the rest:** `PINNED_ENGINES` — the port and network-check engines, the Nmap wrapper and
+  the version matcher — load none of SQLAlchemy, FastAPI, Celery or Redis. They are not D1
+  libraries: each reads the settings module at import, which the harness does not admit.
+
+#### Measured
+
+| Figure                                | Before (`fabcd57`) | After (`a9e7859`) |
+| ------------------------------------- | -----------------: | ----------------: |
+| Largest capability cycle, all imports |                 11 |                 6 |
+| Largest capability cycle, top-level   |                  5 |                 3 |
+| Upward edges                          |                 18 |                 7 |
+| Lateral edges                         |                 29 |                28 |
+| Foreign-table references              |                 32 |                30 |
+| Foreign-table writes                  |                  5 |                 4 |
+
+Every ceiling is lowered to the figure; the baseline is rewritten and gained no entry.
+Discovery, the network checks, the credentialed audit, the credential vault and topology left
+the cycle, which is now assets, compliance, findings, scan policy, scans and scheduling.
+
+| Entry point's load profile                   | Before                                | After                   |
+| -------------------------------------------- | ------------------------------------- | ----------------------- |
+| `engines.port.port_engine`                   | nmap, redis, scapy, sqlalchemy        | nmap, scapy             |
+| `engines.vulnerability.vulnerability_engine` | scapy, sqlalchemy; the asset registry | scapy                   |
+| `core.nmap.wrapper`                          | nmap, redis                           | nmap                    |
+| `engines.credentialed.vuln_matcher`          | sqlalchemy                            | nothing pinned          |
+| `core.topology.engine`                       | sqlalchemy; 11 Audit capabilities     | sqlalchemy; infra alone |
+
+#### Verification
+
+- **The CVE client's first use**, `tests/scans/test_cve_lookup_first_use.py`: importing the
+  lookup, `core.utils`, the port engine or the network-check engine, in a fresh interpreter,
+  loads neither `core.cve_database` nor SQLAlchemy; the first lookup builds the client and the
+  second reuses it (one build); an empty query builds nothing; without the database module the
+  hint table answers.
+- **The rules**, `tests/repo/test_engine_layer_rules.py`: they hold; each fails on a mutated
+  measurement and on a mutation of the source in a copy of the tree (an asset model imported by
+  discovery, `scan_helpers` imported by the dispatcher, Redis imported by the port engine); a
+  rewritten baseline admits no breach; the three registrations load in the worker and the API.
+- **The ports**, one test file each (the vendor cache, the Nmap shared state, the CVE repository,
+  the topology directory): what answers when registered, what happens when not, and that a
+  second registration is refused.
+- **The pipeline golden**, `fabcd57` against `a9e7859`, on the findings golden's restored server
+  (the 22 Oct 20:17 dump): byte-identical, 20 files — every hand-off, dispatch, progress frame
+  and stored phase, the topology check included.
+- **Interfaces**, `interface_snapshot` in the backend image: identical — routes, limiter keys,
+  the OpenAPI digest, every task's queue, limits, options and signature, and beat.
+- **D1**, the isolation harness in the image: 8 isolated, 0 failed.
+- **The live pair:** `scripts/validation/live_scan.sh`, `fabcd57` against `a9e7859`, the same target instances: both runs exited 0, passed the secret check and revoked their throwaway credentials. **Identical apart from time** (`compare_live_scans.py`): the unauthenticated audit's 7 findings and 13 frames; the credentialed pipeline audit's, the standalone host audit's and the database audit's verdicts (86, 86, 49); the cancelled sweep; 4 assets, 5 services and 13 findings after the concurrent scans; and all ten rescans' classifications and remediation events (4 verified and 2 reopened on the host audit). That covers discovery (the OUI lookup through its port), the port and network-check engines (the CVE client built at the first lookup), the Nmap wrapper (its lease and cache handed in) and the version matcher (its repository handed in), run as the worker runs them.
+- **Tests:** the selector's 13 groups (assets, audit, audit_boundary, auth, compliance, credentialed, modules, repo, reports, scans, security, topology, web) on `a9e7859`, in throwaway containers: **7,700 passed, 2 failed, 210 skipped** (18 min). Both failures were one test fixture, `tests/credentialed/test_osv_source_binding.py`, which builds the matcher without `__init__` and so lacked the SQL construct the repository now provides; set the way `test_platform_scope.py`'s is, `tests/credentialed` passes whole (**512 passed, 0 failed**). The skips are the environment ones (the DBA-installed audit chain and retention, the live OSV feed, the Alembic rehearsal). Before that, the changed boundaries' own tests and every existing file pinning them: 1,427 passed, then 79 after five test-side fixes (a parse cache in the new rule test; a background fetch writing twice; a text search matching a variable; the scoring module's stdlib allow-list gaining `re` and `collections`; the platform-scope fixture). No frontend file changed.
+
+#### What is left
+
+- **The topology engine is not E2-pinned.** It writes `network_links` and builds the graph from
+  them through SQLAlchemy; pinning it needs that persistence split from the inference, a change of
+  its own. Its load profile fell from 11 Audit capabilities to infra alone.
+- **The four pinned engines are not D1 libraries.** Each reads `config` at import; admitting them
+  means handing them their settings, which is D2's problem for web DAST too (Group 4).
+- **Seven upward edges remain**, none from layer 3: the platform's audit-log export into the
+  renderers (§7, from B7); the scan model read by the findings comparison, the assets router, the
+  scan-policy router and the asset syncer (with `scans.db_text`); and the dispatcher's
+  `scans.db_helpers.create_scan` — scheduling still creates scan rows through the persistence
+  helper, not the scan-creation service (§12's scheduling row).
+- **The E1 rule lives in the capability map, not `layer_rules.py`** (above); the module rule
+  `engines-are-libraries` is unchanged.
+
+### Group 4 — D2: the web DAST reuse pilot
+
+Commit `dda5c56`, on top of `9dc40dc`.
+
+**The scope** (analysis §11, D2; the grouped plan's Group 4): run web DAST in a host
+application that is not Audit's, with a stub identity provider and a settings object of its
+own, and hand its settings to the modules that read `WebScanConfig`. Out of scope, as planned:
+the topology engine's SQLAlchemy split and the `web_scans` / `web_findings` foreign keys.
+
+#### Settings, handed in
+
+The plan counted ten modules reading `WebScanConfig`; they are nine in `core/web` — the crawler,
+the ffuf, nuclei, sqlmap and subfinder wrappers, the nuclei profiles, the OAST client, the worker
+self-check and the scan reaper — and the web orchestrator. All ten now read
+`core.web.settings.current()`:
+
+- **`core/web/settings.py`** holds the registered object. `configure()` refuses a second,
+  different object and an object missing a name in `READ`, the 55 settings read without a
+  default; `READ_WITH_DEFAULT` names the 13 each reader defaults itself. A read with nothing
+  registered raises `WebSettingsMissing`.
+- **Audit registers `config.WebScanConfig` itself** (`ccure_audit/web_settings.py`, a fourth new
+  name in Celery's `imports`), so every value is the deployment's, read at call time, and every
+  test that patches an attribute on `WebScanConfig` patches what the engine reads.
+- **The rewrite is mechanical:** `WebScanConfig.X` became `web_settings.current().X` and
+  `getattr(WebScanConfig, …)` `getattr(web_settings.current(), …)`; no default changed.
+
+| Figure                                               | Before (`9dc40dc`) | After (`dda5c56`) |
+| ---------------------------------------------------- | -----------------: | ----------------: |
+| Web DAST modules importing `config` (all imports)    |                 10 |                 0 |
+| `core/web` engine modules loading `config` at import |                  6 |                 0 |
+| D1 libraries isolated                                |                  8 |                 9 |
+
+No ceiling moved; the baseline gained the eight new entry points' load profiles (each loads
+infra alone).
+
+#### The pilot
+
+- **The host** (`tests/web/test_web_dast_pilot_host.py`): a bare `FastAPI()` holding the
+  `/web-scans` router and nothing else, with a stub identity provider in place of the platform's
+  token verification and `PilotWebSettings` registered. Authorization is not stubbed: the routes
+  ask the RBAC engine through `require_authorized`, so the host serves a scan to a stub account
+  holding `audit.scan.read`, answers 401 with no account and 403 to one holding nothing or only
+  `audit.finding.read` (which then reads the findings). With the pilot's settings registered, the
+  engine ignores a change to `config.WebScanConfig`; and no web DAST module imports `config`, read
+  from the import graph.
+- **The engine** (`tests/web/test_web_dast_engine_pilot.py`): the tool wrappers, the ffuf tiers,
+  the crawler, the nuclei profiles and its OAST arguments, and the OAST client, each on the
+  pilot's values; an unregistered process, an incomplete settings object and a second one are
+  refused. It needs no conftest and imports no application module, so the D1 harness runs it as
+  library **`web_dast`** (eight entry points, `core.web` modules only, no third-party package at
+  import), in a fresh interpreter that refuses `config`. A third mutation case puts
+  `from config import WebScanConfig` back into the sqlmap wrapper and fails it.
+
+#### Verification
+
+- **The web group**, `tests/web` in throwaway containers: **500 passed, 1 skipped** (4 min); the
+  skip is the live OSV npm feed.
+- **The guard set** (`tests/repo`, the sudo-password guard, the credential-API tests): **991
+  passed, 1 skipped**; then the D1 harness: **9 isolated, 0 failed** — `web_dast`: import 21
+  first-party modules, exercise 10 passed.
+- **Interfaces**, `interface_snapshot` in the backend image, `9dc40dc` against the change:
+  identical — routes, limiter keys, the OpenAPI digest, tasks and beat.
+- **The ratchet and the stdlib guards** hold; the 13 ruff findings in the touched files are the
+  13 that were there before.
+- **Live:** `dda5c56`'s code in the backend image, Celery eager, a throwaway PostgreSQL and Redis on an internal network, against a disposable Juice Shop v17.3.0 (pinned by digest) on the compose network; the scan created as `POST /web-scans` creates it (the request model's defaults, out-of-band testing off) and dispatched by registered name. In the scanning process the registered settings were `config.WebScanConfig`. All four phases complete in 32 min: 75 assets, 2 findings (a DOM XSS, medium; an open redirect, low). Every tool the policy selects ran and none was unavailable or partial: nuclei's fingerprinting, then its STANDARD profile (6,051 templates loaded and executed against 63 targets, at the settings' 150 req/s), sqlmap (2 of 2 candidates), the injection, XSS, HTTP-method and JavaScript-dependency engines, and ffuf (deep tier, 4,752 words); sslyze and subfinder skipped as the target needs (plain HTTP, no subdomains). **Beside it, `9dc40dc` against its own Juice Shop, concurrently: identical apart from timing** — the same assets, findings, phases and tool coverage, field by field. A first run of `dda5c56` alone gave the same counts (31 min), but recorded no tool coverage, which is why the pair was run. Everything the runs created was removed.
+
+#### What is left
+
+- **The router is not yet the platform's consumer alone.** The pilot mounts it with a stub
+  identity, but `routers.web_scans` still imports `auth.jwt_handler.decode_token` (its progress
+  WebSocket's login), `db.models.User`, `db.base` and `core.rate_limiter`. D2's "through
+  `ccure_platform.api` and declared settings alone" is met for settings, not for those.
+- **The self-check and the reaper read their settings through the port but reach the database and
+  Redis themselves** (`core.web.self_check`, `core.web.timeout`), as do the tasks
+  (`core.web.tasks`), the scan-status helper and the JavaScript dependency engine's catalogue
+  lookup. None is in the `web_dast` library.
+- **The orchestrator is not isolated.** It reads its settings through the port and nothing else
+  changed: it still loads the database layer and Redis lazily, and drives the tasks.
+- **Out of scope, unchanged:** the topology engine's SQLAlchemy split (Group 3, "What is left")
+  and the `web_scans` / `web_findings` foreign keys (§7, B8).
+
+### Group 5 — E3: the architecture guards on every push to GitHub
+
+Commit `4067f92`, on top of `138e30f`.
+
+**The scope** (analysis §10, E3; the grouped plan's Group 5): the GitHub Actions workflows run
+the architecture guard tests and the D1 harness on a push to GitHub, with no duplicate runs.
+Out of scope, as asked: GitLab CI, a GitLab runner, mirroring, and any trigger outside GitHub.
+D-5 (§7) is therefore still open.
+
+#### What ran on GitHub before
+
+- **`tests/repo` already ran** in `Backend Validation` on every pull request, push to `master`,
+  tag and nightly run: it is in every selection `select_tests.py` makes.
+- **`check.py` and the D1 harness ran nowhere on GitHub** — only in the pre-commit hook and in
+  `local_guard_tests.sh` ("What is left", Group 1).
+- **A push of any branch other than `main`/`master` ran nothing.** `ci.yml`'s `push` filter
+  names those two on purpose, so a pull request does not run the pipeline twice; this branch is
+  pushed to `github` without a pull request.
+
+#### What changed
+
+- **`ci.yml`, `Backend Validation`:** `check.py` before the dependency install, so a breach fails
+  in seconds, and the D1 harness after the test suite, in every scope. The job names, the
+  required checks and the triggers are unchanged.
+- **New `architecture.yml`, job `Architecture Guards`:** on `push` with
+  `branches-ignore: [main, master]` — the complement of `ci.yml`'s filter, so no push starts
+  both. It runs `check.py`, then `local_guard_tests.sh`'s default set (`tests/repo`, the
+  sudo-password guard, the credential-API tests) against throwaway PostgreSQL 18 and Redis 7
+  services, then the harness, which runs even when the tests fail, as the local script does. A
+  read-only token, a 30-minute limit, and one live run per branch.
+- **`tests/repo/test_ci_architecture_guards.py`** pins the trigger split, `check.py` ahead of
+  the install and the harness in both jobs, the service images against `ci.yml`'s (which
+  `test_ci_postgres_version.py` holds to production's major), and the test targets against
+  `DEFAULT_TARGETS` in the local script. Six mutations — a `pull_request` trigger, an overlapping
+  branch filter, a dropped target, the harness removed from `ci.yml`, another PostgreSQL major,
+  and a target added to the local script alone — each fail it.
+- **Local enforcement is unchanged:** the pre-commit hook and `local_guard_tests.sh`.
+
+#### Verification
+
+- **YAML and hooks:** pre-commit's `check-yaml`, black, ruff, bandit and gitleaks pass on the
+  three files; both workflows parse, and the new test reads them as a runner would.
+- **The new commands outside the image**, from a pip-installed environment as on a runner:
+  `check.py` passes (13 s); the D1 harness: **9 isolated, 0 failed** (21 s).
+- **The guard set**, `local_guard_tests.sh` in throwaway containers: **996 passed, 1 skipped** (6 min), the 991 of Group 4 plus the five new tests, live rather than skipped because the script stages the whole repository; the skip is the activated `alembic.ini`. Then the D1 harness: **9 isolated, 0 failed**.
+- **Not run:** no workflow ran on GitHub — nothing was pushed — and no workflow linter
+  (`actionlint`) is installed here or in the repository's tooling. The first push of a branch
+  to `github` is the first real run, and its result is the check that the runner's Python 3.12
+  environment passes the harness as the image's 3.11 does.
+
+#### What is left
+
+- **D-5:** GitLab merge requests reach these checks only when the commit is pushed to `github`.
+- **A branch with an open GitHub pull request** runs the guards twice (push and merge ref).
+  Accepted: review happens on GitLab.
+
+### Group 6 — D3: behavioural equivalence at the branch tip
+
+Validation only, at `ace34c6`, 29–30 Oct 2026. No code changed.
+
+**The scope** (analysis §10, D3; the grouped plan's Group 6): the four existing goldens at the
+tip against their recorded baselines, on one restored dump; the network pipeline's hand-off
+through a real broker and worker; the full backend, frontend and browser suites. Failures were
+to be recorded, not fixed. The live scans of the standing targets that §10's D3 also names were
+not part of this request and did not run.
+
+#### The goldens
+
+One dump, `backups/ccure_db_20261024_131604_full.dump`, restored into both golden servers (the
+findings server, previously on the 22 Oct dump, was recreated from it: 11 scans, 3,706 CVEs in
+the intel subset). Each baseline is the golden's own recorded "before" commit; `capture.py` is
+the tip's in every capture, and every capture used a fresh template copy of the restored
+database.
+
+| Golden          | Baseline → tip        | Files | Result                                                     |
+| --------------- | --------------------- | ----- | ---------------------------------------------------------- |
+| Findings (G3)   | `595f068` → `ace34c6` | 412   | 4 differ: one intended fix, below                          |
+| Pipeline (G5)   | `4b77625` → `ace34c6` | 20    | **Identical**                                              |
+| Compliance (G4) | `f00056c` → `ace34c6` | 38    | **Identical**                                              |
+| API (G6)        | `b6ae9bf` → `ace34c6` | 855   | 63 query plans differ, the C7 change recorded at `bf7390d` |
+
+- **Findings.** `asset_change_log.txt` and its digest, in `on_top` and `from_empty`. Host
+  10.180.6.45's `mac_address` change (`2c:58:b9:87:0b:b3`) is attributed to the credentialed
+  audit `scn_cdac_0a428ec0_14oct26_qhmt` rather than to the later synthetic standalone scan
+  `…qhmt_golden_c0`. Same rows (3,675 and 14,069), same values. That is `f3f602f`, "the
+  credentialed audit records the MAC it read", a bug fix merged into the branch on 28 Oct, not
+  the refactoring. `replay` and every other table are identical.
+- **API.** All 63 are certificate and service-host listing plans, and each loses the second,
+  redundant join to `assets` with nothing added (17 an index scan under a nested loop, 46 a
+  sequential scan under a join filter): the change the log recorded for C7. Every response,
+  PDF and DOCX digest, broker message and table is identical.
+
+#### The hand-off through a real broker
+
+The pipeline golden runs Celery eager, so a hand-off never leaves the process. A harness built
+for this group (`rt/` in the evidence below; not in the repository) imports the golden's
+`capture.py` unchanged and runs its sixteen scenarios with `CELERY_TASK_ALWAYS_EAGER=False`:
+each dispatch is serialised by kombu to the golden's throwaway Redis, consumed by a Celery
+worker (`celery.contrib.testing`, solo pool, in-process so it shares the recorder, consuming
+`compliance, default, scanner, web_audit, web_crawl, web_dast, web_recon`), decoded and run.
+The orchestrator is the golden's recorder: no engine ran and nothing touched a network.
+
+- **53 messages crossed the broker; all 53 arrived as sent**, compared as `repr` (types
+  included) and as JSON. The broker-refusal scenarios publish nothing, as they should.
+- **Equal to the eager capture of the same commit:** every dispatch, every orchestrator call
+  (what each phase received), every result and every progress frame's content, in all sixteen
+  scenarios.
+- **Two differences, both eager mode's, not the code's.** Eager runs the next phase inside the
+  dispatch call, so writes made after `hand_over` returns land after the later phases':
+
+  - `scans.current_task_id` (`scans/tasks/phases.py` writes `next_task.id` after the
+    hand-off): through the broker an audit ends with phase 3's id, which is right; the eager
+    golden records phase 2's.
+  - In five failure, cancellation and refusal scenarios (08, 09, 10, 12, 14) the two frames on
+    (scan, phase 1) swap: the broker sends phase 1's `complete` before the failure frame, the
+    right order; eager sends the failure first.
+
+  So the eager pipeline golden does not represent production in these two places. Recorded for
+  review; nothing was changed.
+
+#### The suites
+
+| Suite                                                        | Result                                                                            | Time     |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- | -------- |
+| Backend, `local_guard_tests.sh tests` (throwaway containers) | **8,342 passed, 0 failed, 211 skipped**                                           | 22.5 min |
+| Frontend, `npx vitest run`                                   | **3,193 passed** in 125 files, 0 skipped                                          | 2.4 min  |
+| Frontend build, `VITE_API_BASE_URL=/api npm run build`       | exit 0, `ux4g:check` PASS; the 3 dist-reading files (54 tests) re-run on it: pass | —        |
+| `npm run test:browser` (Chromium, Firefox, WebKit)           | **720 passed**, 0 failed, 0 flaky, 0 skipped                                      | 20.9 min |
+
+Backend skips, all environmental: 165 need the DBA-installed audit chain, 43 phase 6a retention
+and 1 its DBA bootstrap, 1 the live OSV npm feed, 1 the Alembic rehearsal on an activated
+`alembic.ini`. The frontend's logged errors are the error-boundary tests' intended
+`SYNTHETIC_PRIVATE_TOKEN` output.
+
+#### Environment limitations
+
+- **The backend image** is `ccure-audit-pro-backend:latest`, built from `3212d6b` (Python
+  3.11); the tip's `Backend/Dockerfile` differs only in the base image's pinned digest, and the
+  requirements are the same. CI runs 3.12.
+- **Node 20** here; CI uses 22, the frontend image 25. WebKit ran with
+  `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1`.
+- **The round-trip worker** is in-process with the solo pool: prefork, forking and the deployed
+  worker's start-up command were not exercised.
+- **Not run:** the D1 harness (it passed in Group 5 on the same code; everything since is
+  documentation); the live scans §10's D3 names; any GitHub workflow.
+
+#### Evidence
+
+`backups/d3-validation-20261030/` (mode 700, 1.5 GB, `MANIFEST.sha256` over 2,724 files): the
+nine captures, the round-trip harness and its comparison, and every suite's log. The captures
+hold restored tenant data and stay outside the repository. Both golden servers were removed with
+their `run.sh down`.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -3661,20 +4446,20 @@ The compliance router loads its eight parts and ten renderer modules.
 | new | The schedule page: say why the credential picker is empty when the list answers 403 (a custom role holding `scan_schedule.manage` without `credential.read`), and show "New schedule" only with `scan_schedule.manage`                                                                                                                                                                                                                                                                                                                                                                                                                         | S2b, §4                                                            |
 | new | Correct the picker route's docstring, the published OpenAPI description, which still says `/compliance/credentials` is gated on `compliance:read`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | S2b, §4                                                            |
 | new | Whether the port and network-check engines poll a `CancelToken`. Today they never do, and the tasks check between phases; polling would make a stop take effect mid-phase, a behaviour change                                                                                                                                                                                                                                                                                                                                                                                                                                                  | B2, §6                                                             |
-| new | B3 half B: move `core.utils`' CVE database client and `lookup_cve` beside their one engine caller. The port and network-check engines would stop loading SQLAlchemy, but the vulnerability database would first be contacted at the first CVE lookup instead of at import                                                                                                                                                                                                                                                                                                                                                                      | B3, §6                                                             |
+| new | **Done in Group 3** (`a9e7859`): `engines/vulnerability/cve_lookup.py`; the client is built at the first lookup. Was: B3 half B, the CVE client out of `core.utils`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | B3, §6                                                             |
 | new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                                                                                                                                                                                                                                                                           | B3, §6                                                             |
-| new | Whether discovery's MAC-vendor lookup (`core.oui_lookup`, which reads `MacVendorCache` through `db.models`) becomes a port passed in, as B2 did for progress and cancellation                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | B3, §6                                                             |
-| new | Whether the topology engine's asset reads and writes move behind a port. After B6 the engine loads 32 first-party modules, 28 of them the model registry, which it imports for `Asset` and `Scan`; the plan's "~15" needs that access out of the engine                                                                                                                                                                                                                                                                                                                                                                                        | B6, §6                                                             |
+| new | **Done in Group 3** (`a9e7859`): `core.oui_lookup` is the scan kernel's and reads the vendor cache through a port the asset registry answers. Was: whether the MAC-vendor lookup becomes a port                                                                                                                                                                                                                                                                                                                                                                                                                                                | B3, §6                                                             |
+| new | **Done in Group 3** (`a9e7859`): `core/topology/directory.py`; the engine loads no model registry (11 Audit capabilities → infra alone). It still persists its own links through SQLAlchemy (§6, Group 3). Was: whether the topology engine's asset access moves behind a port                                                                                                                                                                                                                                                                                                                                                                 | B6, §6                                                             |
 | new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                                                                                                                                                                                                                                                                  | B7, §6                                                             |
 | new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                                                                                                                                                                                                                                                                          | B7, §6                                                             |
 | new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models                                                                                                                                                                                                                                               | B8, §6                                                             |
-| new | Take the network checks and web DAST out of the capability cycle. After B9 each is held by one upward edge: `engines.vulnerability.vulnerability_engine` imports `core.device_classifier` (assets; the analysis's target grouping puts the classifier in the scan kernel), and `reporting.web_pdf_generator` imports `scan_helpers` (scans)                                                                                                                                                                                                                                                                                                    | B9, §6                                                             |
+| new | **Done** (web DAST in G6; the network checks in Group 3, `a9e7859`, the device classifier being the scan kernel's). Was: take the network checks and web DAST out of the capability cycle                                                                                                                                                                                                                                                                                                                                                                                                                                                      | B9, §6                                                             |
 | new | **Done in G6** (§6, `604157e`): moved to `reporting/report_helpers.py`; web DAST is out of the capability cycle. Was: move `make_pdf_cve_paragraph` out of `scan_helpers` into the renderers. `reporting.web_pdf_generator` imports it from there, which is the one edge holding web DAST in the capability cycle at the end of Phase B                                                                                                                                                                                                                                                                                                        | B10, §6                                                            |
 | new | Fix the Linux collector's `ss` parser (a pre-existing defect). When the scanning account cannot see process names, `_parse_ss_output` takes the peer address (`0.0.0.0:*`) as the process, and a credentialed audit renames port 22's `ssh`/`OpenSSH` with it                                                                                                                                                                                                                                                                                                                                                                                  | T0, §6                                                             |
 | new | Give the Nuclei probe's corroboration merge a deterministic tie-break, for example severity and then template id. Today a severity tie keeps whichever template Nuclei printed first, so the stored finding's id can change between runs of the same code                                                                                                                                                                                                                                                                                                                                                                                      | T0, §6                                                             |
 | new | Write the evidence's NVD reference only for a real CVE in `core/findings/writer.py`'s `_build_finding_evidence` (the pipeline's, moved from `scans/asset_syncer.py` in G3), as the standalone audit's already does. Today every network-check and Nuclei finding's evidence links its minted `CCURE-CHK-…` id to an NVD page that does not exist                                                                                                                                                                                                                                                                                               | T0, §6                                                             |
 | new | Whether the Phase 3.5 pipeline and the standalone credentialed audit should record a configuration finding under the same detection method. Today one files it as `credentialed_package` and the other as `config_check`                                                                                                                                                                                                                                                                                                                                                                                                                       | T0, §6                                                             |
-| new | Classify `routers.credentialed` as the scans capability's API, as `routers.phase_scans` is. It serves one route, `POST /scan/credentialed`, which creates a scan. Measured, not committed: after G2, the credentialed audit and the credential vault both leave the capability cycle (14 → 12) and upward edges fall 31 → 29                                                                                                                                                                                                                                                                                                                   | G1, G2, §6                                                         |
+| new | **Done in Group 3** (`a9e7859`): the scans capability's API. Was: classify `routers.credentialed` as the scans capability's API                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | G1, G2, §6                                                         |
 | new | Import the orchestrator inside `scans.tasks.common`'s two functions that use it, so the credentialed and topology task modules load without the scan engines (Scapy, nmap). Today `common` imports it at module level, as the hub did                                                                                                                                                                                                                                                                                                                                                                                                          | G1, §6                                                             |
 | new | Choose one credential form. Compliance remediation authenticates with every secret a credential row stores and the username as stored (`credential_vault.stored_secrets`); the collectors use `principal()` and only the secret their auth method needs (`connection_material`). G2 kept both                                                                                                                                                                                                                                                                                                                                                  | G2, §6                                                             |
 | new | Whether a remediation request should keep copying a stored credential's encrypted password and key into `compliance_remediation_requests`, and into the task's arguments for an emergency bypass. The copy outlives the credential's deletion; referring to the credential by id, as scans and schedules do, would not                                                                                                                                                                                                                                                                                                                         | G2, §6                                                             |
@@ -3695,11 +4480,20 @@ The compliance router loads its eight parts and ten renderer modules.
 | new | Give the engines the typed records (the analysis's `discover(…) → list[HostRecord]`, `inventory(hosts, …) → ServiceInventory`). C6 typed the hand-off between phases; the engines still read and edit the records as dicts in place, and phase 3's identity merge depends on those edits                                                                                                                                                                                                                                                                                                                                                       | G5, §6                                                             |
 | new | Take the scans capability's direct engine imports through the pipeline definition (§12's target for `scans`). The orchestrator still imports the discovery, port and vulnerability engines itself                                                                                                                                                                                                                                                                                                                                                                                                                                              | G5, §6                                                             |
 | new | Run C6's live validation (§11) if wanted: about two hours for a before/after pair. The phase-pipeline golden covers the hand-off with the tasks' own code; the live harness runs Celery eager too, so neither exercises a real broker's JSON round trip, which C6 leaves unchanged by construction                                                                                                                                                                                                                                                                                                                                             | G5, §6                                                             |
-| new | The read side C7 names that G6 did not change: the dashboard (`routers/dashboard.py`, 11 foreign tables) and `routers.reports`' direct reads of findings and vulnerability intelligence. Both are layer-6 read models, so they may read through the capabilities' read modules (`core.findings.reads`, the host port) or `ccure_audit/services`                                                                                                                                                                                                                                                                                                | G6, §6                                                             |
+| new | **Done in G2** (§6, `0687924`): the dashboard and the report routes read through their owners' read modules. Was: the read side C7 names that G6 did not change: the dashboard (`routers/dashboard.py`, 11 foreign tables) and `routers.reports`' direct reads                                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |
 | new | Scope findings by their own `org_id` and drop the host join where only scoping needs it (the remediation routes and report). The finding's column is written from its asset's organisation and agrees on every row today (0 of 3,854), but no constraint enforces it; a composite foreign key `(asset_id, org_id)` → `assets(id, org_id)` would, and needs a unique key on `assets` first                                                                                                                                                                                                                                                      | G6, §6                                                             |
 | new | Whether the findings side's host port should carry plain values instead of a SQL projection. G6 chose the projection so that every query stays one statement with the same plan; the findings capability is then coupled to the asset table's columns by a declared contract (`HOST_COLUMNS`) rather than by an import                                                                                                                                                                                                                                                                                                                         | G6, §6                                                             |
 | new | Give `/assets/services/assets` an `ORDER BY`. The service-host listing pages with none, so which hosts a page holds is whatever the plan returns (pre-existing; G6 kept the query as it was)                                                                                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
-| new | Move the executive compliance report's inline PDF (`download_executive_compliance_report`, `routers/compliance_reports.py`) into `reporting/compliance/` like the 20 generators                                                                                                                                                                                                                                                                                                                                                                                                                                                                | G6, §6                                                             |
+| new | **Done in G2** (§6, `0687924`): `reporting/compliance/executive.py`. Was: move the executive compliance report's inline PDF (`download_executive_compliance_report`) into `reporting/compliance/` like the 20 generators                                                                                                                                                                                                                                                                                                                                                                                                                       | G6, §6                                                             |
 | new | Take findings out of the capability cycle: it reaches the scan model (the comparison), the credentialed audit (the writer's coverage import, the router's version comparator), configuration audit (the credentialed scope) and scan policy (the comparison)                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
 | new | Whether the compliance router's parts keep `routers.compliance` as their `__name__` or take their own. Renaming changes every compliance limiter key and the gateway route policy's endpoints, so it needs the policy regenerated and the gateway rebuilt in the same release                                                                                                                                                                                                                                                                                                                                                                  | G6, §6                                                             |
 | new | Give the API golden a passing NIST CSF control. In the restored data no CSF control passes (26 fail, 80 not assessed), so the renderer's label for a pass is never drawn and a change to it went uncaught (G6's golden mutations); `setup.sql` could add a passing attestation                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |
+| new | Split the compliance workspace's dialogs out of the page (about 760 of its 3,040 lines), as F1 split its tabs. They share the page's state with several tabs, so each would take its state as props as the tabs do                                                                                                                                                                                                                                                                                                                                                                                                                             | F1, §6                                                             |
+| new | Fix the intermittent `AppLayout — reads on mount › shows running-scan and critical badges from the summary` (`src/__tests__/modules/audit/components/layout/AppLayout.test.jsx`): it fails in about one run in three on its own, on code F1 did not touch                                                                                                                                                                                                                                                                                                                                                                                      | F1, §6                                                             |
+| new | Make the UX4G harness run on the Node it names. The README says Node 20 or later, but `lib/chrome.mjs` uses the global `WebSocket`, which Node 20 has only behind `--experimental-websocket`; this VM runs Node 20.20, so every capture failed at start until `NODE_OPTIONS=--experimental-websocket` was set                                                                                                                                                                                                                                                                                                                                  | F1, §6                                                             |
+| new | Find what changes the header's 25 × 4 px (x 1323–1348, y 18–22) between two harness captures of one build. In the light theme 4 or 5 of the 95 compliance captures differ there by up to 6 levels, so the determinism gate fails on this VM whatever the change; F1 read it with the area recorded                                                                                                                                                                                                                                                                                                                                             | F1, §6                                                             |
+| new | Show the credential store's delete note in the compliance workspace's Credentials Manager tab, as Scan Credentials does: since F3 the delete answers how many schedules the credential leaves without one, and the tab still says only "Credential deleted successfully."                                                                                                                                                                                                                                                                                                                                                                      | F3, §6                                                             |
+| new | Point the scan setup's "no stored credentials" state at Scan Credentials, the credential store's own page, rather than at Compliance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | F3, §6                                                             |
+| new | D-3 can now be decided on its own: since F3 no screen calls `/compliance/credentials`. Retiring it removes three routes from the API and from the gateway policy; keeping it costs nothing the frontend sees                                                                                                                                                                                                                                                                                                                                                                                                                                   | F3, §6                                                             |
+| new | Whether web DAST's router reaches identity, the session and rate limiting through `ccure_platform.api` alone. It imports `auth.jwt_handler.decode_token` for the progress WebSocket's login, `db.models.User` and `core.rate_limiter`, which keeps D2 short of "the platform API and declared settings alone"                                                                                                                                                                                                                                                                                                                                  | Group 4, §6                                                        |
+| new | Whether web DAST's worker self-check and scan reaper become ports or stay the worker's own infrastructure. Both read the database and Redis themselves; the engine's tool wrappers, crawler and OAST client no longer read anything global                                                                                                                                                                                                                                                                                                                                                                                                     | Group 4, §6                                                        |

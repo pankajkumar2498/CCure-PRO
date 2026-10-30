@@ -4,15 +4,10 @@
   [
    "assets",
    "compliance",
-   "credential_vault",
-   "credentialed_audit",
-   "discovery",
    "findings",
-   "network_checks",
    "scan_policy",
    "scans",
-   "scheduling",
-   "topology"
+   "scheduling"
   ],
   [
    "check_kernel",
@@ -28,9 +23,7 @@
  "cycles_top_level": [
   [
    "assets",
-   "credentialed_audit",
    "findings",
-   "network_checks",
    "scans"
   ],
   [
@@ -96,50 +89,6 @@
    "services"
   ],
   [
-   "dashboard",
-   "asset_change_log"
-  ],
-  [
-   "dashboard",
-   "asset_vulnerabilities"
-  ],
-  [
-   "dashboard",
-   "assets"
-  ],
-  [
-   "dashboard",
-   "http_security_details"
-  ],
-  [
-   "dashboard",
-   "scans"
-  ],
-  [
-   "dashboard",
-   "services"
-  ],
-  [
-   "dashboard",
-   "tls_details"
-  ],
-  [
-   "dashboard",
-   "vulnerability_definitions"
-  ],
-  [
-   "dashboard",
-   "web_assets"
-  ],
-  [
-   "dashboard",
-   "web_findings"
-  ],
-  [
-   "dashboard",
-   "web_scans"
-  ],
-  [
    "findings",
    "scans"
   ],
@@ -158,18 +107,6 @@
   [
    "main",
    "vulnerability_definitions"
-  ],
-  [
-   "reporting",
-   "assets"
-  ],
-  [
-   "reporting",
-   "scan_phases"
-  ],
-  [
-   "reporting",
-   "scans"
   ],
   [
    "scan_policy",
@@ -208,14 +145,6 @@
    "scan_policies"
   ],
   [
-   "topology",
-   "assets"
-  ],
-  [
-   "topology",
-   "scans"
-  ],
-  [
    "vuln_intel",
    "vulnerability_definitions"
   ],
@@ -239,10 +168,6 @@
   ],
   [
    "scans",
-   "assets"
-  ],
-  [
-   "topology",
    "assets"
   ]
  ],
@@ -298,10 +223,6 @@
   [
    "core.scheduling.dispatcher",
    "db.models.scan_policies:ScanPolicy"
-  ],
-  [
-   "core.utils",
-   "core.cve_database"
   ],
   [
    "db.models.compliance",
@@ -454,8 +375,7 @@
     "infra"
    ],
    "third_party": [
-    "nmap",
-    "redis"
+    "nmap"
    ]
   },
   "core.scan_policy.resolver": {
@@ -480,21 +400,59 @@
   },
   "core.topology.engine": {
    "capabilities": [
-    "assets",
-    "compliance",
-    "credential_vault",
-    "findings",
-    "infra",
-    "platform",
-    "reporting",
-    "scan_policy",
-    "scans",
-    "scheduling",
-    "web_dast"
+    "infra"
    ],
    "third_party": [
     "sqlalchemy"
    ]
+  },
+  "core.web.crawling.browser": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.ffuf.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.nuclei.profiles": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.nuclei.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.oast.client": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.settings": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.sqlmap.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
+  },
+  "core.web.subfinder.wrapper": {
+   "capabilities": [
+    "infra"
+   ],
+   "third_party": []
   },
   "engines.credentialed.smb_executor": {
    "capabilities": [
@@ -519,9 +477,7 @@
     "infra",
     "vuln_intel"
    ],
-   "third_party": [
-    "sqlalchemy"
-   ]
+   "third_party": []
   },
   "engines.credentialed.winrm_executor": {
    "capabilities": [
@@ -536,27 +492,22 @@
    "capabilities": [
     "check_kernel",
     "infra",
-    "scan_kernel",
-    "vuln_intel"
+    "scan_kernel"
    ],
    "third_party": [
     "nmap",
-    "redis",
-    "scapy",
-    "sqlalchemy"
+    "scapy"
    ]
   },
   "engines.vulnerability.vulnerability_engine": {
    "capabilities": [
-    "assets",
     "check_kernel",
     "infra",
     "scan_kernel",
     "vuln_intel"
    ],
    "third_party": [
-    "scapy",
-    "sqlalchemy"
+    "scapy"
    ]
   },
   "reporting.pdf_generator": {
@@ -603,63 +554,19 @@
    "reporting.report_helpers"
   ],
   [
-   "core.discovery.techniques.arp",
-   "core.oui_lookup"
-  ],
-  [
-   "core.discovery.techniques.arp_cache",
-   "core.oui_lookup"
-  ],
-  [
    "core.findings.comparison",
    "db.models.scans:Scan"
-  ],
-  [
-   "core.scheduling.dispatcher",
-   "scan_helpers"
   ],
   [
    "core.scheduling.dispatcher",
    "scans.db_helpers"
   ],
   [
-   "core.topology.engine",
-   "core.oui_lookup"
-  ],
-  [
-   "core.topology.engine",
-   "db.models.assets:Asset"
-  ],
-  [
-   "core.topology.engine",
-   "db.models.scans:Scan"
-  ],
-  [
-   "engines.vulnerability.vulnerability_engine",
-   "core.device_classifier"
-  ],
-  [
    "routers.assets",
    "db.models.scans:Scan"
   ],
   [
-   "routers.credentialed",
-   "core.credential_vault"
-  ],
-  [
-   "routers.credentialed",
-   "scans.scan_creation"
-  ],
-  [
    "routers.scan_policies",
-   "db.models.scans:Scan"
-  ],
-  [
-   "routers.scan_schedules",
-   "scan_helpers"
-  ],
-  [
-   "routers.topology",
    "db.models.scans:Scan"
   ],
   [

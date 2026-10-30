@@ -862,6 +862,12 @@ describe("ComplianceWorkspace ordinary writes — batch 27", () => {
       path.join(AUDIT_SRC, "pages/ComplianceWorkspace.jsx"),
       "utf8",
     ).replace(/\r\n/g, "\n");
+    // The tabs' markup lives in their own files since F1; the page renders them.
+    const part = (name) =>
+      readFileSync(
+        path.join(AUDIT_SRC, "components/compliance/workspace", name),
+        "utf8",
+      ).replace(/\r\n/g, "\n");
     expect(source).toMatch(
       /import\s+["']\.\.\/styles\/compliance-writes\.css["']/,
     );
@@ -870,14 +876,13 @@ describe("ComplianceWorkspace ordinary writes — batch 27", () => {
       expect(i).toBeGreaterThan(-1);
       return i;
     };
-    const marketplace = at('{activeTab === "marketplace" && (');
-    const policies = at('{activeTab === "policies" && (', marketplace);
     const policyDialog = at('{modalType === "policy" && (');
     const attest = at('{modalType === "attest" && (');
     const exception = at('{modalType === "exception" && (');
     const gap = at('{modalType === "gap_analysis" && gapAnalysis && (');
+    expect(source).toMatch(/<ComplianceMarketplaceTab\b/);
     for (const block of [
-      source.slice(marketplace, policies),
+      part("ComplianceMarketplaceTab.jsx"),
       source.slice(policyDialog, attest),
       source.slice(exception, gap),
     ]) {

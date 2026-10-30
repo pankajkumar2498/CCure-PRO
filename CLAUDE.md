@@ -395,8 +395,15 @@ and the compliance router (Phase C, G1–G6, 22–24 Oct 2026).** Record:
     it in passing.
   - **`routers/compliance.py` refuses a patch.** Patch the part whose code reads
     the name; the error names it.
-  - **The documents are renderers:** the 20 generators are in
-    `reporting/compliance/` and import nothing of compliance.
+  - **The documents are renderers:** the 21 generators are in
+    `reporting/compliance/` and import nothing of compliance (the executive
+    report's joined the 20 in G2).
+  - **The dashboard and the report routes read through owners' modules**
+    (G2): `core/findings/summaries.py`, `core/asset_reads.py`,
+    `scans/reads.py`, `scans/report_context.py`, `core/web/reads.py`, and
+    `scans.scan_access.report_scan_or_404` for the export lookup. A new
+    dashboard or report query goes in the owner's read module; the router
+    names no table.
   - **The guard:** `tests/repo/test_compliance_router_split.py`.
 
 Imports inside functions count as dependencies — they are how this codebase
@@ -435,6 +442,13 @@ prints the graph; `--violations` lists every rule-breaking edge.
 - GitLab, where merge requests land, runs no pipeline; GitHub Actions tests
   only what is pushed to `github`. `docs/ci/LOCAL_ENFORCEMENT.md` says what
   runs where.
+- **Every push to `github` runs the architecture guards** (E3): `check.py`,
+  the database-backed guard tests and the D1 harness. `ci.yml`'s
+  `Backend Validation` covers pull requests, `master`, tags and nightly;
+  `architecture.yml` covers a push of any other branch, and its filter is the
+  complement of `ci.yml`'s so no push starts both. Its test targets are
+  `local_guard_tests.sh`'s `DEFAULT_TARGETS`; change the two together
+  (`tests/repo/test_ci_architecture_guards.py`).
 
 Two things Phase 3 deliberately left, which are **not** violations:
 
@@ -447,9 +461,31 @@ Two things Phase 3 deliberately left, which are **not** violations:
   stays for tests and scripts. The two `scans.*` aliases move later (C3).
 - **The discovery engine no longer loads SQLAlchemy** (B3, 20 Oct 2026). It came
   in through `core.risk` → `core.vuln_intel`, for two pure functions; they now
-  live in `core/vuln_scoring.py`, which `core.vuln_intel` re-exports. The port
-  and network-check engines still load the CVE database through `core.utils`
-  (`docs/architecture/MODULAR_REFACTORING_LOG.md` §6).
+  live in `core/vuln_scoring.py`, which `core.vuln_intel` re-exports.
+- **Nor do the port and network-check engines, the Nmap wrapper or the version
+  matcher** (Group 3, `docs/architecture/MODULAR_REFACTORING_LOG.md` §6).
+  - **The CVE client** is `engines/vulnerability/cve_lookup.py`, built at the
+    first CVE lookup, never at import; `core.utils` has no CVE lookup.
+  - **Ports, registered by Audit's composition root** and loaded through
+    Celery's `imports`: the OUI lookup's vendor cache
+    (`ccure_audit/vendor_cache.py`), the Nmap wrapper's Redis lease and cache
+    and the version matcher's CVE repository (`ccure_audit/engine_ports.py`),
+    and the topology engine's asset and scan directory
+    (`ccure_audit/topology_directory.py`). Without a registration the vendor
+    cache and the Nmap state behave as an unreachable database or Redis
+    always did; the topology directory and the CVE repository raise.
+  - **The rules (E1)**, absolute in `capability_map.py`: no layer-3
+    capability imports a higher layer; nothing outside scans and `main`
+    imports `scan_helpers`; the platform loads no Audit capability; and E2
+    pins `PINNED_ENGINES`. The topology engine is not pinned: it persists its
+    own links.
+- **Web DAST reads its settings through `core.web.settings`, never `config`**
+  (Group 4, D2). `current()` answers the object a host registered; Audit
+  registers `config.WebScanConfig` itself (`ccure_audit/web_settings.py`, in
+  Celery's `imports`), so patch a setting on `WebScanConfig` as before. A new
+  setting read without a default goes in `READ`. The engine runs in the D1
+  harness as library `web_dast`, and `tests/web/test_web_dast_pilot_host.py`
+  fails if any web DAST module imports `config`.
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.

@@ -712,7 +712,7 @@ export const CW_STUBS = {
     total: 0,
   },
   "/compliance/findings": { data: [] },
-  "/compliance/credentials": [],
+  "/credentials": { credentials: [], total: 0 },
   "/compliance/remediations/requests": { data: [] },
 };
 
@@ -1017,7 +1017,7 @@ export const CW28_EVIDENCE = {
 };
 
 /* ── ComplianceWorkspace Credentials Manager (batch 29) ───────────────────── */
-// Saved credentials as GET /compliance/credentials lists them: references
+// Saved credentials as GET /credentials lists them (its `credentials`): references
 // only — a nickname, an account, a port and a method. The API returns no
 // password or key, and neither does this. The third nickname is long enough to
 // wrap in the table and on a phone.
@@ -3064,10 +3064,13 @@ export const nsSession = (extra = {}) => ({
 });
 
 export const NS_STUBS = {
-  "/compliance/credentials": [
-    { id: "cred-ns-1", name: "Linux fleet", username: "auditor", port: 2222 },
-    { id: "cred-ns-2", name: "Windows estate", username: "svc-scan" },
-  ],
+  "/credentials": {
+    credentials: [
+      { id: "cred-ns-1", name: "Linux fleet", username: "auditor", port: 2222 },
+      { id: "cred-ns-2", name: "Windows estate", username: "svc-scan" },
+    ],
+    total: 2,
+  },
   // The scan `ns-dispatch` starts, finished when the page reads it back.
   "/scans/ns-live": nsRecord("ns-live", "completed", { scan_no: 5101 }),
   // Still running and nothing recorded yet: the socket carries the hosts.

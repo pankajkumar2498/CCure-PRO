@@ -28,7 +28,7 @@ import time
 from typing import Any, Dict, List
 from urllib.parse import urljoin, urlparse
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 
 log = logging.getLogger("ccure.web.orchestrator")
 
@@ -847,18 +847,19 @@ class WebScanOrchestrator:
                 # shared across workers, so concurrency fills the pipeline up to
                 # the ceiling rather than exceeding the target's tolerance.
                 crawl_conc = int(
-                    options.get("crawl_concurrency") or WebScanConfig.CRAWL_CONCURRENCY
+                    options.get("crawl_concurrency")
+                    or web_settings.current().CRAWL_CONCURRENCY
                 )
                 crawl_rate = (
-                    WebScanConfig.STEALTH_RATE_LIMIT
+                    web_settings.current().STEALTH_RATE_LIMIT
                     if waf_detected
-                    else WebScanConfig.CRAWL_RATE_LIMIT
+                    else web_settings.current().CRAWL_RATE_LIMIT
                 )
                 crawler = PlaywrightCrawler(
                     max_depth=scan_scope.get(
-                        "max_depth", WebScanConfig.MAX_CRAWL_DEPTH
+                        "max_depth", web_settings.current().MAX_CRAWL_DEPTH
                     ),
-                    max_urls=WebScanConfig.MAX_CRAWL_URLS,
+                    max_urls=web_settings.current().MAX_CRAWL_URLS,
                     concurrency=crawl_conc,
                     rate_limit=crawl_rate,
                 )
@@ -1026,9 +1027,12 @@ class WebScanOrchestrator:
                     # A WAF still clamps it to the stealth rate. Falls back to
                     # the fuzzing ceiling when FFUF_RATE is 0.
                     rate = (
-                        WebScanConfig.STEALTH_RATE_LIMIT
+                        web_settings.current().STEALTH_RATE_LIMIT
                         if waf_detected
-                        else (WebScanConfig.FFUF_RATE or WebScanConfig.SCAN_RATE_LIMIT)
+                        else (
+                            web_settings.current().FFUF_RATE
+                            or web_settings.current().SCAN_RATE_LIMIT
+                        )
                     )
                     ffuf_result = ffuf.run(
                         target=target_url,
@@ -1067,7 +1071,7 @@ class WebScanOrchestrator:
                     sensitive_findings.extend(ffuf_result.get("sensitive_findings", []))
 
                     recrawl_targets = ffuf_recrawl_candidates(
-                        discovered_paths, WebScanConfig.FFUF_RECRAWL_MAX
+                        discovered_paths, web_settings.current().FFUF_RECRAWL_MAX
                     )
                     if recrawl_targets:
                         from core.web.crawling.browser import PlaywrightCrawler
@@ -1274,9 +1278,9 @@ class WebScanOrchestrator:
 
             is_waf = bool(waf_detected)
             effective_rate = (
-                WebScanConfig.STEALTH_RATE_LIMIT
+                web_settings.current().STEALTH_RATE_LIMIT
                 if is_waf
-                else WebScanConfig.SCAN_RATE_LIMIT
+                else web_settings.current().SCAN_RATE_LIMIT
             )
 
             coverage = ToolCoverage()
@@ -1510,7 +1514,7 @@ class WebScanOrchestrator:
                                     run_timeout=self._bounded_timeout(
                                         web_scan_id,
                                         policy["sqlmap_timeout"]
-                                        or WebScanConfig.SQLMAP_TIMEOUT,
+                                        or web_settings.current().SQLMAP_TIMEOUT,
                                     ),
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
@@ -1584,15 +1588,15 @@ class WebScanOrchestrator:
 
                     xss = XssEngine(
                         rate_limit=effective_rate,
-                        max_targets=WebScanConfig.XSS_MAX_TARGETS,
+                        max_targets=web_settings.current().XSS_MAX_TARGETS,
                         # Policy (item 11): per-page parameter budget.
                         max_params_per_target=policy["max_params_per_page"],
-                        max_payloads_per_param=WebScanConfig.XSS_MAX_PAYLOADS_PER_PARAM,
-                        timeout_ms=WebScanConfig.XSS_TIMEOUT_MS,
-                        same_origin_only=WebScanConfig.XSS_SAME_ORIGIN_ONLY,
+                        max_payloads_per_param=web_settings.current().XSS_MAX_PAYLOADS_PER_PARAM,
+                        timeout_ms=web_settings.current().XSS_TIMEOUT_MS,
+                        same_origin_only=web_settings.current().XSS_SAME_ORIGIN_ONLY,
                         test_reflected=True,
-                        test_dom=WebScanConfig.XSS_TEST_DOM,
-                        test_stored=WebScanConfig.XSS_TEST_STORED,
+                        test_dom=web_settings.current().XSS_TEST_DOM,
+                        test_stored=web_settings.current().XSS_TEST_STORED,
                         # Proof screenshots of confirmed XSS (Codex item 10) land in
                         # a per-scan evidence dir the report can reference.
                         evidence_dir=self._evidence_dir(web_scan_id),
@@ -1669,17 +1673,19 @@ class WebScanOrchestrator:
 
                     classes = tuple(
                         c.strip()
-                        for c in str(WebScanConfig.INJECTION_CLASSES).split(",")
+                        for c in str(web_settings.current().INJECTION_CLASSES).split(
+                            ","
+                        )
                         if c.strip()
                     )
                     inj = InjectionEngine(
                         rate_limit=effective_rate,
-                        max_targets=WebScanConfig.INJECTION_MAX_TARGETS,
+                        max_targets=web_settings.current().INJECTION_MAX_TARGETS,
                         max_params_per_target=policy["max_params_per_page"],
-                        timeout_s=WebScanConfig.INJECTION_TIMEOUT_S,
-                        cmdi_delay_1=WebScanConfig.INJECTION_CMDI_DELAY_1,
-                        cmdi_delay_2=WebScanConfig.INJECTION_CMDI_DELAY_2,
-                        same_origin_only=WebScanConfig.INJECTION_SAME_ORIGIN_ONLY,
+                        timeout_s=web_settings.current().INJECTION_TIMEOUT_S,
+                        cmdi_delay_1=web_settings.current().INJECTION_CMDI_DELAY_1,
+                        cmdi_delay_2=web_settings.current().INJECTION_CMDI_DELAY_2,
+                        same_origin_only=web_settings.current().INJECTION_SAME_ORIGIN_ONLY,
                         classes=classes or None,
                     )
                     if coverage.check(inj, "injection"):
@@ -1844,10 +1850,10 @@ class WebScanOrchestrator:
                         )
                         ac_engine = AccessControlEngine(
                             rate_limit=effective_rate,
-                            max_candidates=WebScanConfig.ACCESS_CONTROL_MAX_CANDIDATES,
-                            timeout_s=WebScanConfig.ACCESS_CONTROL_TIMEOUT_S,
-                            same_origin_only=WebScanConfig.ACCESS_CONTROL_SAME_ORIGIN_ONLY,
-                            similarity_same=WebScanConfig.ACCESS_CONTROL_SIMILARITY,
+                            max_candidates=web_settings.current().ACCESS_CONTROL_MAX_CANDIDATES,
+                            timeout_s=web_settings.current().ACCESS_CONTROL_TIMEOUT_S,
+                            same_origin_only=web_settings.current().ACCESS_CONTROL_SAME_ORIGIN_ONLY,
+                            similarity_same=web_settings.current().ACCESS_CONTROL_SIMILARITY,
                             allow_write_testing=bool(ac_cfg.get("allow_write_testing")),
                         )
 
@@ -2041,10 +2047,10 @@ class WebScanOrchestrator:
                         oast = OastEngine(
                             oast_session,
                             oast_client,
-                            rate_limit=WebScanConfig.OAST_RATE_LIMIT,
-                            max_targets=WebScanConfig.OAST_MAX_TARGETS,
-                            poll_timeout_s=WebScanConfig.OAST_POLL_TIMEOUT_S,
-                            poll_interval_s=WebScanConfig.OAST_POLL_INTERVAL_S,
+                            rate_limit=web_settings.current().OAST_RATE_LIMIT,
+                            max_targets=web_settings.current().OAST_MAX_TARGETS,
+                            poll_timeout_s=web_settings.current().OAST_POLL_TIMEOUT_S,
+                            poll_interval_s=web_settings.current().OAST_POLL_INTERVAL_S,
                         )
                         if coverage.check(oast, "oast"):
                             _emit_web_progress(
@@ -2124,7 +2130,7 @@ class WebScanOrchestrator:
             header_sample_urls = security_header_sample_urls(
                 target_url,
                 endpoints,
-                WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
+                web_settings.current().SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
             )
             header_findings = await self._check_security_headers(
                 target_url, endpoints=endpoints
@@ -2593,7 +2599,9 @@ class WebScanOrchestrator:
         }
         missing: Dict[str, List[str]] = {name: [] for name in required_headers}
         sample_urls = security_header_sample_urls(
-            target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+            target_url,
+            endpoints,
+            web_settings.current().SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
         )
         try:
             import httpx
@@ -2656,7 +2664,9 @@ class WebScanOrchestrator:
             from core.web.cookies import analyze_cookies
 
             sample_urls = security_header_sample_urls(
-                target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+                target_url,
+                endpoints,
+                web_settings.current().SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
             )
             grouped: Dict[tuple[str, str], dict] = {}
             async with httpx.AsyncClient(
@@ -2711,7 +2721,9 @@ class WebScanOrchestrator:
         reflected: List[str] = []
         reflected_with_creds: List[str] = []
         sample_urls = security_header_sample_urls(
-            target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+            target_url,
+            endpoints,
+            web_settings.current().SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
         )
         try:
             import httpx

@@ -25,7 +25,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import ConfigAuditSection from "@audit/components/scan/ConfigAuditSection";
+import ConfigAuditSection from "@audit/components/credentialed/ConfigAuditSection";
 
 /** Shaped exactly as `credentialed.report.config_audit` arrives. */
 function audit(overrides = {}) {

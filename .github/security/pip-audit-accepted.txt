@@ -13,27 +13,6 @@
 #
 # Format: one advisory ID per line; everything after '#' is ignored.
 
-# ── pillow 10.3.0 — 17 advisories; highest fix 12.3.0
-# Pinned in requirements.txt; no module imports it directly. reportlab uses it for
-# images in PDF reports. The fixes need 10.3.0 -> 12.x, a major upgrade.
-PYSEC-2026-165         # CVE-2026-42308   fixed in 12.2.0
-PYSEC-2026-2249        # CVE-2026-25990   fixed in 12.1.1
-PYSEC-2026-2250        # CVE-2026-40192   fixed in 12.2.0
-PYSEC-2026-2252        # CVE-2026-42311   fixed in 12.2.0
-PYSEC-2026-2253        # CVE-2026-54059   fixed in 12.3.0
-PYSEC-2026-2254        # CVE-2026-54060   fixed in 12.3.0
-PYSEC-2026-2255        # CVE-2026-55379   fixed in 12.3.0
-PYSEC-2026-2256        # CVE-2026-55380   fixed in 12.3.0
-PYSEC-2026-2257        # CVE-2026-55798   fixed in 12.3.0
-PYSEC-2026-2874        # CVE-2026-42310   fixed in 12.2.0
-PYSEC-2026-3451        # CVE-2026-59199   fixed in 12.3.0
-PYSEC-2026-3453        # CVE-2026-59205   fixed in 12.3.0
-PYSEC-2026-3454        # CVE-2026-59197   fixed in 12.3.0
-PYSEC-2026-3493        # CVE-2026-54058   fixed in 12.3.0
-PYSEC-2026-3494        # CVE-2026-59198   fixed in 12.3.0
-PYSEC-2026-3495        # CVE-2026-59200   fixed in 12.3.0
-PYSEC-2026-3496        # CVE-2026-59204   fixed in 12.3.0
-
 # ── python-multipart 0.0.9 — 7 advisories; highest fix 0.0.31
 # Multipart parsing for the two upload endpoints (evidence, AMT import). Pinned 0.0.9.
 PYSEC-2026-1851        # CVE-2024-53981   fixed in 0.0.18
@@ -68,11 +47,16 @@ PYSEC-2026-3552        # CVE-2026-69247   fixed in 50.0.0
 PYSEC-2026-3553        # CVE-2026-69249   fixed in 49.0.0
 PYSEC-2026-3554        # CVE-2026-69248   fixed in 49.0.0
 
-# ── python-jose 3.3.0 — 3 advisories; highest fix 3.4.0
-# JWT library for authentication. One advisory has no fix in any release.
+# ── python-jose 3.3.0 — 4 advisories; highest fix 3.4.0
+# JWT library for authentication. Two advisories have no fix in any release.
 PYSEC-2024-232         # CVE-2024-33663   fixed in 3.4.0
 PYSEC-2024-233         # CVE-2024-33664   fixed in 3.4.0
 PYSEC-2025-185         # CVE-2024-29370   no fix published
+# Added 30 Oct 2026, triaged: HMAC algorithm confusion via DER public keys, every
+# release through 3.5.0. Not reachable here: both verifiers pass algorithms=[ES256]
+# and refuse a header alg that is not the key's. Decision and review trigger:
+# docs/ci/SECURITY_GATES.md#python-jose-pysec-2026-4298
+PYSEC-2026-4298        # CVE-2026-85394   no fix published (affects <= 3.5.0)
 
 # ── ecdsa 0.19.2 — 1 advisories; highest fix none published
 # Transitive (python-jose). No fixed release exists.

@@ -21,6 +21,15 @@ What it ratchets, and what it deliberately does not:
   capabilities of one layer; every table a capability references or writes that
   another capability owns; and, for selected entry points, which capabilities
   and heavy third-party packages importing them loads.
+* **Pinned (E2)** — the engine libraries ``library_isolation.LIBRARIES``
+  declares, and the scan engines in ``PINNED_ENGINES``, may never load a
+  package in ``library_isolation.FORBIDDEN`` (SQLAlchemy, FastAPI, Celery,
+  Redis). Unlike the ratchet this is absolute: no rewritten baseline admits
+  one. ``library_isolation`` proves the same for the libraries by running them
+  (D1).
+* **Layer rules (E1)**, absolute too: no layer-3 capability imports a higher
+  layer; nothing outside the scans capability and ``main`` imports
+  ``scan_helpers``; the platform's entry points load no Audit capability.
 * **Not ratcheted** — raw edge counts. A new downward import (a scan engine
   using the check kernel) is the architecture working as intended, and a
   ratchet that failed on it would teach people to regenerate the baseline
@@ -66,6 +75,7 @@ from scripts.architecture.import_graph import (
     collect_edges,
     strongly_connected,
 )
+from scripts.architecture.library_isolation import FORBIDDEN, LIBRARIES
 
 BASELINE_FILE = Path(__file__).with_name("capability_baseline.json")
 OWNERSHIP_FILE = Path(__file__).with_name("table_ownership.yaml")
@@ -193,6 +203,14 @@ PREFIXES: dict[str, str] = {
     "core.scan_scope": "scan_kernel",
     # C6 (G5): what one network-scan phase hands the next.
     "core.phase_handoff": "scan_kernel",
+    # G3: what a MAC address's vendor is and what a host is, used by the
+    # discovery and network-check engines. The OUI lookup reads the asset
+    # registry's vendor cache through a port (core.mac_vendor_cache answers).
+    "core.oui_lookup": "scan_kernel",
+    # G3: whether a scan's targets can be, and may be, scanned (out of
+    # scan_helpers), so scheduling asks the kernel.
+    "core.scan_targets": "scan_kernel",
+    "core.device_classifier": "scan_kernel",
     # check kernel (scans.cvss / scans.finding_normalizer are its aliases)
     "core.checks": "check_kernel",
     "scans.cvss": "check_kernel",
@@ -200,6 +218,9 @@ PREFIXES: dict[str, str] = {
     # vulnerability intelligence
     "core.cve_database": "vuln_intel",
     "core.vuln_intel": "vuln_intel",
+    # G3: the vulnerability-intelligence database, as the version matcher is
+    # handed it.
+    "core.vuln_intel_repository": "vuln_intel",
     # Pure priority and normalisation, split from the database module in B3.
     "core.vuln_scoring": "vuln_intel",
     "scans.nvd_sync": "vuln_intel",
@@ -215,7 +236,9 @@ PREFIXES: dict[str, str] = {
     "engines.tls": "tls",
     "engines.credentialed": "credentialed_audit",
     "core.credential_scope": "credentialed_audit",
-    "routers.credentialed": "credentialed_audit",
+    # G3: the scans capability's API — its one route, POST /scan/credentialed,
+    # creates a scan, as routers.phase_scans's do.
+    "routers.credentialed": "scans",
     "core.config_audit": "config_audit",
     "core.benchmarks": "config_audit",
     "core.scap": "config_audit",
@@ -244,12 +267,13 @@ PREFIXES: dict[str, str] = {
     "core.asset_evidence": "assets",
     # G6 (C7): the asset registry's answer to the findings side's host port.
     "core.asset_hosts": "assets",
+    # G2 (C7): what the dashboard and the report export read from the registry.
+    "core.asset_reads": "assets",
     "core.amt_reconciliation": "assets",
-    # Ambiguous: both are used by the scan engines, but the vendor lookup reads
-    # the assets capability's mac_vendor_cache and the classifier decides what
-    # an asset *is*. Owned by assets; the engines' use is recorded as upward.
-    "core.device_classifier": "assets",
-    "core.oui_lookup": "assets",
+    # G3: the vendor cache the scan kernel's OUI lookup reads through its port.
+    "core.mac_vendor_cache": "assets",
+    # G3: the asset half of the topology engine's directory.
+    "core.topology_assets": "assets",
     "core.audit_event_translator": "assets",  # the asset timeline, not the audit log
     "scans.asset_syncer": "assets",
     "routers.assets": "assets",
@@ -301,6 +325,10 @@ PREFIXES: dict[str, str] = {
     "scans.legacy_json_builder": "scans",
     "scans.notification_vocabulary": "scans",
     "scans.policy_binding": "scans",
+    # G2 (C7): what the read side asks of the scan records, and what a report
+    # says about its scan (moved out of scan_helpers).
+    "scans.reads": "scans",
+    "scans.report_context": "scans",
     "scans.progress": "scans",
     "scans.report_inputs": "scans",
     "scans.scan_access": "scans",
@@ -685,6 +713,14 @@ ENTRY_POINTS = (
     "reporting.xlsx_generator",
     "reporting.pdf_generator",
     "routers.web_scans",
+    "core.web.settings",
+    "core.web.crawling.browser",
+    "core.web.ffuf.wrapper",
+    "core.web.nuclei.profiles",
+    "core.web.nuclei.wrapper",
+    "core.web.oast.client",
+    "core.web.sqlmap.wrapper",
+    "core.web.subfinder.wrapper",
     "ccure_audit.services",
     "ccure_audit.integration",
 )
@@ -777,6 +813,96 @@ def load_profiles(modules, raw_edges) -> dict[str, dict[str, list[str]]]:
     return profiles
 
 
+#: E2 beyond the D1 libraries (G3): scan engines whose load profile is pinned
+#: against ``FORBIDDEN`` though they are not D1 libraries yet — each reads the
+#: settings module at import, which the harness does not admit. Not here: the
+#: topology engine, which still persists its own links through SQLAlchemy
+#: (docs/architecture/MODULAR_REFACTORING_LOG.md §6, Group 3).
+PINNED_ENGINES = (
+    "engines.port.port_engine",
+    "engines.vulnerability.vulnerability_engine",
+    "core.nmap.wrapper",
+    "engines.credentialed.vuln_matcher",
+)
+
+
+def library_problems(load_profiles: dict) -> list[str]:
+    """
+    E2: no engine library, and no pinned scan engine, loads a package in
+    ``FORBIDDEN``.
+
+    Read from the same load profiles the ratchet records, but not from the
+    baseline: a library that started loading SQLAlchemy fails here however
+    the baseline was rewritten. Every entry point must be one of
+    ``ENTRY_POINTS``, or there would be no profile to read.
+    """
+    problems = []
+    pinned = [
+        (name, entry)
+        for name, library in sorted(LIBRARIES.items())
+        for entry in library.entry_points
+    ] + [("engine", entry) for entry in PINNED_ENGINES]
+    for name, entry in pinned:
+        profile = load_profiles.get(entry)
+        if profile is None:
+            problems.append(
+                f"library {name}: no load profile for {entry} — add it to ENTRY_POINTS"
+            )
+            continue
+        loaded = sorted(FORBIDDEN & set(profile["third_party"]))
+        if loaded:
+            problems.append(
+                f"library {name}: importing {entry} loads {loaded}, which an "
+                "engine library may never load (E2)"
+            )
+    return problems
+
+
+#: What a platform entry point may load: the platform itself, the runtime
+#: infrastructure and the cross-product contracts — never a module's code.
+PLATFORM_MAY_LOAD = frozenset({"infra", "platform", "contracts"})
+
+
+def layer_rule_problems(measurement: dict) -> list[str]:
+    """
+    E1: the layer rules the analysis's §8.2 layers add, stated over capabilities
+    rather than module prefixes, because a layer-3 capability's modules live in
+    several packages. Absolute, like E2: no baseline admits a breach.
+
+    * **engines-are-libraries, widened to every layer-3 module** — no module of
+      a layer-3 capability imports a higher layer. A layer-3 capability may use
+      the database layer for its own tables; it may not reach up into the asset
+      registry, the findings store, the scans or anything above.
+    * **scan_helpers is the scans capability's** — nothing else imports it but
+      ``main``, the composition root.
+    * **the platform loads no Audit model** — importing a platform entry point
+      loads only ``PLATFORM_MAY_LOAD``.
+    """
+    problems = []
+    for src, dst in measurement["upward_edges"]:
+        cap = capability_of(src)
+        if CAPABILITIES[cap][0] == 3:
+            problems.append(
+                f"engines-are-libraries: {src} ({cap}, layer 3) imports {dst}, "
+                "a higher layer (E1)"
+            )
+    for src in measurement["scan_helpers_importers"]:
+        if capability_of(src) not in ("scans", "main"):
+            problems.append(
+                f"scan_helpers is the scans capability's: {src} "
+                f"({capability_of(src)}) imports it (E1)"
+            )
+    for entry, profile in sorted(measurement["load_profiles"].items()):
+        if capability_of(entry) != "platform":
+            continue
+        audit = sorted(set(profile["capabilities"]) - PLATFORM_MAY_LOAD)
+        if audit:
+            problems.append(
+                f"the platform loads no Audit model: importing {entry} loads {audit} (E1)"
+            )
+    return problems
+
+
 # ── Measurement, baseline and ratchet ─────────────────────────────────────────
 def measure(root: Path = BACKEND_ROOT) -> dict:
     modules, raw_edges = collect_edges(root)
@@ -803,6 +929,14 @@ def measure(root: Path = BACKEND_ROOT) -> dict:
         "foreign_table_references": sorted(references),
         "foreign_table_writes": sorted(writes),
         "load_profiles": load_profiles(modules, raw_edges),
+        # E1: who imports scan_helpers, top-level or lazily.
+        "scan_helpers_importers": sorted(
+            {
+                e.src
+                for e in raw_edges
+                if e.dst == "scan_helpers" and e.src != "scan_helpers"
+            }
+        ),
     }
 
 
@@ -820,11 +954,17 @@ CEILINGS = {
     # (C4) took configuration audit out: it imports nothing above it. G6 took
     # web DAST out: its PDF renderer takes the CVE paragraph from the
     # renderers (reporting.report_helpers), not from scan_helpers.
-    "largest_cycle": 11,
+    # G3: the OUI lookup and the device classifier joined the scan kernel, so
+    # discovery and the network checks left; the credentialed router became the
+    # scans capability's API, so the credentialed audit and the credential vault
+    # left; the topology engine reads assets and scans through its directory,
+    # so topology left too — 11 to 6.
+    "largest_cycle": 6,
     # G2's model move (the credential vault's model out of the compliance
     # file) broke the top-level cycle into 5, 2 and 2. G4 (C4) broke the
     # compliance and configuration-audit pair: [5, 2].
-    "largest_cycle_top_level": 5,
+    # G3: the network checks and the credentialed audit left (above): [3, 2].
+    "largest_cycle_top_level": 3,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
     # network checks register their plugins with the check kernel) removed 2;
@@ -841,7 +981,12 @@ CEILINGS = {
     # compliance's catalogue code (core/compliance_catalogue): their nine
     # imports of the compliance models and frameworks are internal.
     # G6: the web PDF renderer's import of scan_helpers, for the CVE paragraph.
-    "upward_edges": 18,
+    # G3: discovery's two and the network checks' one, into the asset
+    # registry's OUI lookup and classifier (now the scan kernel's); the
+    # credentialed router's two (now the scans capability's own); scheduling's
+    # two imports of scan_helpers (it asks the kernel's core.scan_targets); the
+    # topology engine's three and the topology API's one (its directory). 18 to 7.
+    "upward_edges": 7,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web
@@ -866,7 +1011,9 @@ CEILINGS = {
     # findings side's port, core.findings.hosts), and the assets router's four
     # of the findings models became two, of the findings reads and their
     # package; the asset registry's answer to the port imports its column list.
-    "lateral_edges": 29,
+    # G3: core.utils' import of the CVE database client, which moved beside
+    # its one caller in the network checks.
+    "lateral_edges": 28,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
@@ -884,7 +1031,15 @@ CEILINGS = {
     # G6 (C7): the findings capability's reads of assets (it joins hosts
     # through its port), and the assets router's of asset_vulnerabilities,
     # services and tls_details (it asks the findings reads).
-    "foreign_table_references": 46,
+    # G2 (C7's remainder): the dashboard's eleven (it reads each capability
+    # through that capability's read module: core.findings.summaries,
+    # core.asset_reads, scans.reads, core.web.reads), and the reporting
+    # capability's three — the report routes' assets and scans, and the
+    # export's scan_phases, now asked of the asset registry and the scans
+    # capability.
+    # G3: the topology engine's references to assets and scans (its
+    # directory answers them).
+    "foreign_table_references": 30,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
@@ -892,7 +1047,9 @@ CEILINGS = {
     # asset_vulnerabilities and vulnerability_definitions, and Audit's purge
     # hook's to asset_vulnerabilities. G4 (C4): the benchmark loader's four,
     # to the compliance catalogue it now belongs to.
-    "foreign_table_writes": 5,
+    # G3: the topology engine's enrolment of assets, now the asset registry's
+    # (core.topology_assets).
+    "foreign_table_writes": 4,
 }
 
 _BASELINE_KEYS = (
@@ -948,7 +1105,11 @@ def ratchet_problems(measurement: dict | None = None, baseline=None) -> list[str
             for m in measurement["unmapped"]
         ]
     baseline = baseline if baseline is not None else load_baseline()
-    problems = ceiling_problems(baseline)
+    problems = (
+        ceiling_problems(baseline)
+        + library_problems(measurement["load_profiles"])
+        + layer_rule_problems(measurement)
+    )
 
     for key, label in (("cycles", "cycle"), ("cycles_top_level", "top-level cycle")):
         known = [frozenset(c) for c in baseline[key]]
@@ -1035,7 +1196,11 @@ def main(argv: list[str] | None = None) -> int:
         print()
         return 0
     if args.write_baseline:
-        problems = ceiling_problems(baseline_from(measurement))
+        problems = (
+            ceiling_problems(baseline_from(measurement))
+            + library_problems(measurement["load_profiles"])
+            + layer_rule_problems(measurement)
+        )
         if problems:
             print("\n".join(problems))
             return 1

@@ -128,7 +128,9 @@ describe("CredentialedScan — functional", () => {
   it("loads the stored credential list on mount", async () => {
     renderPage();
     await waitFor(() =>
-      expect(axiosInstance.get).toHaveBeenCalledWith("/compliance/credentials"),
+      expect(axiosInstance.get).toHaveBeenCalledWith("/credentials", {
+        params: {},
+      }),
     );
   });
 

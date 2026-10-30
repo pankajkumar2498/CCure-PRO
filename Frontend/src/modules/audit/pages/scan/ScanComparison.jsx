@@ -41,7 +41,7 @@ import {
   CcurePageHeader,
 } from "../../../../design-system";
 import usePagedRows from "@audit/hooks/usePagedRows";
-import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
+import ReportExportPanel from "@audit/components/common/ReportExportPanel";
 import { getScan } from "@audit/api/scans";
 import {
   CLASSIFICATIONS,

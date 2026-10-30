@@ -44,7 +44,7 @@ vi.mock("@shell/api/axiosInstance", () => ({
 vi.mock("@audit/components/layout/AppLayout", () => ({
   default: ({ children }) => <div data-testid="app-layout">{children}</div>,
 }));
-vi.mock("@audit/components/layout/ScanStepper", () => ({
+vi.mock("@audit/components/scan/ScanStepper", () => ({
   default: () => <div data-testid="scan-stepper" />,
 }));
 vi.mock("@audit/components/scan/ExportPanel", () => ({

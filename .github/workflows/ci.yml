@@ -139,6 +139,14 @@ jobs:
             python3 scripts/ci/select_tests.py --full --github-output
           fi
 
+      # E3. The stdlib guards the pre-commit hook runs (layering, cycles, the
+      # identity boundary, organisation settings, the capability ratchet,
+      # secret handling). Standard library only, so it runs before the install
+      # and a breach fails in seconds. The same step leads architecture.yml,
+      # which covers pushes of other branches.
+      - name: Architecture Guards (stdlib)
+        run: python3 Backend/scripts/architecture/check.py
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -282,6 +290,15 @@ jobs:
           pytest $TARGETS $COVERAGE -v --reruns 1 -rR \
             --deselect tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues \
             --deselect tests/rbac/test_development_reset.py::test_forward_migration_removes_only_legacy_objects
+
+      # E3. The library isolation harness (D1): each engine library imported,
+      # then run by its own tests, in a fresh interpreter that admits only what
+      # it declares. Every scope, as tests/repo is, about 20 seconds. Each
+      # child interpreter is handed none of this job's environment.
+      - name: Library Isolation Harness (D1)
+        run: |
+          cd Backend
+          python -m scripts.architecture.library_isolation
 
       # The gateway (Phase 10). gateway-auth decides every API request before
       # the core sees it, and its verification rules are the core's own file

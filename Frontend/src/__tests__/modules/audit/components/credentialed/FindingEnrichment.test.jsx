@@ -16,7 +16,7 @@ import {
   FindingSignals,
   FindingDetail,
   isPresent,
-} from "@audit/components/scan/FindingEnrichment";
+} from "@audit/components/credentialed/FindingEnrichment";
 
 const CVE = {
   cve_id: "CVE-2025-10585",

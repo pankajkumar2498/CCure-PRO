@@ -17,7 +17,7 @@ from ccure_platform.api import (
     resolve_active_organisation,
 )
 from db.base import get_db
-from db.models import Scan
+from core.topology.directory import directory
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -43,7 +43,7 @@ def _authorize_scan(
 ) -> None:
     """404 for an unknown scan, 403 for another organisation's, and 403 for a
     colleague's scan unless the account holds ``audit.scan.read_all`` there."""
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    scan = directory().scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 

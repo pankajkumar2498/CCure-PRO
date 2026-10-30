@@ -54,9 +54,7 @@ check(
 
 check(
     "core.utils imports",
-    lambda: __import__(
-        "core.utils", fromlist=["lookup_cve", "extract_version", "InputValidator"]
-    ),
+    lambda: __import__("core.utils", fromlist=["extract_version", "InputValidator"]),
 )
 
 check(
@@ -128,7 +126,7 @@ check(
 check(
     "CVE lookup returns results for known banner",
     lambda: (
-        __import__("core.utils", fromlist=["lookup_cve"])
+        __import__("engines.vulnerability.cve_lookup", fromlist=["lookup_cve"])
         .lookup_cve("vsftpd 2.3.4")
         .__len__()
         > 0

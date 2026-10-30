@@ -9,7 +9,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Protocol, Tuple
 
 from core.checks.platform_scope import configuration_platforms, declared_platforms
 from engines.credentialed.package_identity import (
@@ -21,14 +21,56 @@ from engines.credentialed.package_identity import (
     resolve_identities,
     version_space_contains,
 )
-from core.vuln_intel import (
+from core.vuln_scoring import (
     build_sql_or_clauses,
-    get_vuln_engine,
     merge_alias_fields,
     normalize_package_names,
 )
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+
+
+# ── The CVE repository, injected (G3) ───────────────────────────────────────
+# The matcher holds the queries and what they mean. The repository — the
+# vulnerability-intelligence database: an engine to connect with, the SQL
+# construct the queries are written in and the errors a failed query raises —
+# is handed in, or is the one Audit's composition root registers
+# (ccure_audit/engine_ports.py, core/vuln_intel_repository.py). So the matcher
+# imports no SQLAlchemy and builds no engine.
+
+
+class CveRepository(Protocol):
+    engine: Any
+    errors: tuple
+
+    def sql(self, statement: str) -> Any:
+        """The statement as the engine executes it."""
+
+
+class CveRepositoryMissing(RuntimeError):
+    """No CVE repository was handed in or registered in this process."""
+
+
+_cve_repository: CveRepository | None = None
+
+
+def register_cve_repository(repository: CveRepository) -> None:
+    """Register the repository a matcher uses when none is handed in. The same
+    repository again does nothing; a second, different one is refused."""
+    global _cve_repository
+    if _cve_repository is repository:
+        return
+    if _cve_repository is not None:
+        raise ValueError("a CVE repository is already registered")
+    _cve_repository = repository
+
+
+def registered_cve_repository() -> CveRepository:
+    if _cve_repository is None:
+        raise CveRepositoryMissing(
+            "no CVE repository is registered in this process; Audit's "
+            "composition root, ccure_audit/engine_ports.py, registers it"
+        )
+    return _cve_repository
+
 
 log = logging.getLogger("ccure.vuln_matcher")
 
@@ -151,8 +193,13 @@ class VulnMatcher:
     3. Query optimization - reduced JOIN overhead via batch operations
     """
 
-    def __init__(self):
-        self.engine = get_vuln_engine()
+    def __init__(self, repository: CveRepository | None = None):
+        self.repository = repository or registered_cve_repository()
+        # The engine stays an attribute of the matcher: callers and tests hand
+        # it another. The SQL construct and the errors are the repository's.
+        self.engine = self.repository.engine
+        self._sql = self.repository.sql
+        self._db_errors = self.repository.errors
         self._package_vendors: dict[str, str] = {}
         #: OSV ecosystems applicable to the host being matched. Empty means the
         #: host's release could not be established, and OSV matching is skipped
@@ -392,7 +439,7 @@ class VulnMatcher:
 
                 all_findings = cpe_findings + osv_findings
 
-        except SQLAlchemyError as exc:
+        except self._db_errors as exc:
             self._lookup_failed("Batch vulnerability query", exc)
 
         return self._merge_by_package(all_findings)
@@ -466,7 +513,7 @@ class VulnMatcher:
             with self.engine.connect() as conn:
                 rows = (
                     conn.execute(
-                        text(
+                        self._sql(
                             "SELECT cve_id, raw_json->'configurations' AS configurations "
                             "FROM cve WHERE cve_id = ANY(:ids)"
                         ),
@@ -476,7 +523,7 @@ class VulnMatcher:
                     .all()
                 )
             configurations = {r["cve_id"]: r["configurations"] for r in rows}
-        except SQLAlchemyError as exc:
+        except self._db_errors as exc:
             # The description is still read below; only the configuration half
             # of the scope is lost, and losing it restricts nothing.
             log.warning("Could not read CVE configurations for platform scope: %s", exc)
@@ -567,7 +614,7 @@ class VulnMatcher:
             return {}
 
         rows = conn.execute(
-            text(
+            self._sql(
                 "SELECT DISTINCT LOWER(vendor) AS vendor, LOWER(product) AS product "
                 "FROM cpe WHERE LOWER(product) = ANY(:candidates)"
             ),
@@ -643,7 +690,7 @@ class VulnMatcher:
             )
 
         rows = conn.execute(
-            text(
+            self._sql(
                 "SELECT LOWER(vendor) AS vendor, LOWER(product) AS product, "
                 "version_start_including, version_start_excluding, "
                 "version_end_including, version_end_excluding "
@@ -737,7 +784,7 @@ class VulnMatcher:
             )
         identity_clause = " OR ".join(clauses)
 
-        query = text(
+        query = self._sql(
             f"""
             SELECT
                 c.cve_id,
@@ -775,7 +822,7 @@ class VulnMatcher:
         # ordering by exploitation likelihood put those first — so eight real
         # Siemens findings on a live host were silently truncated away by a
         # browser that happened to be installed alongside.
-        query = text(
+        query = self._sql(
             f"""
             SELECT * FROM (
                 SELECT ranked.*, ROW_NUMBER() OVER (
@@ -878,7 +925,7 @@ class VulnMatcher:
                         )
                         break  # Only match first compatible package
 
-        except SQLAlchemyError as exc:
+        except self._db_errors as exc:
             self._lookup_failed("Batch CPE query", exc)
 
         return findings
@@ -948,7 +995,7 @@ class VulnMatcher:
         eco_params = {f"osv_eco_{i}": eco for i, eco in enumerate(self._osv_ecosystems)}
         eco_placeholders = ", ".join([f":osv_eco_{i}" for i in range(len(eco_params))])
 
-        query = text(
+        query = self._sql(
             f"""
             SELECT
                 oa.cve_id,
@@ -1083,7 +1130,7 @@ class VulnMatcher:
                     )
                     break
 
-        except SQLAlchemyError as exc:
+        except self._db_errors as exc:
             self._lookup_failed("Batch OSV query", exc)
 
         return findings
@@ -1116,7 +1163,7 @@ class VulnMatcher:
                             pkg_name = future_to_pkg[future][0]
                             log.warning(f"Package '{pkg_name}' matching failed: {exc}")
 
-        except SQLAlchemyError as exc:
+        except self._db_errors as exc:
             log.warning("Parallel vulnerability query failed: %s", exc)
 
         # as_completed yields in completion order; fix it before the merge so a
@@ -1156,7 +1203,7 @@ class VulnMatcher:
             values=candidates,
             param_prefix="pkg",
         )
-        query = text(
+        query = self._sql(
             f"""
             SELECT
                 c.cve_id,
@@ -1280,7 +1327,7 @@ class VulnMatcher:
             f"({where_sql}) AND aff.ecosystem LIKE ANY (ARRAY[{eco_placeholders}])"
         )
 
-        query = text(
+        query = self._sql(
             f"""
             SELECT
                 oa.cve_id,

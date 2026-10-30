@@ -23,7 +23,7 @@ This wrapper:
 import logging
 import os
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 from core.web.base_wrapper import ToolWrapper
 
 log = logging.getLogger("ccure.web.nuclei")
@@ -116,11 +116,13 @@ class NucleiWrapper(ToolWrapper):
         timeout: int | None = None,
     ):
         super().__init__(
-            binary_path=binary_path or WebScanConfig.NUCLEI_BINARY,
-            timeout=timeout or WebScanConfig.NUCLEI_TIMEOUT,
+            binary_path=binary_path or web_settings.current().NUCLEI_BINARY,
+            timeout=timeout or web_settings.current().NUCLEI_TIMEOUT,
             name="nuclei",
         )
-        self.templates_dir = templates_dir or WebScanConfig.NUCLEI_TEMPLATES_DIR
+        self.templates_dir = (
+            templates_dir or web_settings.current().NUCLEI_TEMPLATES_DIR
+        )
 
     def _is_acceptable_exit_code(self, code: int) -> bool:
         """Nuclei returns 1 when it finds vulnerabilities — that's success."""
@@ -202,13 +204,17 @@ class NucleiWrapper(ToolWrapper):
         if isinstance(severity, str):
             sev = [part.strip() for part in severity.split(",") if part.strip()]
         else:
-            sev = list(severity or []) or WebScanConfig.NUCLEI_SEVERITY.split(",")
+            sev = list(severity or []) or web_settings.current().NUCLEI_SEVERITY.split(
+                ","
+            )
         args.extend(["-severity", ",".join(sev)])
 
         # Rate limiting — reduce when WAF detected
-        effective_rate = rate_limit or WebScanConfig.SCAN_RATE_LIMIT
+        effective_rate = rate_limit or web_settings.current().SCAN_RATE_LIMIT
         if waf_detected:
-            effective_rate = min(effective_rate, WebScanConfig.STEALTH_RATE_LIMIT)
+            effective_rate = min(
+                effective_rate, web_settings.current().STEALTH_RATE_LIMIT
+            )
             log.info(
                 "WAF detected — reducing nuclei rate limit to %d req/s", effective_rate
             )
@@ -216,9 +222,9 @@ class NucleiWrapper(ToolWrapper):
 
         # Concurrency — from the profile when the caller supplied one, else the
         # deployment default.
-        effective_concurrency = concurrency or WebScanConfig.NUCLEI_CONCURRENCY
+        effective_concurrency = concurrency or web_settings.current().NUCLEI_CONCURRENCY
         args.extend(["-concurrency", str(effective_concurrency)])
-        args.extend(["-bulk-size", str(WebScanConfig.NUCLEI_BULK_SIZE)])
+        args.extend(["-bulk-size", str(web_settings.current().NUCLEI_BULK_SIZE)])
 
         # Template filters
         if tags:
@@ -388,7 +394,7 @@ class NucleiWrapper(ToolWrapper):
         that is a stated limit; left unreported it is a silent false negative in
         the classes an attacker reaches for first.
         """
-        if not WebScanConfig.OAST_ENABLED:
+        if not web_settings.current().OAST_ENABLED:
             args.append("-no-interactsh")
             return {
                 "enabled": False,
@@ -400,11 +406,11 @@ class NucleiWrapper(ToolWrapper):
                 ),
             }
 
-        server = WebScanConfig.OAST_SERVER
+        server = web_settings.current().OAST_SERVER
         if server:
             args.extend(["-iserver", server])
-            if WebScanConfig.OAST_TOKEN:
-                args.extend(["-itoken", WebScanConfig.OAST_TOKEN])
+            if web_settings.current().OAST_TOKEN:
+                args.extend(["-itoken", web_settings.current().OAST_TOKEN])
             return {
                 "enabled": True,
                 "server": server,
@@ -530,7 +536,7 @@ class NucleiWrapper(ToolWrapper):
             request = raw.get("request", "") or ""
             response = raw.get("response", "") or ""
             # Truncate response body to prevent DB bloat
-            max_resp = WebScanConfig.MAX_RESPONSE_BODY_SIZE
+            max_resp = web_settings.current().MAX_RESPONSE_BODY_SIZE
             if len(response) > max_resp:
                 response = response[:max_resp] + "\n... [TRUNCATED]"
 

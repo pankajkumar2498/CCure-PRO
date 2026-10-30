@@ -26,7 +26,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
-import ScanStepper from "@audit/components/layout/ScanStepper";
+import ScanStepper from "@audit/components/scan/ScanStepper";
 import CVELink from "@audit/components/common/CVELink";
 import NetworkPluginCoverage from "@audit/components/scan/NetworkPluginCoverage";
 import { describeAffected } from "@audit/utils/affectedSoftware";

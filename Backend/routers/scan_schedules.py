@@ -431,7 +431,7 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
     schedule is written — but rejecting an unusable target here means the user
     finds out while the form is open rather than from a failed run tomorrow.
     """
-    from scan_helpers import validate_scan_targets
+    from core.scan_targets import validate_scan_targets
 
     cleaned = [str(t).strip() for t in (targets or []) if str(t or "").strip()]
     if not cleaned:

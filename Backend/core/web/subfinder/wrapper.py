@@ -10,7 +10,7 @@ search engines, DNS databases) without sending any traffic to the target.
 import logging
 from typing import Dict, Optional
 
-from config import WebScanConfig
+from core.web import settings as web_settings
 from core.web.base_wrapper import ToolWrapper
 
 log = logging.getLogger("ccure.web.subfinder")
@@ -29,7 +29,7 @@ class SubfinderWrapper(ToolWrapper):
 
     def __init__(self, binary_path: str | None = None, timeout: int = 300):
         super().__init__(
-            binary_path=binary_path or WebScanConfig.SUBFINDER_BINARY,
+            binary_path=binary_path or web_settings.current().SUBFINDER_BINARY,
             timeout=timeout,
             name="subfinder",
         )

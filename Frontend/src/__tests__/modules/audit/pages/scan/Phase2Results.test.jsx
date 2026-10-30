@@ -54,7 +54,7 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
   default: ({ children }) => <div data-testid="app-layout">{children}</div>,
 }));
 
-vi.mock("@audit/components/layout/ScanStepper", () => ({
+vi.mock("@audit/components/scan/ScanStepper", () => ({
   default: ({ current }) => (
     <div data-testid="scan-stepper" data-current={current} />
   ),

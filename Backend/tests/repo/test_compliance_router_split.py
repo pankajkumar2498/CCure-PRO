@@ -5,7 +5,8 @@ by renderers (G6, C8; docs/architecture/MODULAR_REFACTORING_LOG.md §6).
 ``routers/compliance.py`` was 7,481 lines. Its routes now live in
 ``routers/compliance_{catalogue,assessment,attestation,schedules,remediation,
 reports,framework_reports,common}.py``, mounted by ``routers/compliance.py`` in the order the API
-always listed them, and its 20 PDF/DOCX generators in ``reporting/compliance/``.
+always listed them, and its 21 PDF/DOCX generators in ``reporting/compliance/``
+(20 from G6; the executive report's joined them in G2).
 These pin:
 
 * every compliance route keeps ``routers.compliance`` as its module, so its
@@ -128,7 +129,7 @@ def test_the_renderers_import_nothing_of_compliance():
     assert capability_map.capability_of("reporting.compliance.soa") == "renderers"
 
 
-def test_the_twenty_generators_are_renderers():
+def test_the_generators_are_renderers():
     generators = []
     for path in sorted((BACKEND_ROOT / "reporting" / "compliance").glob("*.py")):
         tree = ast.parse(path.read_text())
@@ -137,7 +138,8 @@ def test_the_twenty_generators_are_renderers():
             for n in tree.body
             if isinstance(n, ast.FunctionDef) and n.name.startswith("_generate_")
         ]
-    assert len(generators) == 20
+    # 20 moved in G6, and the executive report's in G2.
+    assert len(generators) == 21
     for name in PARTS + ("routers.compliance",):
         source = (BACKEND_ROOT / (name.replace(".", "/") + ".py")).read_text()
         assert "def _generate_" not in source, name

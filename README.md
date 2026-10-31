@@ -503,10 +503,11 @@ adapters. See [Frontend/README.md](Frontend/README.md) for required CI checks
 and [the final migration report](docs/ux4g/B7_B10_FINAL_CLOSURE.md) for validation.
 
 **The production VM is different.** It runs on the Linux VM `ccurepro`
-(`https://ccurepro.cdac.in`), everything in Docker, and since 13 Oct 2026 from
+(`https://10.180.22.127`, a temporary address until an approved domain is
+available), everything in Docker, and since 13 Oct 2026 from
 **released images**, not from the working tree: editing files there changes
-nothing live. Releases are built, deployed and rolled back as described in
-CLAUDE.md, "Deployment: Linux VM" → "Releases". The Windows-host deployment it
+nothing live. Releases are built, deployed and rolled back as described in the
+`release` skill (`.claude/skills/release/SKILL.md`). The Windows-host deployment it
 ran on until 17 Sep 2026 was retired on 9 Oct 2026, and its PowerShell start,
 host-worker, backup and nginx scripts were removed with it; git history keeps
 them. `scripts/tls/*.ps1` remain, for Windows client machines that must trust

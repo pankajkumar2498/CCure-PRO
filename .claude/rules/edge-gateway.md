@@ -97,15 +97,17 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
 
 
 - **TLS** — host Nginx terminates TLS on **443** and 301-redirects 80. Reached
-  at **`https://ccurepro.cdac.in`** and `https://10.180.22.127` _(the Windows
-  deployment's `ccurepro.cdacb.in` is not on the VM's certificate and does not
-  resolve)_; the Docker published ports are bound to
+  at **`https://10.180.22.127`**, the current address and a temporary one until
+  an approved domain is available. `ccurepro.cdac.in` is in host nginx's
+  `server_name` and on the certificate but is not a published DNS name (only the
+  VM's `/etc/hosts` resolves it); the Windows deployment's `ccurepro.cdacb.in` is
+  on neither and does not resolve. The Docker published ports are bound to
   127.0.0.1 only, so this is the sole listener on a routable interface and the
   only hop that needs a certificate.
 
   Certificates come from a **private CA** — `scripts/tls/new_internal_ca.ps1`
   _(written for the Windows deployment, when the app was reached at
-  10.180.6.14; the VM serves `https://ccurepro.cdac.in` and 10.180.22.127, see
+  10.180.6.14; the VM serves `https://10.180.22.127`, see
   "Deployment: Linux VM")_.
   A public CA is impossible here, not merely inconvenient: the app is reached at
   a private address (10.180.22.127 on the VM, 10.180.6.14 on the Windows host)
@@ -124,9 +126,17 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
     browsers to discard the header when the host is an IP literal. The IP form
     still gets encryption; only the hostname can be pinned. That is why
     `FRONTEND_URL` was the hostname on the Windows deployment. On the VM it is
-    `https://10.180.22.127` (root `.env` and `Backend/.env`, 31 Oct 2026), so a
-    link built from it cannot be pinned; whether to change it is an owner
-    decision, recorded in the engineering record's open verification register.
+    `https://10.180.22.127` (root `.env` and `Backend/.env`), by the owner's
+    decision of 31 Oct 2026: no approved domain is available, so the address is
+    temporary and HSTS cannot pin it. When a domain is approved, `FRONTEND_URL`,
+    the certificate and host nginx's `server_name` change together.
+  - **`https://ccurepro.cdac.in` is still an identifier, and that is correct.**
+    `CCURE_TOKEN_ISSUER` (the tokens' `iss`, `docker-compose.yml` and
+    `config.py`), the service-token audience
+    (`https://ccurepro.cdac.in/api/auth/service-token`) and the contracts'
+    schema `$id`s use the name without anyone resolving it. Changing them is a
+    token-contract change, since every token in flight carries the old `iss` and
+    `aud`, not a correction of the address.
 
   `max-age` is **300** in both Nginx and `main.py`. Raise them **together** and
   only after every client is confirmed working — HSTS is a one-way door, and a

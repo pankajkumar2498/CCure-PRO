@@ -69,7 +69,10 @@ section is the VM's answer.
   memory segment … No space left on device", which reads as a full disk.
 
 - **Reaching things from the Windows workstation.** The app is
-  `https://ccurepro.cdac.in` (host nginx on 443, 301 from 80). Portainer is
+  `https://10.180.22.127` (host nginx on 443, 301 from 80): the current address,
+  and a temporary one until an approved domain is available. `ccurepro.cdac.in`
+  is not a published DNS name; it resolves only through the VM's own
+  `/etc/hosts`, although host nginx and the certificate still carry it. Portainer is
   reached through the tunnel below, **not** on the LAN. VS Code uses Remote
   SSH to the same host. `psql` on the VM is the 16 client and talks to the 18
   server fine; `pg_dump` 16 does not.

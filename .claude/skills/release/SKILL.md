@@ -31,7 +31,7 @@ release. That release's own record is
   today), confirm both workers idle (`celery inspect active`) and no scan
   running or queued, then
   `compose.sh up --no-start --no-deps --no-build --pull never --force-recreate api worker web-worker beat frontend`,
-  `compose.sh start api`, wait for `https://ccurepro.cdac.in/api/` to answer
+  `compose.sh start api`, wait for `https://10.180.22.127/api/` to answer
   200, then `compose.sh start frontend worker web-worker beat`. Exactly one
   beat. A frontend-only release recreates `frontend` alone.
 - **Rollback** is the same with `compose.sh --fallback`, which uses the

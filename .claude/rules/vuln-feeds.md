@@ -39,6 +39,9 @@ the feeds can be rebuilt onto an empty server.
   rows, 27,640 of them outside KEV. `verified_exploit` marks the subset
   ExploitDB confirmed reproducible.
 - `Backend/scans/nvd_sync.py` — NVD, pre-existing. Needs the API key in `.env`.
+  The API runs the daily incremental NVD sync, so in Docker the key goes in
+  the root `.env` (compose passes `NVD_API_KEY` to the api only); the host's
+  initial load reads it from `Backend/.env`.
 
 - `Backend/scripts/vuln/sync_csaf.py` — CSAF 2.0 vendor and government
   advisories: **Siemens ProductCERT**, **CISA ICS/OT and IT**, Red Hat. Adding

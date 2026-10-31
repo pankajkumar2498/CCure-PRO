@@ -274,11 +274,11 @@ or `postLoginRedirect` after a session expiry), which wins.
 
 ### Protected — platform
 
-| Path      | Component                     | Notes                                                                                                                                                                                                                                                                                                 |
-| --------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/`       | `shell/pages/CcureHome`       | Where sign-in lands: the Product Hub — every product from `GET /platform/modules`, in registry order — in `PlatformLayout`, whose header carries the shared platform navigation (Administration by permission, organisation switcher for superadmin, notifications, settings, account menu, sign out) |
-| `/:entry` | `shell/pages/ModuleEntryPage` | A product's entry address (`/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard`) while it has no page of its own; an address that is no product's entry goes to `/`                                                                                                                                |
-| `*`       | → redirect to `/`             | Catch-all                                                                                                                                                                                                                                                                                             |
+| Path      | Component                     | Notes                                                                                                                                                                                                                                                                                                                                                |
+| --------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`       | `shell/pages/CcureHome`       | Where sign-in lands: the Product Hub — every product from `GET /platform/modules`, in registry order — in `PlatformLayout`, whose header carries the shared platform navigation (Administration by permission, organisation switcher when the backend allows switching (`can_switch_organisation`), notifications, settings, account menu, sign out) |
+| `/:entry` | `shell/pages/ModuleEntryPage` | A product's entry address (`/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard`) while it has no page of its own; an address that is no product's entry goes to `/`                                                                                                                                                                               |
+| `*`       | → redirect to `/`             | Catch-all                                                                                                                                                                                                                                                                                                                                            |
 
 ### Protected — Audit (`modules/audit/pages/`)
 
@@ -323,24 +323,27 @@ or `postLoginRedirect` after a session expiry), which wins.
 
 ### Protected — permission-gated administration (shared, `shell/admin/pages/`; AMT is Audit's)
 
-Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`
-(or `superadminOnly`):
+Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`,
+a native permission key. There is no role-based guard (RBAC-6/8). The platform
+routes also pass `deniedElement={<AccessDenied />}`, so a refusal is shown inside
+the Platform Shell rather than redirected:
 
-| Path                   | Component                      | Guard                |
-| ---------------------- | ------------------------------ | -------------------- |
-| `/admin/audit-logs`    | `admin/AuditLogs`              | `audit:read`         |
-| `/admin/amt`           | Audit `admin/AMTIntegration`   | `assets:update`      |
-| `/admin/users`         | `admin/UserManagement`         | `users:read`         |
-| `/admin/users/deleted` | `admin/DeletedUsers`           | `users:read`         |
-| `/admin/email-domains` | `admin/EmailDomainRules`       | superadmin only      |
-| `/admin/organizations` | `admin/OrganizationManagement` | `organizations:read` |
-| `/admin/roles`         | `admin/RoleManagement`         | `roles:read`         |
+| Path                           | Component                      | Guard                        |
+| ------------------------------ | ------------------------------ | ---------------------------- |
+| `/admin/audit-logs`            | `admin/AuditLogs`              | `platform.audit_log.read`    |
+| `/admin/amt`                   | Audit `admin/AMTIntegration`   | `audit.asset.import_amt`     |
+| `/admin/users`                 | `admin/UserManagement`         | `platform.user.read`         |
+| `/admin/users/deleted`         | `admin/DeletedUsers`           | `platform.user.read`         |
+| `/admin/registration-settings` | registration policy            | `platform.registration.read` |
+| `/admin/email-domains`         | `admin/EmailDomainRules`       | `platform.email_domain.read` |
+| `/admin/organizations`         | `admin/OrganizationManagement` | `platform.organization.read` |
+| `/admin/roles`                 | `admin/RoleManagement`         | `platform.role.read`         |
 
-> **IMPORTANT:** The `/admin/amt` guard uses `assets:update`, but the backend
-> endpoint it drives (`POST /assets/import-amt`) requires `settings:update` — and
-> the sidebar item for the same page gates on `settings:update`. A role holding
-> `assets:update` without `settings:update` reaches the page and gets a 403 on
-> upload. The backend is authoritative.
+`/admin/amt` is Audit's page, guarded by `AMT_PERMISSION`
+(`modules/audit/config/permissions.js`), the key the backend's
+`POST /assets/import-amt` also requires; the sidebar item uses the same constant.
+The email-domain page needs the platform-scope `platform.email_domain.read`,
+which only the superadmin role holds as a grant: no role name is checked.
 
 ### Audit feature module: web scanning
 
@@ -366,16 +369,19 @@ owns its own nested router, its own error boundary and its own stylesheet:
 ```jsx
 export default function PrivateRoute({ children, requiredPermission,
                                        requiredAny, requiredAll,
-                                       superadminOnly = false }) { ... }
+                                       deniedElement }) { ... }
 ```
 
 ```mermaid
 flowchart TD
     A["PrivateRoute"] --> B{"loading?"}
     B -->|"yes"| S["full-height spinner"]
-    B --> C{"user?"}
+    B --> I{"authState = incompatible?"}
+    I -->|"yes"| X["IncompatibleBackend"]
+    I --> C{"user?"}
     C -->|"no"| L["Navigate /login<br/>state: {from, reason: authState, message: authMessage}"]
-    C --> D{"superadminOnly ⇒ isSuperAdmin?<br/>requiredPermission ⇒ canPermission?<br/>requiredAny ⇒ canAny?<br/>requiredAll ⇒ canAll?"}
+    C --> D{"requiredPermission ⇒ canPermission?<br/>requiredAny ⇒ canAny?<br/>requiredAll ⇒ canAll?"}
+    D -->|"any fails, deniedElement given"| E["deniedElement"]
     D -->|"any fails"| F["Navigate fallbackPathFor(user, pathname, candidates)"]
     D --> O["children || Outlet"]
 ```
@@ -386,67 +392,72 @@ refused, else to `/login`. The candidates come from `AccessFallbackProvider`
 (`shell/auth/accessFallback.jsx`); `App.jsx` supplies Audit's list,
 `modules/audit/config/accessFallbacks.js`:
 
-| Order    | Path                | Required permission |
-| -------- | ------------------- | ------------------- |
-| 1        | `/audit-dashboard`  | `scans:execute`     |
-| 2        | `/history`          | `scans:read`        |
-| 3        | `/reports`          | `reports:read`      |
-| 4        | `/admin/users`      | `users:read`        |
-| 5        | `/admin/audit-logs` | `audit:read`        |
-| fallback | `/login`            | —                   |
+| Order    | Path                | Required permission       |
+| -------- | ------------------- | ------------------------- |
+| 1        | `/audit-dashboard`  | `audit.scan.run`          |
+| 2        | `/history`          | `audit.scan.read`         |
+| 3        | `/reports`          | `audit.report.read`       |
+| 4        | `/admin/users`      | `platform.user.read`      |
+| 5        | `/admin/audit-logs` | `platform.audit_log.read` |
+| fallback | `/login`            | —                         |
 
 A denied user therefore lands somewhere useful rather than on a dead end or a
 redirect loop — and never on CCure Home, which would hide that access was
 refused (D12-8).
 
-`PrivateRoute` is covered by `__tests__/shell/auth/PrivateRoute.test.jsx`, and
-the whole address map, including refusals, by `__tests__/shell/AppRoutes.test.jsx`.
+`PrivateRoute` is covered by `__tests__/shell/auth/PrivateRoute.test.jsx` and
+`__tests__/shell/auth/RouteGuardAuthorization.test.jsx`, and the whole address
+map, including refusals, by `__tests__/shell/AppRoutes.test.jsx`.
 
 ---
 
 ## 6. Permission evaluation
 
-`src/shell/auth/permissions.js` — a faithful mirror of `auth/rbac.py`:
+`src/shell/auth/authorization.js` is the frontend's one authorization helper;
+`src/shell/auth/permissions.js` only re-exports it under the names the rest of
+the UI imports, plus `canPermission`, the object/string spelling of `can`.
 
 ```javascript
-const normalizeRoleName = (r = "") => String(r||"").trim().toLowerCase().replace(/\s+/g, "_");
-
-export const isSuperAdmin = (user) => normalizeRoleName(user?.role?.name) === "superadmin";
-export const isOrgAdmin  = (user) => normalizeRoleName(user?.role?.name) === "org_admin";
-export const hasRole     = (user, roleName) => normalizeRoleName(user?.role?.name) === normalizeRoleName(roleName);
-
-export const getPermissionSet = (user) =>
-  new Set((user?.role?.permissions || []).map(permissionKey).filter(Boolean));
-
-export const can = (user, resource, action) => {
-  if (isSuperAdmin(user)) return true;
-  const key = permissionKey({ resource, action });
-  if (!key) return false;
-  const set = getPermissionSet(user);
-  return set.has(key) || set.has(`${resource}:manage`);
+export const can = (user, permission, context) => {
+  if (!user) return false;
+  const key = norm(permission);              // trimmed, lower-cased
+  if (!KEY.test(key)) return false;          // `area.object.verb`, e.g. audit.scan.read
+  const authz = authorizationOf(user);       // null unless contract === 1
+  if (!authz) return false;
+  return heldIn(authz, key, context);
 };
-
-export const canPermission = (user, permission) => { ... };
-export const canAny  = (user, permissions = []) => permissions.some(...);
-export const canAll  = (user, permissions = []) => permissions.every(...);
+export const canAny  = (user, permissions = [], context) => permissions.some(...);
+export const canAll  = (user, permissions = [], context) => permissions.every(...);
+export const canSwitchOrganisation = (user) =>
+  authorizationOf(user)?.can_switch_organisation === true;
 export const denyMessage = "You do not have permission to perform this action.";
 ```
 
-`permissionKey()` accepts either a `"resource:action"` string or a
-`{resource, action}` object, lowercasing and trimming both parts.
+The rules, each of them tested:
 
-Two properties worth stating:
+- **No role is an input.** There is no `isSuperAdmin`, `isOrgAdmin` or `hasRole`,
+  and no superadmin bypass: RBAC-6 removed them and RBAC-8 removed the last
+  fallback. A role renamed from Superadmin to CISO changes nothing here.
+  `assignmentLabels(user)` returns role display names for display only.
+- **No wildcard.** A key is held only if the backend listed it; there is no
+  `resource:manage` branch.
+- **Nothing is invented.** No authorization payload, or a contract version this
+  build does not know, grants nothing, and `AuthContext` reports the backend as
+  incompatible instead of guessing. Legacy `resource:action` atoms are not read.
+- **Scope is explicit.** A `platform` key holds everywhere; an `organization` key
+  holds only for the backend-validated active organisation, so
+  `can(user, key, { orgId })` for another organisation is "no".
+- **Advisory only.** The backend enforces every request.
 
-- **Superadmin bypass** matches the backend exactly.
-- **`resource:manage` wildcard** — `can()` accepts it, but no such atom is seeded
-  server-side (none of the 51 uses a `manage` action). The branch is dead today,
-  and would silently widen every client-side check for a resource if such an atom
-  were ever added.
+The keys come from `GET /auth/me` → `authorization`
+(`Backend/ccure_platform/rbac/authorization_view.py`): `contract`, `home_org_id`,
+`active_org_id`, `permissions.platform[]`, `permissions.organization[]`,
+`can_switch_organisation` and display-only `assignments[]`.
 
-The permission set comes from `GET /auth/me` → `role.permissions[]`, which is the
-same list `role_permissions` produced server-side.
-
-Covered by `src/__tests__/shell/auth/permissions.test.js`.
+Covered by `src/__tests__/shell/auth/authorization.test.js` and
+`permissions.test.js`; `authorizationInventory.test.js` keeps every remaining
+authorization site classified and fails if a role-name helper or wildcard
+returns.
 
 ---
 
@@ -454,11 +465,11 @@ Covered by `src/__tests__/shell/auth/permissions.test.js`.
 
 Three contexts, each with a distinct persistence strategy.
 
-| Context              | Scope                   | Persistence                                                                         | Hook               |
-| -------------------- | ----------------------- | ----------------------------------------------------------------------------------- | ------------------ |
-| `AuthContext`        | Session and identity    | Access token in memory; refresh in HttpOnly cookie; `activeOrgId` in `localStorage` | `useAuth()`        |
-| `PreferencesContext` | Theme and layout        | Server (`/user/preferences`); `sidebarCollapsed` mirrored to `localStorage`         | `usePreferences()` |
-| `ScanContext`        | In-flight scan pipeline | `sessionStorage` under 27 `cc_*` keys                                               | `useScan()`        |
+| Context              | Scope                   | Persistence                                                                                           | Hook               |
+| -------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------- | ------------------ |
+| `AuthContext`        | Session and identity    | Access token in memory; refresh in HttpOnly cookie; organisation hint `activeOrgId` in `localStorage` | `useAuth()`        |
+| `PreferencesContext` | Theme and layout        | Server (`/user/preferences`); `sidebarCollapsed` mirrored to `localStorage`                           | `usePreferences()` |
+| `ScanContext`        | In-flight scan pipeline | `sessionStorage` under 27 `cc_*` keys                                                                 | `useScan()`        |
 
 ### `AuthContext`
 
@@ -467,7 +478,8 @@ register, logout, refreshUser }`.
 
 `authState` is the state machine described in
 [AUTHENTICATION_AND_AUTHORIZATION.md](AUTHENTICATION_AND_AUTHORIZATION.md) §12:
-`loading` → `authenticated` | `anonymous` | `expired`.
+`loading` → `authenticated` | `anonymous` | `expired` | `incompatible` (the
+backend sent no authorization contract this build understands).
 
 Two background behaviours run only while `authState === "authenticated"`:
 
@@ -476,9 +488,16 @@ Two background behaviours run only while `authState === "authenticated"`:
 - A `visibilitychange` listener that refreshes when the tab becomes visible and
   more than 10 minutes have elapsed — the laptop-woke-from-sleep case.
 
-`syncActiveOrgId(user)` writes `localStorage.activeOrgId`: for a superadmin it
-seeds the value only if absent (so a chosen tenant survives a reload); for everyone
-else it is pinned to `user.org_id`, and removed entirely when there is no user.
+`syncActiveOrgId(user)` writes `localStorage.activeOrgId` from
+`user.authorization.active_org_id`, the organisation the backend accepted, and
+removes it when there is no user. The stored value is only a hint the HTTP client
+sends; it is never evidence, and a forged or stale hint is overwritten by the
+backend's answer on the next sync. If the backend refuses a stored organisation
+(403/404), the hint is dropped and the account is fetched again without it.
+
+`switchOrganisation(orgId)` is a backend operation: it calls
+`GET /auth/me?org_id=`, and stores the result only if the backend's
+`active_org_id` is the organisation requested. A refusal changes nothing.
 
 A `window` listener for the custom `auth:logout` event moves the context to
 `expired` or `anonymous` when the axios interceptor forces a logout.
@@ -592,7 +611,9 @@ refresh cannot recurse into the 401 handler.
 **Request interceptor** — attaches `Authorization: Bearer <token>` when a token
 exists, then injects `params.org_id` from `localStorage.activeOrgId` unless the
 caller already set `org_id`. This is why nearly every backend endpoint accepts an
-optional `org_id`.
+optional `org_id`. The value is a request, not a grant: the backend resolves it
+through `resolve_active_organisation` and honours another organisation only for
+an account holding the platform-scope `platform.organization.switch`.
 
 **Response interceptor** — a single-flight 401 refresh:
 
@@ -720,25 +741,33 @@ accessed through the existing Security Reports tab (`/reports?tab=executive`).
 Shared administration screens use `PlatformLayout`.
 
 `SIDEBAR_SECTIONS` is a five-section declarative model filtered per user by
-`canSeeNavItem(user, item)` — `item.permission` must pass `canPermission`, and
-`item.requiredAny` must pass `canAny`. Two items carry live badges:
+`canSeeNavItem(user, item)` (`shell/auth/navVisibility.js`) — `item.permission`
+must pass `canPermission`, and `item.requiredAny` must pass `canAny`. There is no
+role gate and no `superadminOnly` flag. Two items carry live badges:
 **Active Scans** (`badgeKey: "runningScans"`, info) and **Vulnerabilities**
 (`badgeKey: "criticalCount"`, danger).
 
-| Section        | Items and gates                                                                                                                                                                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview       | Audit Dashboard `audit.dashboard.read`                                                                                                                                                                |
-| Scanning       | Scan Templates `scans:execute` · Active Scans `scans:read` · Scan History `scans:read` · Archived Scans _any of_ `scans:restore`/`scans:recycle` · Recycle Bin _any of_ `scans:restore`/`scans:purge` |
-| Intelligence   | Vulnerabilities `findings:read` · Asset Registry `assets:read` · Services & Ports `assets:read` · TLS / Certificates `assets:read` · Network Topology `scans:read`                                    |
-| Reports        | Security Reports `reports:read` · Compliance `reports:read` · Risk Trends `reports:read`                                                                                                              |
-| Administration | User Management `users:read` · Deleted Users `users:read` · Organizations `organizations:read` · Roles & Permissions `roles:read` · AMT Integration `settings:update` · Audit Logs `audit:read`       |
+| Section        | Items and gates                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview       | Audit Dashboard `audit.dashboard.read`                                                                                                                                                                                                                                                                                                                                              |
+| Scanning       | Scan Templates `audit.scan.run` · Active Scans `audit.scan.read` · Scan Schedules `audit.scan_schedule.read` · Scan Policies `audit.scan_policy.read` · Scan Credentials `audit.credential.read` · Configuration Checks `audit.scan.read` · Scan History `audit.scan.read` · Archived Scans `audit.scan.lifecycle` · Recycle Bin _any of_ `audit.scan.lifecycle`/`audit.scan.purge` |
+| Intelligence   | Vulnerabilities `audit.finding.read` · Remediation `audit.finding.read` · Asset Registry `audit.asset.read` · Services & Ports `audit.asset.read` · TLS / Certificates `audit.asset.read` · Network Topology `audit.scan.read`                                                                                                                                                      |
+| Reports        | Security Reports `audit.report.read` · Compliance `audit.report.read` · Risk Trends `audit.report.read`                                                                                                                                                                                                                                                                             |
+| Audit Settings | AMT Integration `audit.asset.import_amt` (`AMT_PERMISSION`)                                                                                                                                                                                                                                                                                                                         |
 
-> **IMPORTANT:** The Compliance nav item is gated on `reports:read`, but every
-> `/compliance/*` backend endpoint requires `compliance:read`. A role holding one
-> without the other sees a link that 403s.
+User, organisation, role, email-domain and audit-log administration are not in
+Audit's sidebar: they are shared platform screens, listed once in
+`shell/admin/adminNav.js` and shown in the Platform Shell's sidebar.
 
-`AppLayout` also special-cases superadmins (`isSuperAdmin(user)`) for the
-shell's organization switcher, which writes `localStorage.activeOrgId`.
+> **IMPORTANT:** The Compliance nav item is gated on `audit.report.read`, but the
+> `/compliance/*` backend endpoints require `audit.compliance.*` keys
+> (`audit.compliance.read` to read). A role holding one without the other sees a
+> link that 403s.
+
+The organisation switcher (`shell/navigation/OrgSwitcher`, in `PlatformLayout`
+and Audit's `AppLayout`) is shown when `canSwitchOrganisation(user)` is true,
+which is the backend's `can_switch_organisation`; switching goes through
+`switchOrganisation` above.
 
 ### Component inventory
 
@@ -862,13 +891,17 @@ the image scan flagged (`docs/ci/CONTAINER_IMAGES.md`).
 
 ## 14. Tests
 
-| File                                                     | Covers                                                           |
-| -------------------------------------------------------- | ---------------------------------------------------------------- |
-| `__tests__/shell/auth/permissions.test.js`               | `can`, `canAny`, `canAll`, superadmin bypass, role normalisation |
-| `__tests__/shell/auth/PrivateRoute.test.jsx`             | Loading, redirect, permission gating, fallback selection         |
-| `__tests__/modules/audit/pages/scan/NewScan.test.jsx`    | Scan launch form and pipeline wiring                             |
-| `__tests__/modules/audit/pages/scan/NetworkMap.test.jsx` | Topology graph rendering                                         |
-| `__tests__/setupTests.js`                                | `@testing-library/jest-dom` matchers                             |
+| File                                                     | Covers                                                                                             |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `__tests__/shell/auth/authorization.test.js`             | `can`, `canAny`, `canAll` from permission keys; scope; no legacy atoms, wildcard, role or fallback |
+| `__tests__/shell/auth/permissions.test.js`               | The re-exported names; no role-name helpers and no wildcard                                        |
+| `__tests__/shell/auth/RouteGuardAuthorization.test.jsx`  | Permission-based route guards; forged roles and stored organisations open nothing                  |
+| `__tests__/shell/auth/OrganisationSwitching.test.jsx`    | The active organisation and switching come from the backend                                        |
+| `__tests__/shell/auth/authorizationInventory.test.js`    | Every authorization site classified; removed helpers stay removed                                  |
+| `__tests__/shell/auth/PrivateRoute.test.jsx`             | Loading, redirect, permission gating, fallback selection                                           |
+| `__tests__/modules/audit/pages/scan/NewScan.test.jsx`    | Scan launch form and pipeline wiring                                                               |
+| `__tests__/modules/audit/pages/scan/NetworkMap.test.jsx` | Topology graph rendering                                                                           |
+| `__tests__/setupTests.js`                                | `@testing-library/jest-dom` matchers                                                               |
 
 Run with `npm test` (`vitest run`).
 
@@ -889,17 +922,17 @@ phase-selective endpoints instead), `/api/workflow-example`, and
 
 Contract points where the two sides must stay aligned:
 
-| Contract              | Frontend                                        | Backend                                                            |
-| --------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
-| Login field name      | `{email, password}`                             | `LoginRequest.email`                                               |
-| Permission list shape | `role.permissions[] = [{resource, action}]`     | `/auth/me` `RoleOut.permissions`                                   |
-| Tenant selector       | `params.org_id` from `localStorage.activeOrgId` | `_resolve_org(user, requested_org)` — honoured for superadmin only |
-| Pipeline modes        | `SCAN_PIPELINES` keys                           | `PIPELINE_PHASES` keys + the `advanced` alias                      |
-| Discovery intensity   | `cc_discoveryIntensity` → `discovery_intensity` | `light` \| `normal` \| `deep`, asset pipeline only                 |
-| Report formats        | `fmt=JSON` / `XML` / `CSV`                      | `_FORMAT_ALIASES`; unknown values now 400                          |
-| Topology graph        | vis-network `{nodes, edges}`                    | `get_topology_graph()` emits exactly that                          |
-| WebSocket auth        | `?ticket=` from `POST /auth/ticket`             | `_get_websocket_user`, 60-second `type="ticket"` JWT               |
-| SSE auth              | `fetch` + `Authorization` header                | `require_permission` / `get_current_user`                          |
+| Contract              | Frontend                                                    | Backend                                                                                       |
+| --------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Login field name      | `{email, password}`                                         | `LoginRequest.email`                                                                          |
+| Permission list shape | `user.authorization` (contract 1): permission keys by scope | `/auth/me` `authorization`, `ccure_platform/rbac/authorization_view.py`                       |
+| Tenant selector       | `params.org_id` from `localStorage.activeOrgId` (a hint)    | `resolve_active_organisation` — another organisation only with `platform.organization.switch` |
+| Pipeline modes        | `SCAN_PIPELINES` keys                                       | `PIPELINE_PHASES` keys + the `advanced` alias                                                 |
+| Discovery intensity   | `cc_discoveryIntensity` → `discovery_intensity`             | `light` \| `normal` \| `deep`, asset pipeline only                                            |
+| Report formats        | `fmt=JSON` / `XML` / `CSV`                                  | `_FORMAT_ALIASES`; unknown values now 400                                                     |
+| Topology graph        | vis-network `{nodes, edges}`                                | `get_topology_graph()` emits exactly that                                                     |
+| WebSocket auth        | `?ticket=` from `POST /auth/ticket`                         | `_get_websocket_user`, 60-second `type="ticket"` JWT                                          |
+| SSE auth              | `fetch` + `Authorization` header                            | `require_permission` / `get_current_user`                                                     |
 
 ---
 

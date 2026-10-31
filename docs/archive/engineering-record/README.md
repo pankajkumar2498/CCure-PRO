@@ -151,8 +151,11 @@ confirmation*; "Done" names the correction above, where one was made.
 | 13 | Portainer on `127.0.0.1:9443`, the api publishes no port, PostgreSQL on `127.0.0.1:5432`, `PGSSLMODE=disable`, one beat, `COMPOSE_PROFILES=container-scanner` | Observed on the running containers and `.env` | Confirmed current | None needed |
 | 14 | HS256 and `JWT_SECRET_KEY` are gone (identity-platform) | Only docstring history in `ccure_platform/identity/`; neither key in either `.env` | Confirmed current | None needed |
 
-Found while verifying, outside the 14: `docs/FRONTEND_ARCHITECTURE.md` still
-describes `isSuperAdmin`, `hasRole`, `superadminOnly` and a superadmin bypass in
-`can()`, all of which RBAC-8 removed (`.claude/rules/identity-platform.md`,
-"RBAC-6/8"). Codex flagged it during the 31 Oct instruction check. It needs its
-own documentation change.
+Found while verifying, outside the 14: `docs/FRONTEND_ARCHITECTURE.md`
+described `isSuperAdmin`, `hasRole`, `superadminOnly`, a superadmin bypass in
+`can()`, the `resource:manage` wildcard and the legacy `resource:action`
+permission atoms, all of which RBAC-6/8 removed. Codex flagged it during the
+31 Oct instruction check; it was corrected on 31 Oct 2026 against
+`shell/auth/authorization.js`, `PrivateRoute.jsx`, `navVisibility.js`,
+`AuthContext.jsx`, `App.jsx`, Audit's sidebar and access fallbacks, and the
+tests under `__tests__/shell/auth/`.

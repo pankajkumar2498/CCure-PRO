@@ -67,11 +67,34 @@ The rows after `72eb2bb` come from each directory's `artifact-inputs.env`,
 - `f5c6e88`: backend-only hotfix, an overlay on the `3212d6b` image (the
   credentialed pass records the MAC it read, no schema change); cutover
   04:57:18–04:57:45 UTC, 26.4 s, API answering 200 after 25.0 s.
-- `rbac-release-2f3523db…` (created 13 Oct, before `48879df`) holds a candidate
-  and support archives but no deployment record, so it is not a row here.
-- On 31 Oct 2026 `ccure-api` and `ccure-frontend` show a start time of
-  29 Oct 05:19 UTC with the `f5c6e88` / `a835ad5` images unchanged, and the
-  workers 28 Oct 04:57. That restart is not a release; nothing records why.
+- `rbac-release-2f3523db…` was never a release of its own. `2f3523d` was the
+  verified candidate that `48879df` superseded with only a `Backend/Dockerfile`
+  change (signed curl backports), and the directory was `48879df`'s fallback:
+  its `fallback-artifact-inputs.env` points at `…2f3523db…/fallback-support`,
+  and its `release-manifest.json` names `fallback_candidate: 2f3523db…`. The
+  candidate's image tarballs were deleted in the 15 Oct 2026 disk cleanup and its
+  three images (`e3499b9bba0a`, `63bed73909c7`, `872180c890ff`) no longer exist,
+  so that fallback cannot be used; `fallback-support/` and the two support
+  archives remain.
+- **29 Oct 2026, 05:19:40–05:19:48 UTC: an unscheduled stop-and-start, not a
+  release.** Eight containers were stopped gracefully and started again with
+  their images unchanged and none recreated: `ccure-api` first (its new
+  instance logged start-up at 05:19:41), then `ccure-frontend`, `ccure-beat`,
+  `ccure-api-gateway`, `ccure-validation-pg`, `ccure-gateway-auth`, `ccure-db`
+  and `ccure-redis`. nginx logged SIGQUIT and PostgreSQL a fast shutdown, so the
+  signal was each container's ordinary stop signal; nothing was OOM-killed and
+  the host did not reboot (up since 9 Oct). The API's migration step found the
+  database shutting down, exited, and was restarted once by its restart policy;
+  it was serving again within seconds. The workers, web-worker, Portainer and
+  three validation containers were not touched. `ccure-validation-pg` has no
+  compose project and restart policy `no`, so an explicit `docker restart` (or
+  stop and start), not compose or a daemon restart, brought it back. **Who issued
+  it is not established:** no Claude or Codex session ran a Docker command in
+  that minute, no cron entry fires then, the shell history has no timestamps,
+  the daemon keeps no events that old, and the Docker journal and `auth.log`
+  need root (`journalctl -u docker --since "2026-10-29 10:45" --until
+  "2026-10-29 10:52"`, `/var/log/auth.log`).
+
 The `ccure_user` password was rotated in the `d77b50e` window (see the
 PostgreSQL bullet above).
 `5c062d5` applied migration `a7c9e1b3d5f8` (one finding row per CVE per

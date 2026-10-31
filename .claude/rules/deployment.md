@@ -175,6 +175,10 @@ section is the VM's answer.
   `ccure_user` password. Not verifiable from the VM: no failed `ccure_user`
   login since the rotation, `log_connections` is off, and no pgAdmin or
   DBeaver session or tunnel was open on 14 Oct 2026.
+  **Still pending on 31 Oct 2026; it needs the workstation.** The VM side was
+  re-checked then: `~/.ssh/authorized_keys` holds exactly one key,
+  `ccure-vm-tunnel@pankaj`, with the options above, and no pgAdmin or DBeaver
+  session was connected.
 - **The web worker's start-up self-check reports `playwright_chromium`
   missing** (`core/web/self_check.py`): it looks for a bundled Chromium under
   `/opt/playwright`, which the image deliberately replaced with Chrome Stable

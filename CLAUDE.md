@@ -38,7 +38,9 @@ of content in the rule files are history, not current requirements:
 
 - **The Windows-host deployment**, before 17 Sep 2026; retired on 9 Oct 2026,
   when its start, host-worker, backup, nginx and feed-schedule scripts were
-  removed (git history keeps them; `scripts/tls/*.ps1` stay). The Windows nginx
+  removed (git history keeps them; `scripts/tls/*.ps1` stay; the VM's own
+  backup and feed schedules are `scripts/install_backup_schedule.sh` and
+  `scripts/install_feed_schedule.sh`). The Windows nginx
   deployment steps under **Rate limiting** and the certificate scripts and host
   address in the **TLS** bullet are marked as history where they appear; the
   Windows scanner-worker and database bullets are in the engineering record
@@ -224,9 +226,15 @@ has no pytest or vitest hook); full runs happen only in CI's full scope.
 
 ### Known test-suite failures
 
-None recorded. The three entries that used to sit here are resolved; what each
-turned out to be is in
+None recorded in the backend suite. The three entries that used to sit here are
+resolved; what each turned out to be is in
 `docs/archive/engineering-record/core-instructions.md`.
+
+One frontend test is recorded as intermittent and not yet fixed:
+`AppLayout — reads on mount › shows running-scan and critical badges from the
+summary` (`Frontend/src/__tests__/modules/audit/components/layout/AppLayout.test.jsx`)
+fails about one run in three on its own, on code nothing recent touched
+(`docs/architecture/MODULAR_REFACTORING_LOG.md`, F1 and its follow-up list).
 
 ## UI semantic integrity
 
@@ -399,11 +407,11 @@ above)
 
 ## Where things live
 
-- **Compliance catalogues** — the thirteen `*_controls_seed.json` files are in
+- **Compliance catalogues** — the fourteen `*_controls_seed.json` files are in
   `Backend/data/compliance_seeds/`, not `Backend/scripts/`. Resolve the
   directory through `core/compliance_seeds.py` (`SEEDS_DIR`, `seed_path()`,
   `all_seed_paths()`) rather than joining a path by hand. `main.py`'s bootstrap
-  condition names all thirteen, so a catalogue it cannot find makes the
+  condition names all fourteen, so a catalogue it cannot find makes the
   condition permanently true and re-runs the whole seeder on every container
   start without ever satisfying itself — a slow boot, not an error.
 

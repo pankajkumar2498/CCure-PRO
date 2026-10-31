@@ -148,6 +148,8 @@ page.
 
 ### Test targets
 
+_History: the commands below were run on the Windows host. None of these containers exists on the VM (checked 31 Oct 2026); the VM's standing scan targets are `scripts/validation/` (`docs/ci/LIVE_SCAN_VALIDATION.md`)._
+
 Disposable containers only. Credentials are generated at run time and
 destroyed with the container — never in source, configuration, logs, Celery
 arguments or git.

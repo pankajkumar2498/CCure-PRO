@@ -123,6 +123,8 @@ reviewer settles it in one step instead of going to look it up.
 
 ### Test targets
 
+_History: the commands below were run on the Windows host. None of these containers exists on the VM (checked 31 Oct 2026); the VM's standing scan targets are `scripts/validation/` (`docs/ci/LIVE_SCAN_VALIDATION.md`)._
+
 Disposable containers, destroyed after use:
 
 ```powershell
@@ -246,6 +248,8 @@ denominator entirely**, not merely unimplemented. They are a different product
 shape needing a Trivy/Grype-class toolchain and cloud credentials.
 
 ### Test targets
+
+_History: the commands below were run on the Windows host. None of these containers exists on the VM (checked 31 Oct 2026); the VM's standing scan targets are `scripts/validation/` (`docs/ci/LIVE_SCAN_VALIDATION.md`)._
 
 Disposable containers, destroyed after use:
 

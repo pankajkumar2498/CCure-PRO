@@ -236,7 +236,7 @@ content and wiring:
   derived from the control's id, never its number.
 
 - **Parking is never a data decision.** Do not delete or un-seed a parked
-  catalogue. `main.py`'s bootstrap condition names all thirteen, so a missing
+  catalogue. `main.py`'s bootstrap condition names all fourteen, so a missing
   seed file makes it permanently true and the whole seeder runs on every
   container start without ever satisfying itself. The parked catalogues are
   also the _targets_ of ISO's and NIST's crosswalks, which

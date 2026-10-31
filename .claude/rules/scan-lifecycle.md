@@ -114,11 +114,16 @@ WebSocket sends the _scan-level_ status on connect (previously only the last
 phase's, and only when a phase row existed — so a browser reconnecting to a
 finished scan was told it was running).
 
-Two operational notes: the start script's duplicate-worker guard deliberately
-does not count the child `python.exe` a single worker spawns under the venv's
-base interpreter, so two PIDs is normal. And **restart the host worker after
-changing anything under `core/`, `scans/` or `orchestrator/`** — this whole
-episode was a worker running code from before a commit that fixed it.
+Two operational notes, both from the Windows deployment: the start script's
+duplicate-worker guard deliberately does not count the child `python.exe` a
+single worker spawns under the venv's base interpreter, so two PIDs is normal.
+And **restart the host worker after changing anything under `core/`, `scans/`
+or `orchestrator/`** — this whole episode was a worker running code from before
+a commit that fixed it. _On the VM the start script is retired and, since
+13 Oct 2026, the worker runs code baked into its image: a change under those
+directories reaches it only as a release (the `release` skill), and restarting
+the container restarts the same code. The lesson stands: a worker running old
+code is the first thing to rule out._
 
 ## Scan pipeline
 

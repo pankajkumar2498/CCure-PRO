@@ -288,6 +288,8 @@ problem. They are not false positives; the file really is exposed.
 
 ### Test targets
 
+_History: the commands below were run on the Windows host. None of these containers exists on the VM (checked 31 Oct 2026); the VM's standing scan targets are `scripts/validation/` (`docs/ci/LIVE_SCAN_VALIDATION.md`)._
+
 Two disposable containers exist for validating credentialed collection. Both
 are deliberately **not** updated after build — an up-to-date target cannot tell
 "matching works and the host is clean" apart from "matching is broken", which

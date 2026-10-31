@@ -75,6 +75,19 @@ def test_every_record_file_is_indexed():
             assert f"]({path.name})" in readme, f"{path.name} is not in the index"
 
 
+def test_every_correction_names_real_lines_and_a_live_file():
+    # A correction lets the preservation audit accept a changed original line,
+    # so each one must point inside the original and at a file that exists.
+    _, total, _ = _source()
+    readme = (RECORD / "README.md").read_text(encoding="utf-8")
+    section = readme.split("## Corrections since the split", 1)[1].split("\n## ", 1)[0]
+    rows = re.findall(r"^\| (\d+)–(\d+) \| `([^`]+)` \|", section, re.M)
+    assert rows, "the corrections table has no rows"
+    for a, b, live in rows:
+        assert 1 <= int(a) <= int(b) <= total, f"lines {a}-{b} are outside the original"
+        assert (REPO_ROOT / live).is_file(), f"{live} does not exist"
+
+
 def test_the_record_is_excluded_from_prettier():
     # Prettier re-pads tables and re-wraps code spans, which would break the
     # byte-for-byte guarantee on the first commit that touched the folder.

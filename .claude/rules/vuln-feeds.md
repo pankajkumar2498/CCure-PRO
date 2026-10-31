@@ -140,6 +140,17 @@ the feeds can be rebuilt onto an empty server.
   of one, and the strongest exploitation evidence in any feed here. It is the
   only VulnCheck signal allowed to set `verified_exploit`.
 
+**On the VM the feeds refresh from a user crontab** that
+`scripts/install_feed_schedule.sh` installs (entries marked
+`# ccure-feed-sync`; `crontab -l` shows them). Each entry runs
+`scripts/run_feed_sync.sh <sync> <minutes>`, which never overlaps a run still
+going, stops at the time limit, and writes the run's output and exit status to
+`Backend/logs/<sync>_scheduled.log`. As installed on 31 Oct 2026: `sync_osv`
+03:00, `sync_msrc` 04:00, `sync_exploit_intel` 05:00 and `sync_csaf` 06:00,
+VM local time (IST), each finishing with exit 0 that morning. `sync_vulncheck`
+is scheduled only when `VULNCHECK_API_TOKEN` is set, and it is not. NVD
+(`scans/nvd_sync.py`) is not in this schedule.
+
 Secrets live in `Backend/.env` (gitignored), which is what `config.py` loads —
 **not** the repository-root `.env`, which is for docker-compose. A token placed
 in the root file is silently ignored by every script here.

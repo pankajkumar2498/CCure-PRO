@@ -101,26 +101,56 @@ Content that lives **only** here (each with its reason; everything else is also 
 | 5057–5144 | Audit-log retention (phase 6a) | [`audit-log-retention.md`](audit-log-retention.md) | `.claude/rules/audit-retention.md` |
 | 5145–5157 | Reports | [`reporting-and-exports.md`](reporting-and-exports.md) | `.claude/rules/reporting.md` |
 
-## Open verification register (30 Oct 2026)
+## Corrections since the split
 
-Statements carried into the live files unchanged, with what the repository and the running
-VM showed when the split was made. **None has been corrected**: corrections are a separate,
-approved change. Status is one of *confirmed current*, *confirmed historical*, *incorrect*
-or *awaiting owner verification*.
+Statements in the live files that were corrected after the split, on evidence
+recorded below. The original wording stays in the verbatim blocks above;
+`scripts/docs/check_instruction_preservation.py` reads this table and reports
+these lines as corrected rather than missing. A row is added here in the same
+change as the correction.
 
-| Statement (live file) | Evidence, 30 Oct 2026 | Status |
-| --- | --- | --- |
-| App reached at `ccurepro.cdacb.in` (TLS bullet, `.claude/rules/edge-gateway.md`) | Live host nginx `server_name ccurepro.cdac.in 10.180.22.127 localhost`; `cdacb.in` remains only in the Windows-era `scripts/host-nginx/nginx-host.conf` and `scripts/tls/*.ps1` | Confirmed historical; incorrect as a current address |
-| Host address `10.180.6.14` (TLS bullet, edge-gateway) | Backup crontab and `backups/backup.log` push to `pankaj@10.180.6.30` | Confirmed historical |
-| "`FRONTEND_URL` is the hostname" (TLS bullet, edge-gateway) | Root and `Backend/.env` set `FRONTEND_URL=https://10.180.22.127` | Incorrect for the VM as configured; awaiting owner verification of the intended value |
-| Release ledger ends at `72eb2bb` (`.claude/skills/release/SKILL.md`) | Later release directories: `3212d6b`, `84bad17`, `9040eb9`, `a835ad5`, `f5c6e88`; the running backend image `1a83ead7972d` and frontend image `5e3bd5018467` are those in `release-f5c6e88-credentialed-mac` | Incorrect (incomplete); awaiting owner for the missing rows (times and outages are not derivable) |
-| "the thirteen `*_controls_seed.json` files" (`CLAUDE.md`, Where things live; compliance rule) | 14 seed files; `main.py` names 14 (HIPAA added 28 Sep) | Incorrect |
-| "282 API routes" (`.claude/rules/modules-contracts.md`) | `docs/architecture/phase10/route_table.json` holds 284 entries | Awaiting owner verification (regenerate or confirm) |
-| Known test-suite failures: none (`CLAUDE.md`) | The refactoring log §7 records an intermittent `AppLayout` test failure | Awaiting owner verification |
-| "Restart the host worker after changing anything under `core/`, `scans/` or `orchestrator/`" (scan-lifecycle rule) | Since 13 Oct 2026 the worker runs code baked into its image; a change reaches it only as a release | Incorrect on the VM (the sentence describes the Windows host) |
-| Test-target containers and PowerShell commands (middleware-containers, database-assessment, checks-network-tls rules) | None of the 12 named containers exists on the VM; the standing targets are `scripts/validation/` (`ccure-validation-*`, running) | Confirmed historical |
-| pgAdmin, DBeaver and the tunnel key on the workstation (deployment rule) | Workstation-side; not observable from the VM | Awaiting owner verification |
-| "Feed-schedule scripts were retired" (`CLAUDE.md` reading note) | The crontab runs `scripts/run_feed_sync.sh` four times a day (osv, msrc, exploit intel, csaf); no live instruction describes it | Awaiting owner: the Linux feed schedule is undocumented |
-| Containers never read `Backend/.env`; host scripts do (identity-platform, vuln-feeds) | `SKIP_DOTENV_LOAD` on the services; `config.py` loads `Backend/.env` on the host | Confirmed current (both, in their contexts) |
-| Portainer on `127.0.0.1:9443`, the api publishes no port, PostgreSQL on `127.0.0.1:5432`, `PGSSLMODE=disable`, one beat, `COMPOSE_PROFILES=container-scanner` | Observed on the running containers and `.env` | Confirmed current |
-| HS256 and `JWT_SECRET_KEY` are gone (identity-platform) | No non-comment occurrence in `ccure_platform/identity/`; no such keys in `.env` | Confirmed current |
+| Original lines | Live file | Correction | Evidence (31 Oct 2026) |
+| --- | --- | --- | --- |
+| 664–665 | `.claude/rules/modules-contracts.md` | 282 → 284 API routes, with the table's history; the 286 `app.routes` figure dated 7 Oct and marked not re-measured | `route_table.json` held 282 entries at `a12fb6e` (3 Oct), 285 at `ef58cfc` (11 Oct), 284 at `d8a6294` (12 Oct, unchanged since); `test_gateway_route_policy.py` pins the total at 284 and passes |
+| 1075–1079 | `CLAUDE.md` | thirteen → fourteen seed files | `Backend/data/compliance_seeds/` holds 14 `*_controls_seed.json`; `main.py` names 14 (HIPAA added 28 Sep 2026) |
+| 4792–4792 | `.claude/rules/compliance.md` | thirteen → fourteen seed files | As above |
+| 1917–1918 | `.claude/rules/edge-gateway.md` | The application is reached at `https://ccurepro.cdac.in` and `https://10.180.22.127`; `ccurepro.cdacb.in` named as the Windows deployment's | Host nginx `server_name ccurepro.cdac.in 10.180.22.127 localhost`; the served certificate's SAN is `ccurepro.cdac.in`, `localhost`, 10.180.22.127, 127.0.0.1; `ccurepro.cdacb.in` does not resolve on the VM |
+| 1922–1927 | `.claude/rules/edge-gateway.md` | The private address named for both deployments | As above; the Windows host address 10.180.6.14 is retired (backups push to 10.180.6.30) |
+| 1937–1940 | `.claude/rules/edge-gateway.md` | HSTS note covers both IP literals; "`FRONTEND_URL` is the hostname" restated as Windows-era, with the VM's actual value and the open owner decision | `FRONTEND_URL=https://10.180.22.127` in the root `.env`, `Backend/.env` and the running api's environment |
+| 2074–2074 | `.claude/rules/scan-lifecycle.md` | The start-script and "restart the host worker" notes marked as the Windows deployment's, with the VM's release path | `ccure-worker` mounts no source (`/backups`, `/app/.env`, logs, reports, evidence, feeds, `cves.db`, the CA certificate); code arrives only as an image |
+
+Additions made at the same time, which change no original line: a history note
+under each "Test targets" heading (database-assessment, checks-network-tls,
+middleware-containers twice); the VM feed schedule in `vuln-feeds.md`; the VM
+schedule scripts in `CLAUDE.md`'s reading note; the recorded `AppLayout`
+intermittent test under "Known test-suite failures"; the release ledger rows
+after `72eb2bb` and their sources in the `release` skill.
+
+## Open verification register (30 Oct 2026, re-checked 31 Oct 2026)
+
+What each statement carried into the live files turned out to be. Status is one
+of *confirmed current*, *confirmed historical*, *incorrect* or *requires owner
+confirmation*; "Done" names the correction above, where one was made.
+
+| # | Statement (live file) | Evidence, 31 Oct 2026 | Status | Done |
+| --- | --- | --- | --- | --- |
+| 1 | App reached at `ccurepro.cdacb.in` (edge-gateway, TLS) | nginx `server_name`, certificate SAN and DNS name `ccurepro.cdac.in` only; `cdacb.in` remains only in the Windows-era `scripts/host-nginx/nginx-host.conf` and `scripts/tls/*.ps1` | Incorrect for the VM; confirmed historical for Windows | Corrected (1917–1918) |
+| 2 | Host address `10.180.6.14` (edge-gateway, TLS) | Retired; the workstation is 10.180.6.30 (backup crontab) and the VM is 10.180.22.127 | Confirmed historical | Marked (1922–1927, 1937–1940) |
+| 3 | "`FRONTEND_URL` is the hostname" (edge-gateway, TLS) | `FRONTEND_URL=https://10.180.22.127` in both `.env` files and the running api | Incorrect for the VM as configured | Fact corrected (1937–1940). **Whether it should be the hostname requires owner confirmation**; changing it is a configuration change, not made |
+| 4 | Release ledger ends at `72eb2bb` (`release` skill) | Release directories for `3212d6b`, `84bad17`, `9040eb9`, `a835ad5`, `f5c6e88`; running backend `1a83ead7972d` and frontend `5e3bd5018467` are `f5c6e88`'s | Incorrect (incomplete) | Rows added from the directories; three frontend-only releases record no time or outage and say so. `rbac-release-2f3523db…` (no deployment record) and the 29 Oct 05:19 UTC container restart **require owner confirmation** |
+| 5 | "the thirteen `*_controls_seed.json` files" (`CLAUDE.md`; compliance) | 14 files; `main.py` names 14 | Incorrect | Corrected (1075–1079, 4792) |
+| 6 | "282 API routes" (modules-contracts) | 284 since `d8a6294`, pinned by a passing test | Incorrect | Corrected (664–665); `len(app.routes)` on the live installation not re-measured |
+| 7 | Known test-suite failures: none (`CLAUDE.md`) | The refactoring log records the intermittent frontend `AppLayout` test as open (F1 and its follow-up list) | Incorrect (incomplete) | Added under "Known test-suite failures" |
+| 8 | "Restart the host worker after changing anything under `core/`, `scans/` or `orchestrator/`" (scan-lifecycle) | The worker mounts no source; code is baked into the image since 13 Oct 2026 | Confirmed historical; incorrect on the VM | Marked (2074) |
+| 9 | Test-target containers and PowerShell commands (middleware-containers, database-assessment, checks-network-tls) | None of the 12 named containers exists; four `ccure-validation-*` containers run | Confirmed historical | History note added under each heading |
+| 10 | pgAdmin, DBeaver and the tunnel key on the workstation (deployment) | Workstation-side; not observable from the VM | **Requires owner confirmation** | None (already listed under the deployment rule's open issues) |
+| 11 | "feed-schedule scripts were retired" (`CLAUDE.md` reading note) | True of the Windows scripts. The VM schedule is `scripts/install_feed_schedule.sh` → `scripts/run_feed_sync.sh`, four crontab entries, all four exiting 0 on 31 Oct; no live instruction described it | Confirmed historical; the VM schedule was undocumented | Documented in `vuln-feeds.md`; reading note names the VM scripts |
+| 12 | Containers never read `Backend/.env`; host scripts do (identity-platform, vuln-feeds) | `SKIP_DOTENV_LOAD=1` in api, worker, web-worker and beat; `config.py` loads `Backend/.env` only when it is unset | Confirmed current | None needed |
+| 13 | Portainer on `127.0.0.1:9443`, the api publishes no port, PostgreSQL on `127.0.0.1:5432`, `PGSSLMODE=disable`, one beat, `COMPOSE_PROFILES=container-scanner` | Observed on the running containers and `.env` | Confirmed current | None needed |
+| 14 | HS256 and `JWT_SECRET_KEY` are gone (identity-platform) | Only docstring history in `ccure_platform/identity/`; neither key in either `.env` | Confirmed current | None needed |
+
+Found while verifying, outside the 14: `docs/FRONTEND_ARCHITECTURE.md` still
+describes `isSuperAdmin`, `hasRole`, `superadminOnly` and a superadmin bypass in
+`can()`, all of which RBAC-8 removed (`.claude/rules/identity-platform.md`,
+"RBAC-6/8"). Codex flagged it during the 31 Oct instruction check. It needs its
+own documentation change.

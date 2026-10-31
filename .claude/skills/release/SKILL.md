@@ -5,7 +5,7 @@ description: Deploying a CCure release to the Linux VM (ccurepro): building the 
 
 > Task instructions. Claude Code loads this skill when it is invoked (`/release`) or judged relevant; every other agent is routed here by `AGENTS.md`. Moved verbatim from `CLAUDE.md` at `9bb84d9` (lines 1227–1283) and maintained here.
 
-> **Status (recorded when this skill was created, 30 Oct 2026):** the release ledger below has not been updated since `72eb2bb`. Later release directories exist under `backups/`; see the open-verification register in `docs/archive/engineering-record/README.md`. Do not treat the last row as the live release.
+> **Status (31 Oct 2026):** the ledger was brought up to date from the release directories under `backups/` and the running containers. Where a directory records no time or outage the row says so; nothing was inferred. Check the running image IDs (`docker inspect -f '{{.Image}}' ccure-api ccure-frontend`) before trusting the bold row.
 
 ### Releases (since 13 Oct 2026)
 
@@ -46,9 +46,32 @@ release. That release's own record is
 | `release-fbf72ba-ui`                | `26a877c` (`c007fed58b80`) | `fbf72ba` (`94b412011ddd`) | 13 Oct 11:30       | ~1 s   |
 | `release-d77b50e-followups`         | `d77b50e` (`9dd7649fc559`) | `d77b50e` (`a21479ea76c8`) | 14 Oct 07:59       | 38 s   |
 | `release-6d816e2-finalize`          | `6d816e2` (`e19b9b49c73c`) | `d77b50e` (`a21479ea76c8`) | 14 Oct 08:43       | 25 s   |
-| **`release-72eb2bb-followups2`**    | `72eb2bb` (`17989e0eebef`) | `72eb2bb` (`12cd34b5bb79`) | **14 Oct 14:13**   | 28 s   |
+| `release-72eb2bb-followups2`        | `72eb2bb` (`17989e0eebef`) | `72eb2bb` (`12cd34b5bb79`) | 14 Oct 14:13       | 28 s   |
+| `release-3212d6b-platform-plugin`   | `3212d6b` (`3a0dde6d4580`) | `3212d6b` (`4ce1221e709f`) | 14 Oct 18:20       | 30 s   |
+| `release-84bad17-host-security-assessment` | `3212d6b` (`3a0dde6d4580`) | `84bad17` (`5c875eee5bfb`) | 23 Oct, time not recorded | not recorded |
+| `release-9040eb9-host-card-layout`  | `3212d6b` (`3a0dde6d4580`) | `9040eb9` (`58f0ab034c82`) | 23 Oct, time not recorded | not recorded |
+| `release-a835ad5-available-templates` | `3212d6b` (`3a0dde6d4580`) | `a835ad5` (`5e3bd5018467`) | 23 Oct, time not recorded | not recorded |
+| **`release-f5c6e88-credentialed-mac`** | `f5c6e88` (`1a83ead7972d`) | `a835ad5` (`5e3bd5018467`) | **28 Oct 04:57**   | 26 s   |
 
 `gateway-auth` (`40b686e08a4a`) and `api-gateway` are unchanged throughout.
+
+The rows after `72eb2bb` come from each directory's `artifact-inputs.env`,
+`release-notes.txt`, `DEPLOYMENT_REPORT.md` and `cutover.log`:
+
+- `3212d6b` (backend overlay on `72eb2bb`, full frontend build): cutover
+  18:19:49–18:20:19 UTC, 30.1 s, no rollback.
+- `84bad17`, `9040eb9`, `a835ad5`: frontend-only releases, each replacing
+  `ccure-frontend` alone; their notes record no deployment time. `9040eb9`'s
+  first verification was wrong and it was briefly rolled back before the
+  corrected check passed.
+- `f5c6e88`: backend-only hotfix, an overlay on the `3212d6b` image (the
+  credentialed pass records the MAC it read, no schema change); cutover
+  04:57:18–04:57:45 UTC, 26.4 s, API answering 200 after 25.0 s.
+- `rbac-release-2f3523db…` (created 13 Oct, before `48879df`) holds a candidate
+  and support archives but no deployment record, so it is not a row here.
+- On 31 Oct 2026 `ccure-api` and `ccure-frontend` show a start time of
+  29 Oct 05:19 UTC with the `f5c6e88` / `a835ad5` images unchanged, and the
+  workers 28 Oct 04:57. That restart is not a release; nothing records why.
 The `ccure_user` password was rotated in the `d77b50e` window (see the
 PostgreSQL bullet above).
 `5c062d5` applied migration `a7c9e1b3d5f8` (one finding row per CVE per

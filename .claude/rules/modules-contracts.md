@@ -63,8 +63,11 @@ each module's `README.md` is the guide its team works from.
 - **Policy Pro and Rank ship no routes, tables or tasks.** Nothing may be added
   to them outside their teams' own work; 93 rate-limited routes, 21 tasks at
   import and 11 beat entries are the regression gate for any change here. The
-  application has **282 API routes** (`docs/architecture/phase10/route_table.json`,
-  7 Oct 2026); `len(app.routes)` is 286 in this development installation, which
+  application has **284 API routes** (`docs/architecture/phase10/route_table.json`,
+  last regenerated 12 Oct 2026, `d8a6294`; it held 282 on 3 Oct and 285 on
+  11 Oct, and `tests/repo/test_gateway_route_policy.py` pins the gateway
+  policy's total at 284); `len(app.routes)` was 286 in this development
+  installation on 7 Oct 2026, not re-measured since, which
   also serves FastAPI's four documentation routes. It was 274 after Phase 12.1
   added the platform's own `GET /platform/modules`, 273 through Phase 11.
 - **CCure Home's product list comes from the registry** (Phase 12,

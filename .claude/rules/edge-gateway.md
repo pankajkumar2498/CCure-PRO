@@ -97,7 +97,9 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
 
 
 - **TLS** — host Nginx terminates TLS on **443** and 301-redirects 80. Reached
-  at **`https://ccurepro.cdacb.in`**; the Docker published ports are bound to
+  at **`https://ccurepro.cdac.in`** and `https://10.180.22.127` _(the Windows
+  deployment's `ccurepro.cdacb.in` is not on the VM's certificate and does not
+  resolve)_; the Docker published ports are bound to
   127.0.0.1 only, so this is the sole listener on a routable interface and the
   only hop that needs a certificate.
 
@@ -106,7 +108,8 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
   10.180.6.14; the VM serves `https://ccurepro.cdac.in` and 10.180.22.127, see
   "Deployment: Linux VM")_.
   A public CA is impossible here, not merely inconvenient: the app is reached at
-  10.180.6.14 and CA/Browser Forum rules forbid certificates for reserved IP
+  a private address (10.180.22.127 on the VM, 10.180.6.14 on the Windows host)
+  and CA/Browser Forum rules forbid certificates for reserved IP
   ranges. Clients run `scripts/tls/install_client_trust.ps1` once. See
   [docs/TLS_SETUP.md](docs/TLS_SETUP.md).
 
@@ -116,10 +119,14 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
     hard-fails when it cannot check revocation, and a private CA publishes no
     CRL. Browsers soft-fail this. Use `curl --ssl-no-revoke`, or verify with
     OpenSSL, which validates the chain properly.
-  - **HSTS is ignored on `https://10.180.6.14`.** RFC 6797 §8.1.1 requires
+  - **HSTS is ignored on an IP literal** (`https://10.180.22.127` on the VM,
+    `https://10.180.6.14` on the Windows host). RFC 6797 §8.1.1 requires
     browsers to discard the header when the host is an IP literal. The IP form
-    still gets encryption; only the hostname can be pinned. This is why
-    `FRONTEND_URL` is the hostname.
+    still gets encryption; only the hostname can be pinned. That is why
+    `FRONTEND_URL` was the hostname on the Windows deployment. On the VM it is
+    `https://10.180.22.127` (root `.env` and `Backend/.env`, 31 Oct 2026), so a
+    link built from it cannot be pinned; whether to change it is an owner
+    decision, recorded in the engineering record's open verification register.
 
   `max-age` is **300** in both Nginx and `main.py`. Raise them **together** and
   only after every client is confirmed working — HSTS is a one-way door, and a

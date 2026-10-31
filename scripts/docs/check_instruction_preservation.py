@@ -9,7 +9,9 @@ only, always, refuse, ...) and every fenced code block must then be either
   * present in the live instructions: CLAUDE.md, AGENTS.md, Frontend/AGENTS.md,
     .claude/rules/*.md and .claude/skills/*/SKILL.md; or
   * inside a range the archive README lists as living only in the archive,
-    which records the reason.
+    which records the reason; or
+  * inside a range its "Corrections since the split" table lists, which names
+    the live file, the correction and the evidence for it.
 
 Anything else is reported as MISSING and the exit status is 1. Matching
 ignores Markdown emphasis, code ticks, escapes and line wrapping, because the
@@ -60,7 +62,14 @@ def original():
         (int(a), int(b), why)
         for a, b, why in re.findall(r"^\| (\d+)–(\d+) \| ([^|]+?) \|$", reasons, re.M)
     ]
-    return text.split("\n")[:-1], archive_only
+    corrections = []
+    if "## Corrections since the split" in readme:
+        section = readme.split("## Corrections since the split", 1)[1].split("\n## ", 1)[0]
+        corrections = [
+            (int(a), int(b), why)
+            for a, b, why in re.findall(r"^\| (\d+)–(\d+) \| (.+?) \|$", section, re.M)
+        ]
+    return text.split("\n")[:-1], archive_only, corrections
 
 
 def norm(text):
@@ -106,10 +115,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--list", action="store_true", help="list every archived unit too")
     args = parser.parse_args()
-    lines, archive_only = original()
+    lines, archive_only, corrections = original()
     corpus = norm("\n".join(p.read_text(encoding="utf-8") for p in LIVE))
-    counts = {"live": 0, "archived": 0, "missing": 0}
-    code = {"live": 0, "archived": 0, "missing": 0}
+    counts = {"live": 0, "archived": 0, "corrected": 0, "missing": 0}
+    code = {"live": 0, "archived": 0, "corrected": 0, "missing": 0}
     missing = []
     for line_no, kind, text in units(lines):
         if kind == "prose" and not OBLIGATION.search(text):
@@ -118,8 +127,13 @@ def main():
             continue
         bucket = code if kind == "code" else counts
         reason = next((why for a, b, why in archive_only if a <= line_no <= b), None)
+        fixed = next((why for a, b, why in corrections if a <= line_no <= b), None)
         if norm(text) in corpus:
             bucket["live"] += 1
+        elif fixed:
+            bucket["corrected"] += 1
+            if args.list:
+                print(f"corrected line {line_no}: {text[:100]!r}  ({fixed[:60]})")
         elif reason:
             bucket["archived"] += 1
             if args.list:
@@ -129,13 +143,16 @@ def main():
             missing.append((line_no, kind, text))
     # Every non-blank line, commands in indented blocks included, outside the
     # archive-only ranges must survive somewhere live.
-    line_counts = {"live": 0, "archived": 0, "missing": 0}
+    line_counts = {"live": 0, "archived": 0, "corrected": 0, "missing": 0}
     for line_no, line in enumerate(lines, 1):
         if not norm(line):
             continue
         reason = next((why for a, b, why in archive_only if a <= line_no <= b), None)
+        fixed = any(a <= line_no <= b for a, b, _ in corrections)
         if norm(line) in corpus:
             line_counts["live"] += 1
+        elif fixed:
+            line_counts["corrected"] += 1
         elif reason:
             line_counts["archived"] += 1
         else:
@@ -145,13 +162,14 @@ def main():
     print(
         "non-blank lines: "
         f"{line_counts['live']} live, {line_counts['archived']} archive-only, "
+        f"{line_counts['corrected']} corrected with recorded evidence, "
         f"{line_counts['missing']} missing"
     )
     print(f"live files checked: {len(LIVE)}")
     print(
         "obligation statements: "
         f"{counts['live']} live, {counts['archived']} archive-only with a recorded reason, "
-        f"{counts['missing']} missing"
+        f"{counts['corrected']} corrected with recorded evidence, {counts['missing']} missing"
     )
     print(
         "code blocks: "

@@ -245,6 +245,10 @@ _VULN_DB_ENV_KEYS = (
 )
 
 
+class VulnIntelConfigError(RuntimeError):
+    """The vulnerability-intelligence database is not configured well enough to connect."""
+
+
 class VulnIntelConfig:
     """
     Configuration for the dedicated vulnerability-intelligence database.
@@ -268,9 +272,10 @@ class VulnIntelConfig:
     PORT: int = int(os.getenv("VULN_DB_PORT", os.getenv("PGPORT", "5432")))
     DATABASE: str = os.getenv("VULN_DB_NAME", os.getenv("PGDATABASE", "ccure_test"))
     USER: str = os.getenv("VULN_DB_USER", os.getenv("PGUSER", "ccure_user"))
-    PASSWORD: str = os.getenv(
-        "VULN_DB_PASSWORD", os.getenv("PGPASSWORD", "ccure_admin_2026")
-    )
+    # No fallback. A password in the source was known to everyone with the
+    # repository; unset, the URL carries no password and require_database_url()
+    # says what is missing before anything connects.
+    PASSWORD: str = os.getenv("VULN_DB_PASSWORD", os.getenv("PGPASSWORD", ""))
 
     # TLS settings for the assembled URL.
     #
@@ -308,6 +313,41 @@ class VulnIntelConfig:
         return ("?" + "&".join(params)) if params else ""
 
     @staticmethod
+    def _credentials() -> str:
+        if VulnIntelConfig.PASSWORD:
+            return f"{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
+        return VulnIntelConfig.USER
+
+    @staticmethod
+    def configuration_problem() -> str | None:
+        """
+        Why the URL cannot be used, or None. Names settings, never values.
+
+        An explicit VULNERABILITY_INTEL_DATABASE_URL or a shared DATABASE_URL
+        carries its own credentials. A URL assembled from VULN_DB_* needs the
+        password, and with no configuration at all there is nothing to connect to.
+        """
+        if os.getenv("VULNERABILITY_INTEL_DATABASE_URL"):
+            return None
+        if VulnIntelConfig.is_explicitly_configured():
+            if VulnIntelConfig.PASSWORD:
+                return None
+            return (
+                "VULN_DB_PASSWORD is not set. The vulnerability-intelligence "
+                "database is configured through VULN_DB_* and needs its owner's "
+                "password: set VULN_DB_PASSWORD (PGPASSWORD is also read), or give "
+                "the whole connection URL in VULNERABILITY_INTEL_DATABASE_URL. In "
+                "Docker it comes from the root .env; on the host from Backend/.env."
+            )
+        if os.getenv("DATABASE_URL"):
+            return None
+        return (
+            "No vulnerability-intelligence database is configured: set VULN_DB_HOST, "
+            "VULN_DB_PORT, VULN_DB_NAME, VULN_DB_USER and VULN_DB_PASSWORD, or "
+            "VULNERABILITY_INTEL_DATABASE_URL."
+        )
+
+    @staticmethod
     def database_url() -> str:
         explicit_url = os.getenv("VULNERABILITY_INTEL_DATABASE_URL")
         if explicit_url:
@@ -315,7 +355,7 @@ class VulnIntelConfig:
 
         if VulnIntelConfig.is_explicitly_configured():
             return (
-                f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
+                f"postgresql://{VulnIntelConfig._credentials()}"
                 f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}"
                 f"/{VulnIntelConfig.DATABASE}{VulnIntelConfig._tls_query()}"
             )
@@ -325,10 +365,18 @@ class VulnIntelConfig:
             return shared_url
 
         return (
-            f"postgresql://{VulnIntelConfig.USER}:{VulnIntelConfig.PASSWORD}"
+            f"postgresql://{VulnIntelConfig._credentials()}"
             f"@{VulnIntelConfig.HOST}:{VulnIntelConfig.PORT}/{VulnIntelConfig.DATABASE}"
             f"{VulnIntelConfig._tls_query()}"
         )
+
+    @staticmethod
+    def require_database_url() -> str:
+        """The URL to connect with; VulnIntelConfigError if it cannot work."""
+        problem = VulnIntelConfig.configuration_problem()
+        if problem:
+            raise VulnIntelConfigError(problem)
+        return VulnIntelConfig.database_url()
 
 
 class WebScanConfig:

@@ -101,6 +101,7 @@ run_in_image() {
     -e CELERY_RESULT_BACKEND="redis://$REDIS:6379/0" \
     -e MFA_ENCRYPTION_KEY="$(random_hex 24)" \
     -e COMPLIANCE_ENCRYPTION_KEY="$(random_hex 24)" \
+    -e DEFAULT_ORG_NAME="Test Default Organisation" -e DEFAULT_ORG_SLUG=test-default \
     -v "$WORK/repo:/repo" -w /repo/Backend --entrypoint "$1" "$IMAGE" "${@:2}"
 }
 

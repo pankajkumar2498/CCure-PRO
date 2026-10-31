@@ -73,7 +73,7 @@ if str(_BACKEND) not in sys.path:
 import psycopg2  # noqa: E402
 from psycopg2.extras import execute_values  # noqa: E402
 
-from config import AppConfig  # noqa: E402
+from config import VulnIntelConfig  # noqa: E402
 
 log = logging.getLogger("ccure.vuln.msrc")
 
@@ -328,7 +328,8 @@ def already_current(conn, doc_id: str, released: datetime | None) -> bool:
 
 
 def _connect():
-    url = AppConfig.VULN_DB_URL
+    # Refuses with the missing setting's name rather than connecting without it.
+    url = VulnIntelConfig.require_database_url()
     return psycopg2.connect(url.replace("postgresql+psycopg2://", "postgresql://"))
 
 

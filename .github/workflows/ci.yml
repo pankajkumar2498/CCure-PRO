@@ -190,6 +190,10 @@ jobs:
           PGPASSWORD=ccure_admin_2026 psql -v ON_ERROR_STOP=1 -h localhost -U ccure_user -d pytest_release_validation -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'admin') THEN CREATE ROLE admin WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root WITH LOGIN PASSWORD 'ccure_admin_2026' SUPERUSER CREATEDB CREATEROLE; END IF; END\$\$;"
 
       - name: Bootstrap Database Schema & Seeding Validation
+        # The initializer creates the default organisation only from these.
+        env:
+          DEFAULT_ORG_NAME: Test Default Organisation
+          DEFAULT_ORG_SLUG: test-default
         run: |
           cd Backend
           python db/migrate_production_schema.py
@@ -344,6 +348,9 @@ jobs:
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
       MFA_ENCRYPTION_KEY: test_mfa_key_32_chars_minimum_value
+      # The initializer creates the default organisation only from these.
+      DEFAULT_ORG_NAME: Test Default Organisation
+      DEFAULT_ORG_SLUG: test-default
     services:
       postgres:
         image: postgres:18-alpine

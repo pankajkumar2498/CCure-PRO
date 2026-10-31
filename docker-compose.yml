@@ -9,6 +9,125 @@ x-logging: &default-logging
     max-size: "20m"
     max-file: "5"
 
+# Application settings Compose forwards unchanged to api, worker, beat and
+# web-worker. A name with no value is passed through: the container receives
+# it only when .env sets it, so an unset one leaves the code's default in force
+# (.env.example lists each with that default). Never set one to an empty value
+# in .env: that passes an empty string, not the default. Secrets are not here;
+# each goes only to the service that uses it.
+x-app-settings: &app-settings
+  # The default organisation start-up creates or finds on every API start
+  # (db/migrate_production_schema.py). Required: an existing installation must
+  # name the organisation it already has, or a second one is created.
+  DEFAULT_ORG_NAME: ${DEFAULT_ORG_NAME:?DEFAULT_ORG_NAME must be set (see .env.example)}
+  DEFAULT_ORG_SLUG: ${DEFAULT_ORG_SLUG:?DEFAULT_ORG_SLUG must be set (see .env.example)}
+  # Logging
+  LOG_LEVEL:
+  LOG_FORMAT:
+  ACCESS_LOG_LEVEL:
+  # Sessions and tokens
+  ACCESS_TOKEN_EXPIRES_MINUTES:
+  REFRESH_TOKEN_EXPIRES_DAYS:
+  REFRESH_COOKIE_NAME:
+  REFRESH_COOKIE_DOMAIN:
+  REFRESH_SESSION_RETENTION_DAYS:
+  RBAC_REAUTH_MODE:
+  # Rate limits
+  API_DEFAULT_RATE_LIMIT:
+  API_RATE_LIMIT_EXEMPT_PATHS:
+  RATE_LIMIT_MEMORY_FALLBACK:
+  PASSWORD_RESET_IP_HOURLY_LIMIT:
+  PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT:
+  REGISTRATION_DAILY_IP_LIMIT:
+  # Registration and email-domain screening
+  SELF_REGISTRATION_AUTO_APPROVE:
+  EMAIL_VERIFICATION_TTL_HOURS:
+  UNVERIFIED_ACCOUNT_TTL_DAYS:
+  UNAPPROVED_ACCOUNT_TTL_DAYS:
+  PENDING_APPROVAL_QUEUE_LIMIT:
+  EMAIL_DOMAIN_GUARD_MODE:
+  EMAIL_DOMAIN_CACHE_TTL_SECONDS:
+  EMAIL_RISK_ENRICHMENT_ENABLED:
+  EMAIL_RISK_DNS_TIMEOUT:
+  EMAIL_RISK_RDAP_TIMEOUT:
+  EMAIL_RISK_MIN_DOMAIN_AGE_DAYS:
+  DISPOSABLE_SYNC_MIN_ROWS_PER_SOURCE:
+  DISPOSABLE_RETIRE_AFTER_MISSES:
+  # Scan authorisation, deadlines and depth
+  REQUIRE_SCAN_SCOPE:
+  SCAN_ALLOW_INTRUSIVE:
+  SCAN_IP_BLACKLIST:
+  SCAN_TIME_LIMIT_DISCOVERY:
+  SCAN_TIME_LIMIT_PORT_SCAN:
+  SCAN_TIME_LIMIT_VULN_AUDIT:
+  SCAN_TIME_LIMIT_CREDENTIALED:
+  SCAN_TIME_LIMIT_TOPOLOGY:
+  SCAN_TIME_LIMIT_HARD_MARGIN:
+  SCAN_STALL_TIMEOUT_MINUTES:
+  SCAN_QUEUE_TIMEOUT_MINUTES:
+  NMAP_TIMEOUT:
+  NMAP_PROCESS_WAIT_TIMEOUT:
+  TLS_DEEP_SCAN:
+  TLS_DEEP_MAX_ENDPOINTS:
+  TLS_STARTTLS_SCAN:
+  # Nuclei
+  NUCLEI_SEVERITIES:
+  NUCLEI_TIMEOUT:
+  NUCLEI_RATE_LIMIT:
+  NUCLEI_CONCURRENCY:
+  NUCLEI_CONCURRENCY_FAST:
+  NUCLEI_TIMEOUT_FAST:
+  NUCLEI_CONCURRENCY_DEEP:
+  NUCLEI_TIMEOUT_DEEP:
+  NUCLEI_RATE_FAST:
+  NUCLEI_RATE_STANDARD:
+  NUCLEI_RATE_DEEP:
+  NUCLEI_EXCLUDE_TAGS:
+  NUCLEI_INCLUDE_DANGEROUS_TAGS:
+  # Web application scanning
+  WEB_SCAN_TIMEOUT:
+  WEB_SCAN_QUEUE_TIMEOUT_MINUTES:
+  CRAWL_CONCURRENCY:
+  CRAWL_RATE_LIMIT:
+  MAX_CRAWL_URLS:
+  MAX_CRAWL_DEPTH:
+  PLAYWRIGHT_TIMEOUT:
+  CRAWL_SETTLE_TIMEOUT:
+  FFUF_SMALL_MAX_ENDPOINTS:
+  FFUF_MEDIUM_MAX_ENDPOINTS:
+  FFUF_MAX_WORDS_SMALL:
+  FFUF_MAX_WORDS_STANDARD:
+  FFUF_MAX_WORDS_DEEP:
+  OAST_ENABLED:
+  OAST_ACTIVE_PROBES:
+  OAST_SERVER:
+  OAST_DOMAIN:
+  OAST_HTTP_URL:
+  OAST_POLL_TIMEOUT_S:
+  OAST_POLL_INTERVAL_S:
+  OAST_RATE_LIMIT:
+  OAST_MAX_TARGETS:
+  OAST_RECEIVER_HTTP_PORT:
+  OAST_RECEIVER_DNS_PORT:
+  # Compliance, evidence uploads and malware scanning
+  COMPLIANCE_ACTIVE_FRAMEWORKS:
+  COMPLIANCE_EVIDENCE_TENANT_QUOTA_BYTES:
+  CLAMAV_HOST:
+  CLAMAV_PORT:
+  CLAMAV_TIMEOUT:
+  UPLOAD_AV_REQUIRED:
+  # Audit log: export ceilings and retention (retention is off at 0; read
+  # .claude/rules/audit-retention.md before turning it on)
+  AUDIT_EXPORT_MAX_ROWS:
+  AUDIT_EXPORT_PAGE_SIZE:
+  AUDIT_EXPORT_PDF_MAX_ROWS:
+  AUDIT_LOG_RETENTION_DAYS:
+  AUDIT_RETENTION_MIN_DAYS:
+  AUDIT_RETENTION_BATCH_SIZE:
+  AUDIT_RETENTION_MAX_ROWS_PER_RUN:
+  AUDIT_RETENTION_DRY_RUN:
+  AUDIT_RETENTION_REQUIRE_BACKUP_HOURS:
+
 services:
   # ── Task Broker ──────────────────────────────────────────────────────────
   redis:
@@ -78,7 +197,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Database superuser password must be set}
       POSTGRES_DB: ${POSTGRES_DB:-ccure_db}
       CCURE_APP_PASSWORD: ${POSTGRES_PASSWORD:?Application database password must be set}
-      VULN_DB_PASSWORD: ${VULN_DB_PASSWORD:-root}
+      VULN_DB_PASSWORD: ${VULN_DB_PASSWORD:?VULN_DB_PASSWORD must be set (see .env.example)}
       TZ: Asia/Kolkata
     ports:
       - "127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432"
@@ -105,53 +224,54 @@ services:
     restart: unless-stopped
     command: ["sh", "-c", "tr -d '\\r' < /app/start.sh > /tmp/start.sh && chmod +x /tmp/start.sh && /tmp/start.sh"]
     environment:
-      - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      <<: *app-settings
+      TZ: 'Asia/Kolkata'
+      DATABASE_URL: 'postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      TEST_DATABASE_URL: 'postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      CELERY_BROKER_URL: 'redis://redis:6379/0'
+      CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
+      VULN_DB_HOST: '${VULN_DB_HOST:-db}'
       # TLS for the vuln_intel connection, which config.py assembles from
       # VULN_DB_* rather than from a hardcoded URL — the container and the
       # host worker need different hosts and different certificate paths.
-      - PGSSLMODE=${PGSSLMODE:-verify-full}
-      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
-      - VULN_DB_PORT=5432
-      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
-      - VULN_DB_USER=${VULN_DB_USER:-admin}
-      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      PGSSLMODE: '${PGSSLMODE:-verify-full}'
+      PGSSLROOTCERT: '/etc/ssl/ccure/ccure-internal-ca.crt'
+      VULN_DB_PORT: '5432'
+      VULN_DB_NAME: '${VULN_DB_NAME:-vuln_intel}'
+      VULN_DB_USER: '${VULN_DB_USER:-admin}'
+      VULN_DB_PASSWORD: '${VULN_DB_PASSWORD:?VULN_DB_PASSWORD must be set (see .env.example)}'
       # The key the MFA Fernet key is derived from (users.totp_secret). It must be
       # the value the secrets were encrypted under: it was initialised to the
       # JWT secret's value, so nothing already stored changes. Required, because
       # an unset one used to fall back to the JWT secret and would silently
       # re-key (and so lose) every enrolled authenticator.
-      - MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY must be set (see scripts/security/verify_mfa_key_continuity.py)}
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
-      - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
+      MFA_ENCRYPTION_KEY: '${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY must be set (see scripts/security/verify_mfa_key_continuity.py)}'
+      COMPLIANCE_ENCRYPTION_KEY: '${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set (see .env.example); host scripts that decrypt stored credentials need the same value in Backend/.env}'
+      REFRESH_COOKIE_PATH: '${REFRESH_COOKIE_PATH:-/}'
       # Set explicitly rather than left to Backend/.env: auth/router.py reads
       # these with os.getenv at import time, so whether the dotenv load had
       # already happened depended on import order. A cookie silently losing
       # its Secure flag is not a failure anyone would notice.
-      - REFRESH_COOKIE_SECURE=${REFRESH_COOKIE_SECURE:-false}
-      - REFRESH_COOKIE_SAMESITE=${REFRESH_COOKIE_SAMESITE:-lax}
+      REFRESH_COOKIE_SECURE: '${REFRESH_COOKIE_SECURE:-false}'
+      REFRESH_COOKIE_SAMESITE: '${REFRESH_COOKIE_SAMESITE:-lax}'
       # Central deployment default. A saved Registration Settings policy takes
       # precedence until an administrator selects Use deployment default.
-      - ALLOW_SELF_REGISTRATION=${ALLOW_SELF_REGISTRATION:-false}
-      - APP_ENV=production
-      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
-      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
-      - SMTP_PORT=${SMTP_PORT:-1025}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_SECURE=${SMTP_SECURE:-False}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
-      - RELOAD=false
+      ALLOW_SELF_REGISTRATION: '${ALLOW_SELF_REGISTRATION:-false}'
+      APP_ENV: 'production'
+      CORS_ALLOW_ORIGINS: '${CORS_ALLOW_ORIGINS:-http://localhost:3000}'
+      SMTP_HOST: '${SMTP_HOST:-host.docker.internal}'
+      SMTP_PORT: '${SMTP_PORT:-1025}'
+      SMTP_USER: '${SMTP_USER:-}'
+      SMTP_PASSWORD: '${SMTP_PASSWORD:-}'
+      SMTP_SECURE: '${SMTP_SECURE:-False}'
+      SMTP_FROM_EMAIL: '${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}'
+      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:3000}'
+      CELERY_TASK_ALWAYS_EAGER: '${CELERY_TASK_ALWAYS_EAGER:-True}'
+      RELOAD: 'false'
       # Token signing keyset (Phase 9.3), mounted below. The api is the only
       # service that verifies or will sign platform tokens; worker, web-worker
       # and beat deliberately get neither the variable nor the mount.
-      - CCURE_TOKEN_KEYS_DIR=/run/ccure/keys
+      CCURE_TOKEN_KEYS_DIR: '/run/ccure/keys'
       # Tokens are ES256 only (Phase 9.6c): the active key above signs, the keyset
       # verifies. There is no HS256 mode, no signing-algorithm switch and no JWT
       # secret; a release is rolled back with git, not with a setting.
@@ -163,13 +283,23 @@ services:
       # that port in 10.7. The emergency override puts both back:
       # docker-compose.emergency-direct.yml, docs/architecture/phase10/
       # PHASE10_7_GATEWAY_ONLY.md.
-      - TRUSTED_PROXIES=127.0.0.1,::1,172.31.254.10
+      TRUSTED_PROXIES: '127.0.0.1,::1,172.31.254.10'
       # The one address uvicorn listens on (Backend/start.sh): the api's address
       # on the internal `gateway` network, so nothing on the default network
       # (host processes via 172.18.0.7, other containers via api:8000) reaches
       # it. A host process can still dial 172.31.254.20 over the bridge, as an
       # untrusted client — the residual recorded for optional Phase 10.8.
-      - API_BIND_HOST=172.31.254.20
+      API_BIND_HOST: '172.31.254.20'
+      # The API reads nothing from Backend/.env (SKIP_DOTENV_LOAD): every
+      # setting it uses arrives from this file, as on the release overlay.
+      SKIP_DOTENV_LOAD: '1'
+      # First administrator: read only while the database has no users at
+      # all, so an existing installation's accounts are never touched.
+      # Passed through only when set in .env.
+      DEFAULT_ADMIN_EMAIL:
+      DEFAULT_ADMIN_PASSWORD:
+      # Optional NVD key for the API's daily incremental NVD sync.
+      NVD_API_KEY:
     depends_on:
       redis:
         condition: service_healthy
@@ -254,51 +384,52 @@ services:
       - NET_RAW
     command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner,default,compliance", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
     environment:
-      - TZ=Asia/Kolkata
+      <<: *app-settings
+      TZ: 'Asia/Kolkata'
       # Host networking means no Compose DNS: `db` and `redis` do not resolve
       # here. Both are reached through the ports they publish on loopback, so
       # the port is POSTGRES_PORT_BINDING — the published one — and not 5432,
       # which is the port inside the database container's own namespace.
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@127.0.0.1:${POSTGRES_PORT_BINDING:-5433}/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT_BINDING:-5433}/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - CELERY_BROKER_URL=redis://127.0.0.1:6379/0
-      - CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
-      - VULN_DB_HOST=127.0.0.1
+      DATABASE_URL: 'postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@127.0.0.1:${POSTGRES_PORT_BINDING:-5433}/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      TEST_DATABASE_URL: 'postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT_BINDING:-5433}/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      CELERY_BROKER_URL: 'redis://127.0.0.1:6379/0'
+      CELERY_RESULT_BACKEND: 'redis://127.0.0.1:6379/0'
+      VULN_DB_HOST: '127.0.0.1'
       # TLS for the vuln_intel connection, which config.py assembles from
       # VULN_DB_* rather than from a hardcoded URL — the container and the
       # host worker need different hosts and different certificate paths.
-      - PGSSLMODE=${PGSSLMODE:-verify-full}
-      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
-      - VULN_DB_PORT=${POSTGRES_PORT_BINDING:-5433}
-      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
-      - VULN_DB_USER=${VULN_DB_USER:-admin}
-      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      PGSSLMODE: '${PGSSLMODE:-verify-full}'
+      PGSSLROOTCERT: '/etc/ssl/ccure/ccure-internal-ca.crt'
+      VULN_DB_PORT: '${POSTGRES_PORT_BINDING:-5433}'
+      VULN_DB_NAME: '${VULN_DB_NAME:-vuln_intel}'
+      VULN_DB_USER: '${VULN_DB_USER:-admin}'
+      VULN_DB_PASSWORD: '${VULN_DB_PASSWORD:?VULN_DB_PASSWORD must be set (see .env.example)}'
       # Workers hold no token or MFA secret (Phase 9, 3b): they verify and sign
       # nothing. The api is the only service that does either.
-      - SKIP_DOTENV_LOAD=1
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
-      - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
+      SKIP_DOTENV_LOAD: '1'
+      COMPLIANCE_ENCRYPTION_KEY: '${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set (see .env.example); host scripts that decrypt stored credentials need the same value in Backend/.env}'
+      REFRESH_COOKIE_PATH: '${REFRESH_COOKIE_PATH:-/}'
       # Set explicitly rather than left to Backend/.env: auth/router.py reads
       # these with os.getenv at import time, so whether the dotenv load had
       # already happened depended on import order. A cookie silently losing
       # its Secure flag is not a failure anyone would notice.
-      - REFRESH_COOKIE_SECURE=${REFRESH_COOKIE_SECURE:-false}
-      - REFRESH_COOKIE_SAMESITE=${REFRESH_COOKIE_SAMESITE:-lax}
-      - APP_ENV=production
+      REFRESH_COOKIE_SECURE: '${REFRESH_COOKIE_SECURE:-false}'
+      REFRESH_COOKIE_SAMESITE: '${REFRESH_COOKIE_SAMESITE:-lax}'
+      APP_ENV: 'production'
       # host.docker.internal does not exist under host networking, and it has no
       # reason to: the host's own loopback is what that name pointed at.
-      - SMTP_HOST=${SMTP_HOST:-127.0.0.1}
-      - SMTP_PORT=${SMTP_PORT:-1025}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_SECURE=${SMTP_SECURE:-False}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
-      - SCANNER_RUNTIME=container
-      - SCANNER_WORKER_CONCURRENCY=${SCANNER_WORKER_CONCURRENCY:-20}
-      - MAX_NMAP_PROCESSES=${MAX_NMAP_PROCESSES:-20}
-      - NMAP_THREADS=${NMAP_THREADS:-20}
+      SMTP_HOST: '${SMTP_HOST:-127.0.0.1}'
+      SMTP_PORT: '${SMTP_PORT:-1025}'
+      SMTP_USER: '${SMTP_USER:-}'
+      SMTP_PASSWORD: '${SMTP_PASSWORD:-}'
+      SMTP_SECURE: '${SMTP_SECURE:-False}'
+      SMTP_FROM_EMAIL: '${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}'
+      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:3000}'
+      CELERY_TASK_ALWAYS_EAGER: '${CELERY_TASK_ALWAYS_EAGER:-True}'
+      SCANNER_RUNTIME: 'container'
+      SCANNER_WORKER_CONCURRENCY: '${SCANNER_WORKER_CONCURRENCY:-20}'
+      MAX_NMAP_PROCESSES: '${MAX_NMAP_PROCESSES:-20}'
+      NMAP_THREADS: '${NMAP_THREADS:-20}'
     depends_on:
       redis:
         condition: service_healthy
@@ -397,33 +528,34 @@ services:
         celery -A core.celery_app beat --loglevel=info
         --schedule=/var/lib/ccure-beat/celerybeat-schedule
     environment:
-      - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - PGSSLMODE=${PGSSLMODE:-verify-full}
-      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
-      - VULN_DB_HOST=${VULN_DB_HOST:-db}
-      - VULN_DB_PORT=5432
-      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
-      - VULN_DB_USER=${VULN_DB_USER:-admin}
-      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      <<: *app-settings
+      TZ: 'Asia/Kolkata'
+      DATABASE_URL: 'postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      TEST_DATABASE_URL: 'postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      CELERY_BROKER_URL: 'redis://redis:6379/0'
+      CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
+      PGSSLMODE: '${PGSSLMODE:-verify-full}'
+      PGSSLROOTCERT: '/etc/ssl/ccure/ccure-internal-ca.crt'
+      VULN_DB_HOST: '${VULN_DB_HOST:-db}'
+      VULN_DB_PORT: '5432'
+      VULN_DB_NAME: '${VULN_DB_NAME:-vuln_intel}'
+      VULN_DB_USER: '${VULN_DB_USER:-admin}'
+      VULN_DB_PASSWORD: '${VULN_DB_PASSWORD:?VULN_DB_PASSWORD must be set (see .env.example)}'
       # Workers hold no token or MFA secret (Phase 9, 3b): they verify and sign
       # nothing. The api is the only service that does either.
-      - SKIP_DOTENV_LOAD=1
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
-      - APP_ENV=production
-      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
-      - SMTP_PORT=${SMTP_PORT:-1025}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_SECURE=${SMTP_SECURE:-False}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      SKIP_DOTENV_LOAD: '1'
+      COMPLIANCE_ENCRYPTION_KEY: '${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set (see .env.example); host scripts that decrypt stored credentials need the same value in Backend/.env}'
+      APP_ENV: 'production'
+      SMTP_HOST: '${SMTP_HOST:-host.docker.internal}'
+      SMTP_PORT: '${SMTP_PORT:-1025}'
+      SMTP_USER: '${SMTP_USER:-}'
+      SMTP_PASSWORD: '${SMTP_PASSWORD:-}'
+      SMTP_SECURE: '${SMTP_SECURE:-False}'
+      SMTP_FROM_EMAIL: '${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}'
+      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:3000}'
       # Beat must never run tasks in-process. Eager mode would execute every
       # scheduled job inside the scheduler, serially, with no worker involved.
-      - CELERY_TASK_ALWAYS_EAGER=False
+      CELERY_TASK_ALWAYS_EAGER: 'False'
     depends_on:
       redis:
         condition: service_healthy
@@ -459,37 +591,41 @@ services:
       --concurrency=${WEB_WORKER_CONCURRENCY:-4}
       --prefetch-multiplier=1
     environment:
-      - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      <<: *app-settings
+      TZ: 'Asia/Kolkata'
+      DATABASE_URL: 'postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      TEST_DATABASE_URL: 'postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt'
+      CELERY_BROKER_URL: 'redis://redis:6379/0'
+      CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
+      VULN_DB_HOST: '${VULN_DB_HOST:-db}'
       # TLS for the vuln_intel connection, which config.py assembles from
       # VULN_DB_* rather than from a hardcoded URL — the container and the
       # host worker need different hosts and different certificate paths.
-      - PGSSLMODE=${PGSSLMODE:-verify-full}
-      - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
-      - VULN_DB_PORT=5432
-      - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
-      - VULN_DB_USER=${VULN_DB_USER:-admin}
-      - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
+      PGSSLMODE: '${PGSSLMODE:-verify-full}'
+      PGSSLROOTCERT: '/etc/ssl/ccure/ccure-internal-ca.crt'
+      VULN_DB_PORT: '5432'
+      VULN_DB_NAME: '${VULN_DB_NAME:-vuln_intel}'
+      VULN_DB_USER: '${VULN_DB_USER:-admin}'
+      VULN_DB_PASSWORD: '${VULN_DB_PASSWORD:?VULN_DB_PASSWORD must be set (see .env.example)}'
       # Workers hold no token or MFA secret (Phase 9, 3b): they verify and sign
       # nothing. The api is the only service that does either.
-      - SKIP_DOTENV_LOAD=1
-      - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
-      - APP_ENV=production
-      - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
-      - SMTP_PORT=${SMTP_PORT:-1025}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_SECURE=${SMTP_SECURE:-False}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
-      - NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
-      - WEB_SCAN_RATE_LIMIT=${WEB_SCAN_RATE_LIMIT:-10}
+      SKIP_DOTENV_LOAD: '1'
+      COMPLIANCE_ENCRYPTION_KEY: '${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set (see .env.example); host scripts that decrypt stored credentials need the same value in Backend/.env}'
+      APP_ENV: 'production'
+      PLAYWRIGHT_BROWSERS_PATH: '/opt/playwright'
+      SMTP_HOST: '${SMTP_HOST:-host.docker.internal}'
+      SMTP_PORT: '${SMTP_PORT:-1025}'
+      SMTP_USER: '${SMTP_USER:-}'
+      SMTP_PASSWORD: '${SMTP_PASSWORD:-}'
+      SMTP_SECURE: '${SMTP_SECURE:-False}'
+      SMTP_FROM_EMAIL: '${SMTP_FROM_EMAIL:-no-reply@ccureaudit.pro}'
+      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:3000}'
+      CELERY_TASK_ALWAYS_EAGER: '${CELERY_TASK_ALWAYS_EAGER:-True}'
+      NUCLEI_TEMPLATES_DIR: '/opt/nuclei-templates'
+      WEB_SCAN_RATE_LIMIT: '${WEB_SCAN_RATE_LIMIT:-10}'
+      # Bearer token for a self-hosted OAST collaborator; passed through
+      # only when set.
+      OAST_TOKEN:
     depends_on:
       redis:
         condition: service_healthy
@@ -645,13 +781,15 @@ services:
   #
   #   docker compose --profile av up -d clamav
   #
-  # Then set CLAMAV_HOST=clamav in Backend/.env. Until that variable is set the
+  # Then set CLAMAV_HOST=clamav in the root .env. Until that variable is set the
   # API does not attempt a scan and reports `malware_scan: not_configured` on
   # every upload — an honest "nobody looked", never a silent clean verdict.
   #
-  # Leave UPLOAD_AV_REQUIRED at its default False until the container is
-  # confirmed healthy. An unreachable scanner then logs loudly and lets the
-  # upload through; flip it to True to fail closed once clamd is dependable.
+  # Once CLAMAV_HOST is set, UPLOAD_AV_REQUIRED defaults to True
+  # (core/upload_guard.py): an unreachable scanner refuses the upload with 503.
+  # While the container is still being brought up, set UPLOAD_AV_REQUIRED=False
+  # to fail open deliberately (an unreachable scanner then logs loudly and lets
+  # the upload through), and remove it once clamd is dependable.
   # A positive detection refuses the upload in both modes.
   #
   # No ports are published. Only the API talks to it, over the compose network.

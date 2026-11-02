@@ -188,6 +188,9 @@ PREFIXES: dict[str, str] = {
     "db.constraint_sql": "infra",
     # Text PostgreSQL will store (out of scans/, the asset syncer uses it too).
     "db.safe_text": "infra",
+    # The stdlib-only id helpers, out of db.base so that the topology engine
+    # mints asset and link ids without loading the database layer (2 Nov 2026).
+    "db.ids": "infra",
     "core.celery_app": "infra",
     "core.redis_client": "infra",
     "core.rate_limit_middleware": "infra",
@@ -846,8 +849,8 @@ def load_profiles(modules, raw_edges) -> dict[str, dict[str, list[str]]]:
 #: E2 beyond the D1 libraries (G3): scan engines whose load profile is pinned
 #: against ``FORBIDDEN`` though they are not D1 libraries yet — each reads the
 #: settings module at import, which the harness does not admit. Not here: the
-#: topology engine, which still persists its own links through SQLAlchemy
-#: (docs/architecture/MODULAR_REFACTORING_LOG.md §6, Group 3).
+#: topology engine, a D1 library since its persistence moved behind its
+#: directory (2 Nov 2026), so pinned with the libraries.
 PINNED_ENGINES = (
     "engines.port.port_engine",
     "engines.vulnerability.vulnerability_engine",

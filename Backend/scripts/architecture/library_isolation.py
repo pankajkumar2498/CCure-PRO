@@ -31,12 +31,13 @@ checkout read-only. This module itself is standard library only, because
 ``capability_map.py`` reads ``LIBRARIES`` and ``FORBIDDEN`` for E2 in the
 stdlib-only pre-commit hook.
 
-Not here: the port and network-check engines, the nmap wrapper, the version
-matcher and the topology engine. Since Group 3 the first four load no package
-in ``FORBIDDEN`` and ``capability_map.PINNED_ENGINES`` pins that statically;
-they are not D1 libraries yet, because each reads the settings module at
-import. The topology engine still persists its own links through SQLAlchemy.
-Nothing in this module exempts any of them; they are simply not declared.
+Not here: the port and network-check engines, the nmap wrapper and the version
+matcher. Since Group 3 they load no package in ``FORBIDDEN`` and
+``capability_map.PINNED_ENGINES`` pins that statically; they are not D1
+libraries yet, because each reads the settings module at import. Nothing in
+this module exempts any of them; they are simply not declared. The topology
+engine is declared since 2 Nov 2026, when its persistence moved behind its
+directory.
 """
 
 from __future__ import annotations
@@ -220,6 +221,26 @@ LIBRARIES: dict[str, Library] = {
         ),
         third_party=frozenset({"playwright", "httpx"}),
         tests=("tests/web/test_web_dast_engine_pilot.py",),
+    ),
+    # 2 Nov 2026: the topology engine, which computes on plain records and
+    # hands its writes to the directory (core.topology.directory) — the asset
+    # registry and the topology store (core.topology.links) answer it. Its test
+    # runs a whole mapping and the graph on an in-memory directory. pysnmp is
+    # not declared: the walks are the client's, and the test stands in for
+    # them, so a walk reaching the agent fails the run.
+    "topology": Library(
+        entry_points=("core.topology.engine",),
+        first_party=(
+            "core.topology.engine",
+            "core.topology.identity",
+            "core.topology.directory",
+            "core.topology.client",
+            "db.ids",
+            "core.oui_lookup",
+            "core.mac",
+        ),
+        third_party=frozenset({"requests"}),
+        tests=("tests/topology/test_topology_engine_pure.py",),
     ),
 }
 

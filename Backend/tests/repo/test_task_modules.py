@@ -1,106 +1,120 @@
 """
-The scan tasks split out of core/tasks.py (G1, C2), and the facade left behind.
+The scan tasks split out of core/tasks.py (G1, C2), and the facade's removal.
 
 G1 moved every scan task and its helpers into ``scans/tasks/``
-(docs/architecture/MODULAR_REFACTORING_LOG.md §6). ``core/tasks.py`` now
-re-exports them, which keeps ``from core.tasks import X`` working — and
-creates the hazard these tests exist for:
+(docs/architecture/MODULAR_REFACTORING_LOG.md §6) and left ``core/tasks.py``
+re-exporting them. That facade was removed on 2 Nov 2026: every caller imports
+a name from the module that owns it. These hold that:
 
-* **A patch through the facade replaces nothing.** ``patch("core.tasks.X")``
-  rebinds the facade's name; the task code reads its own module's binding and
-  runs the real ``X``. The test passes believing it replaced it. The facade
-  refuses such a patch at run time, and the first test below refuses one in the
-  source, whatever form it takes.
-* **A patch on the wrong task module replaces nothing either.**
+* **The facade stays gone.** Nothing in the application, the tests, the
+  scripts or the documents' scripts imports or patches ``core.tasks``, and
+  every name it offered is importable from exactly one owner, as the same task
+  Celery registered under its unchanged name.
+* **A patch on the wrong task module replaces nothing.**
   ``scans.tasks.phases`` imports ``_settle_failure`` from ``common``;
   ``mark_scan_failed`` is read inside ``_settle_failure``, so it must be
   patched on ``common``. A patch must name a module whose own code reads the
-  name. The second test checks every patch on a task module does.
+  name. One test checks every patch on a task module does.
 
-Also here: the facade still offers every name the hub defined, as the same
-objects, and the worker loads the task modules, not the facade.
+Also here: the worker loads the task modules, and every beat entry and route
+names a registered task.
 """
 
 import ast
 import importlib
+import importlib.util
 import pkgutil
 from pathlib import Path
 
 import pytest
-from testpaths import BACKEND_ROOT
+from scripts.architecture.import_graph import discover_modules
+from testpaths import BACKEND_ROOT, REPO_ROOT
 
 TESTS_DIR = BACKEND_ROOT / "tests"
 TASKS_DIR = BACKEND_ROOT / "scans" / "tasks"
 FACADE = "core.tasks"
 
-#: Every top-level name core/tasks.py defined before G1 (92c224c): its
-#: functions, tasks and constants, and the five mail tasks it re-exported.
-HUB_NAMES = frozenset(
-    {
-        "log",
-        "_strip_nul",
-        "_new_orchestrator",
-        "_bind_scan_scope",
-        "_run_async",
-        "_finalize_cancelled",
-        "_settle_failure",
-        "_check_cancelled",
-        "_update_task_id",
-        "_merge_host_identity",
-        "_assessed_config_definition_ids",
-        "_sync_credentialed_asset_identity",
-        "_extract_credentialed_identity_names",
-        "_unique_lines",
-        "_clean_text",
-        "_normalize_mac",
-        "_credentialed_sections_with_identity",
-        "_port_int",
-        "_sync_credentialed_services",
-        "_first_advisory",
-        "_sync_credentialed_vulnerabilities",
-        "sync_asset_discovery_task",
-        "sync_vulnerability_audit_task",
-        "sync_host_discovery_task",
-        "run_host_discovery_task",
-        "run_asset_discovery_task",
-        "_credentialed_plan_for_scan",
-        "_restate_findings_for_corrected_ports",
-        "_upgrade_network_fingerprints",
-        "_ports_probed_in_phase2",
-        "_credential_for_host",
-        "_as_credentialed_findings",
-        "_apply_credentialed_enrichment",
-        "run_vulnerability_audit_task",
-        "_should_chain_topology",
-        "_chain_topology_if_needed",
-        "run_topology_mapping_task",
-        "run_traditional_scan_task",
-        "MAX_CREDENTIALED_TARGETS",
-        "_run_configuration_audit",
-        "_sync_configuration_compliance",
-        "_hardening_row",
-        "_credentialed_hardening_audits",
-        "_resolve_stored_credential",
-        "audit_credentialed_host",
-        "audit_database_target",
-        "_classify_credentialed_failure",
-        "_is_transport_failure",
-        "_audit_host_over_transport",
-        "run_credentialed_scan_task",
+#: Every top-level name core/tasks.py defined before G1 (92c224c) — its
+#: functions, tasks and constants, and the five mail tasks it re-exported — by
+#: the module that owns it now, as the facade imported them until 2 Nov 2026.
+OWNERS: dict[str, tuple[str, ...]] = {
+    "ccure_platform.identity.mail_tasks": (
         "send_account_approved_email_task",
         "send_mfa_otp_task",
         "send_password_changed_email_task",
         "send_password_reset_email_task",
         "send_verification_email_task",
+    ),
+    "scans.tasks.common": (
+        "_bind_scan_scope",
+        "_check_cancelled",
+        "_finalize_cancelled",
+        "_new_orchestrator",
+        "_run_async",
+        "_settle_failure",
+        "_strip_nul",
+        "_update_task_id",
+        "log",
+    ),
+    "core.findings.writer": (
+        "_assessed_config_definition_ids",
+        "_first_advisory",
+        "_sync_credentialed_vulnerabilities",
+    ),
+    "scans.tasks.credentialed_sync": (
+        "_clean_text",
+        "_credentialed_sections_with_identity",
+        "_extract_credentialed_identity_names",
+        "_normalize_mac",
+        "_port_int",
+        "_sync_credentialed_asset_identity",
+        "_sync_credentialed_services",
+    ),
+    "scans.tasks.credentialed": (
+        "_apply_credentialed_enrichment",
+        "_as_credentialed_findings",
+        "_audit_host_over_transport",
+        "_classify_credentialed_failure",
+        "_credential_for_host",
+        "_credentialed_hardening_audits",
+        "_credentialed_plan_for_scan",
+        "_hardening_row",
+        "_is_transport_failure",
+        "_ports_probed_in_phase2",
+        "_resolve_stored_credential",
+        "_restate_findings_for_corrected_ports",
+        "_run_configuration_audit",
+        "_sync_configuration_compliance",
+        "_unique_lines",
+        "_upgrade_network_fingerprints",
+        "audit_credentialed_host",
+        "audit_database_target",
+        "run_credentialed_scan_task",
+    ),
+    "scans.tasks.topology": (
+        "_chain_topology_if_needed",
+        "_should_chain_topology",
+        "run_topology_mapping_task",
+    ),
+    "scans.tasks.phases": (
+        "_merge_host_identity",
+        "run_asset_discovery_task",
+        "run_host_discovery_task",
+        "run_traditional_scan_task",
+        "run_vulnerability_audit_task",
+        "sync_asset_discovery_task",
+        "sync_host_discovery_task",
+        "sync_vulnerability_audit_task",
+    ),
+    "scans.tasks.maintenance": (
         "expire_risk_acceptances",
         "reconcile_amt_inventory_task",
         "update_mac_vendor_registry_task",
-        "_SCAN_SCHEDULER_LOCK_KEY",
-        "run_due_scan_schedules",
-        "reap_stalled_scans",
-        "reap_stalled_web_scans",
-    }
-)
+    ),
+    "scans.tasks.schedules": ("_SCAN_SCHEDULER_LOCK_KEY", "run_due_scan_schedules"),
+    "scans.tasks.reapers": ("reap_stalled_scans", "reap_stalled_web_scans"),
+    "scans.scan_creation": ("MAX_CREDENTIALED_TARGETS",),
+}
 
 _PATCHERS = {"patch", "mock.patch", "unittest.mock.patch", "mocker.patch"}
 _OBJECT_PATCHERS = {
@@ -205,30 +219,12 @@ def _all_patches() -> list[tuple[str, int, str, str]]:
     found = []
     for path in sorted(TESTS_DIR.rglob("*.py")):
         if path.resolve() == Path(__file__).resolve():
-            continue  # this file patches the facade on purpose, to see it refuse
+            continue  # this file's self-test names patches on purpose
         visitor = _Patches()
         visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
         rel = str(path.relative_to(BACKEND_ROOT))
         found += [(rel, line, module, attr) for line, module, attr in visitor.found]
     return found
-
-
-def test_no_test_patches_through_the_facade():
-    """
-    Rebinding a name on the facade is what replaces nothing. Replacing an
-    attribute *of* an object reached through it (a task's ``.delay``) changes
-    the shared object and works from anywhere, so it is not refused.
-    """
-    through = [
-        f"{path}:{line}: {module}.{attr}"
-        for path, line, module, attr in _all_patches()
-        if module == FACADE and "." not in attr
-    ]
-    assert not through, (
-        "core.tasks is a facade: a patch through it replaces nothing the task "
-        "code reads. Patch the scans.tasks module whose code reads the name:\n  "
-        + "\n  ".join(through)
-    )
 
 
 def _names_read(module: str) -> set[str]:
@@ -293,53 +289,10 @@ def test_b(monkeypatch):
     ]
 
 
-def test_the_facade_refuses_a_patch_and_names_where_to_make_it():
-    from unittest.mock import patch
-
-    import core.tasks as facade
-
-    # monkeypatch.setattr calls setattr, which is refused; it also records the
-    # attribute first and refused again restoring it at teardown, so a test
-    # trying it fails twice, loudly. Plain setattr shows the refusal alone.
-    with pytest.raises(AttributeError, match="scans.tasks.credentialed"):
-        setattr(facade, "_resolve_stored_credential", lambda *a: {})
-    with pytest.raises(AttributeError, match="compatibility facade"):
-        with patch("core.tasks.SessionLocal_never_defined", create=True):
-            pass
-    with pytest.raises(AttributeError):
-        del facade.run_host_discovery_task
-    # Nothing was replaced, and reading works as before.
-    from scans.tasks.credentialed import _resolve_stored_credential
-
-    assert facade._resolve_stored_credential is _resolve_stored_credential
-
-
-def test_the_facade_offers_every_name_the_hub_defined_as_the_same_object():
-    import core.tasks as facade
-
-    offered = {n for n in vars(facade) if not n.startswith("__")}
-    assert HUB_NAMES <= offered, sorted(HUB_NAMES - offered)
-    loaded = {m: importlib.import_module(m) for m in _task_modules()}
-    loaded["scans.scan_creation"] = importlib.import_module("scans.scan_creation")
-    # G3 (C3): the credentialed audit's findings writes moved to the writer.
-    loaded["core.findings.writer"] = importlib.import_module("core.findings.writer")
-    loaded["ccure_platform.identity.mail_tasks"] = importlib.import_module(
-        "ccure_platform.identity.mail_tasks"
-    )
-    for name in HUB_NAMES:
-        owners = [
-            m
-            for m, module in loaded.items()
-            if name in vars(module) and vars(module)[name] is getattr(facade, name)
-        ]
-        assert owners, f"core.tasks.{name} is not the object its module defines"
-
-
 def test_the_worker_loads_the_task_modules_and_not_the_facade():
     from core.celery_app import celery_app
 
     included = set(celery_app.conf.include)
-    assert FACADE not in included
     defining = {
         module
         for module in _task_modules()
@@ -355,3 +308,106 @@ def test_the_worker_loads_the_task_modules_and_not_the_facade():
         "scans.tasks.topology",
     }
     assert defining <= included, sorted(defining - included)
+
+
+# ── The facade is gone, and nothing reached through it ───────────────────────
+
+
+def test_the_facade_is_gone():
+    assert not (BACKEND_ROOT / "core" / "tasks.py").exists()
+    assert importlib.util.find_spec(FACADE) is None
+
+
+def _python_files_outside_the_application():
+    yield from TESTS_DIR.rglob("*.py")
+    yield from (BACKEND_ROOT / "scripts").rglob("*.py")
+    for directory in ("scripts", "docs"):
+        yield from (REPO_ROOT / directory).rglob("*.py")
+
+
+def _facade_imports(tree: ast.AST) -> list[int]:
+    lines = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(
+            a.name == FACADE or a.name.startswith(FACADE + ".") for a in node.names
+        ):
+            lines.append(node.lineno)
+        elif isinstance(node, ast.ImportFrom) and (
+            node.module == FACADE
+            or (node.module == "core" and any(a.name == "tasks" for a in node.names))
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+def test_nothing_imports_or_patches_the_facade():
+    """The application, the tests, both scripts trees and the documents'
+    scripts: a ``core.tasks`` import or patch would fail now, at the first run
+    of whatever holds it."""
+    found = []
+    modules = [path for _, path in sorted(discover_modules().items())]
+    for path in [*modules, *_python_files_outside_the_application()]:
+        if "__pycache__" in path.parts or path.resolve() == Path(__file__).resolve():
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        found += [f"{path}:{line}" for line in _facade_imports(tree)]
+    found += [
+        f"{path}:{line}: {module}.{attr}"
+        for path, line, module, attr in _all_patches()
+        if module == FACADE
+    ]
+    assert not found, "core.tasks is gone; import from the owner:\n  " + "\n  ".join(
+        found
+    )
+
+
+def test_the_scan_finds_a_facade_import_in_each_form():
+    source = "import core.tasks\nimport core.tasks as hub\nfrom core.tasks import x\nfrom core import tasks\n"
+    assert _facade_imports(ast.parse(source)) == [1, 2, 3, 4]
+    assert _facade_imports(ast.parse("from core import task_names\n")) == []
+
+
+@pytest.mark.parametrize("module", sorted(OWNERS))
+def test_every_name_the_hub_defined_has_its_owner(module):
+    """Import compatibility: each name the facade offered is importable from
+    the module that owns it — the one the facade imported it from."""
+    owner = importlib.import_module(module)
+    missing = [name for name in OWNERS[module] if not hasattr(owner, name)]
+    assert not missing, f"{module} no longer offers {missing}"
+
+
+def test_each_name_has_one_owner():
+    names = [name for group in OWNERS.values() for name in group]
+    assert len(names) == len(set(names)) == 62
+
+
+def test_every_task_the_hub_offered_is_registered_under_its_name():
+    from core.celery_app import celery_app
+
+    celery_app.loader.import_default_modules()
+    tasks = {}
+    for module, names in OWNERS.items():
+        owner = importlib.import_module(module)
+        for name in names:
+            value = getattr(owner, name)
+            if hasattr(value, "delay") and hasattr(value, "name"):
+                tasks[name] = value
+    assert len(tasks) == 20, sorted(tasks)
+    for name, task in tasks.items():
+        assert task.name.startswith("ccure."), (name, task.name)
+        registered = celery_app.tasks[task.name]
+        assert registered is task or registered is task._get_current_object(), name
+
+
+def test_every_beat_entry_and_route_names_a_registered_task():
+    from core.celery_app import celery_app
+
+    celery_app.loader.import_default_modules()
+    registered = set(celery_app.tasks)
+    beat = {entry["task"] for entry in celery_app.conf.beat_schedule.values()}
+    assert beat and beat <= registered, sorted(beat - registered)
+    routes = set(celery_app.conf.task_routes or {})
+    assert routes <= registered, sorted(routes - registered)

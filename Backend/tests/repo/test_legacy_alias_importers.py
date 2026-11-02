@@ -45,9 +45,8 @@ ALLOWED: dict[str, set[str]] = {
     # the root hands the any-kind decoder to the rate-limit audit; both
     # WebSocket logins ask ccure_platform.api.websocket_user (2 Nov 2026)
     "auth.jwt_handler": {"main.py"},
-    # the scan tasks' compatibility facade re-exports the mail tasks so
-    # `core.tasks.send_*` resolves
-    "auth.mail_tasks": {"core/tasks.py"},
+    # auth.mail_tasks had one importer, the core.tasks facade, removed on
+    # 2 Nov 2026
 }
 
 

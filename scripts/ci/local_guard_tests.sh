@@ -70,7 +70,9 @@ URL="postgresql://$DB_USER:$DB_PASSWORD@$PG:5432/$DB_NAME"
 echo "staging the checkout"
 mkdir -p "$WORK/repo"
 (cd "$REPO" && git ls-files -co --exclude-standard) >"$WORK/files.txt"
-rsync -a --files-from="$WORK/files.txt" "$REPO/" "$WORK/repo/"
+# A tracked file deleted in the working tree is listed but absent: the copy is
+# of the checkout as it stands, so it is skipped rather than failing the run.
+rsync -a --ignore-missing-args --files-from="$WORK/files.txt" "$REPO/" "$WORK/repo/"
 chmod -R a+rwX "$WORK/repo"
 
 echo "starting throwaway PostgreSQL and Redis on an internal network"

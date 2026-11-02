@@ -142,7 +142,7 @@ class CurrentBehavior(unittest.TestCase):
         self.assertEqual(int.from_bytes(frame[1:4], "big"), len(frame) - 4)
 
     def test_D13_invalid_credential_scope_becomes_global(self):
-        from core import tasks
+        from scans.tasks import credentialed as tasks
         scan = SimpleNamespace(id="fixture", options={"credentials": [{"credential_id": "fixture", "targets": ["not-a-network"]}]})
         with patch.object(tasks, "_resolve_stored_credential", return_value={"username": "fixture"}):
             plan = tasks._credentialed_plan_for_scan(None, scan)

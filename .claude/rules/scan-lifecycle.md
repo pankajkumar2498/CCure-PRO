@@ -3,7 +3,6 @@ paths:
   - "Backend/scans/**"
   - "Backend/orchestrator/**"
   - "Backend/core/scan_control.py"
-  - "Backend/core/tasks.py"
   - "Backend/core/task_names.py"
   - "Backend/core/phase_handoff.py"
   - "Backend/core/scheduling/**"

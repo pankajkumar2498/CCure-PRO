@@ -35,11 +35,10 @@ def test_the_scan_hub_no_longer_defines_it():
     import importlib
     import pkgutil
 
-    import core.tasks as hub
     import scans.tasks
 
-    assert not hasattr(hub, "purge_expired_audit_logs")
-    # Since G1 the hub's code is the scans.tasks package; core.tasks re-exports it.
+    # Since G1 the hub's code is the scans.tasks package; the core.tasks facade
+    # that re-exported it was removed on 2 Nov 2026.
     for info in pkgutil.iter_modules(scans.tasks.__path__):
         module = importlib.import_module(f"scans.tasks.{info.name}")
         assert not hasattr(module, "purge_expired_audit_logs"), info.name

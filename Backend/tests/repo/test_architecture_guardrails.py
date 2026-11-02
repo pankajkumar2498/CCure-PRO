@@ -218,8 +218,6 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
     [
         ("routers.web_scans", "routers.scan_history"),  # routers may use routers
         ("main", "routers.web_scans"),  # the composition root mounts them
-        ("core.tasks", "scans.db_helpers"),  # the task hub may depend downwards
-        ("core.tasks", "scans.tasks.phases"),  # the facade re-exports them
         ("scans.tasks.phases", "scans.tasks.credentialed"),  # siblings, one way
         ("scans.tasks.credentialed", "scans.db_helpers"),  # and depend downwards
         ("routers.phase_scans", "core.task_names"),  # routes dispatch by task name
@@ -240,7 +238,7 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("ccure_platform.api", "config"),
         ("routers.scan_history", "ccure_platform.api"),  # the way in
         ("ccure_audit.services.s", "ccure_platform.api"),
-        ("core.tasks", "ccure_platform.api"),
+        ("scans.tasks.common", "ccure_platform.api"),
     ],
 )
 def test_the_rules_allow_ordinary_downward_dependencies(src, dst):

@@ -457,24 +457,13 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 #: module -> identity symbols it imports. 32 modules and 80 symbols on
 #: 28 Sep 2026; 3 after step 8.5, each kept on purpose:
 #:
-#: * ``core.tasks`` re-exports the five mail tasks from ``auth.mail_tasks`` so
-#:   the patch targets ``core.tasks.send_*_task`` keep resolving. It is a
-#:   legacy compatibility path, kept while the other legacy paths are (8.5
-#:   deletes none of them).
+#: * ``core.tasks`` re-exported the five mail tasks from ``auth.mail_tasks``
+#:   until the facade was removed on 2 Nov 2026; callers import them from
+#:   ``ccure_platform.identity.mail_tasks``.
 #: * ``routers.scan_history`` and ``routers.web_scans`` authenticated a
 #:   WebSocket ticket themselves (``decode_token`` plus a ``User`` query) until
 #:   both moved to ``ccure_platform.api.websocket_user`` (2 Nov 2026).
-KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
-    "core.tasks": frozenset(
-        {
-            "auth.mail_tasks.send_account_approved_email_task",
-            "auth.mail_tasks.send_mfa_otp_task",
-            "auth.mail_tasks.send_password_changed_email_task",
-            "auth.mail_tasks.send_password_reset_email_task",
-            "auth.mail_tasks.send_verification_email_task",
-        }
-    ),
-}
+KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {}
 
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.

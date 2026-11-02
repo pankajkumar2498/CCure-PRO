@@ -296,7 +296,6 @@ PREFIXES: dict[str, str] = {
     "core.mac_vendor_cache": "assets",
     # G3: the asset half of the topology engine's directory.
     "core.topology_assets": "assets",
-    "core.audit_event_translator": "assets",  # the asset timeline, not the audit log
     # The asset notes' and tags' part of a user purge (ccure_audit composes it).
     "core.asset_offboarding": "assets",
     # What the compliance tasks read from and write to the asset registry.
@@ -305,6 +304,7 @@ PREFIXES: dict[str, str] = {
     "core.asset_credentialed": "assets",
     # The asset timeline's port for the scans it names (scans answers it).
     "core.asset_scans": "assets",
+    "core.audit_event_translator": "assets",  # the asset timeline, not the audit log
     "scans.asset_syncer": "assets",
     "routers.assets": "assets",
     "db.models.assets": "assets",
@@ -386,10 +386,9 @@ PREFIXES: dict[str, str] = {
     # The service root: its body is the scanner runtime's own report.
     "routers.health": "scans",
     "db.models.scans": "scans",
-    # G1 (C2): the scan tasks, one module per area, and the facade that
-    # re-exports them under the hub's old name.
+    # G1 (C2): the scan tasks, one module per area. The facade that
+    # re-exported them as core.tasks was removed on 2 Nov 2026.
     "scans.tasks": "scans",
-    "core.tasks": "scans",
     # read side
     "reporting.exports": "reporting",
     "routers.reports": "reporting",

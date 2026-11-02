@@ -318,7 +318,8 @@ rules means changing that file and this line together.
 - Code that starts a scan task dispatches it by name (`core/task_names.py`,
   `core.celery_app.registered_task`); nothing outside `scans/tasks/` imports a
   task module, and a new scan task declares its own time limits. `core/tasks.py`
-  and `routers/compliance.py` refuse a patch: patch the module whose code reads
+  is gone (2 Nov 2026): import a name from the module that owns it.
+  `routers/compliance.py` refuses a patch: patch the module whose code reads
   the name. [architecture-boundaries, scan-lifecycle]
 - Only `core/credential_vault.py` touches `compliance_credentials`; only
   `core/findings/writer.py` writes the findings tables; the findings side never

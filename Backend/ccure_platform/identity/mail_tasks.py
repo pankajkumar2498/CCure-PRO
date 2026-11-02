@@ -10,8 +10,8 @@ one module's scanner.
 Behaviour is unchanged. The registered task names keep their
 ``ccure.tasks.`` prefix, so a message already sitting in Redis still routes to
 a worker; the queue, the retry policy and the failure report are the same;
-records still log under ``ccure.tasks``. ``core.tasks`` re-exports the five
-tasks, so ``core.tasks.send_*_task`` is the same object as before.
+records still log under ``ccure.tasks``. The ``core.tasks`` facade that
+re-exported them was removed on 2 Nov 2026: import them from here.
 """
 
 from __future__ import annotations

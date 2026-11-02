@@ -234,8 +234,6 @@ def test_the_identity_fields_are_the_ones_the_task_restored():
 
 
 def test_the_task_module_offers_the_merge_under_its_old_name():
-    import core.tasks as facade
     from scans.tasks import phases
 
     assert phases._merge_host_identity is merge_host_identity
-    assert facade._merge_host_identity is merge_host_identity

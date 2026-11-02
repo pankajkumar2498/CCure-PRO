@@ -29,6 +29,9 @@ its catalogue rows and findings, and the sweep of those it retired.
 From Audit's purge hook (``ccure_audit.offboarding``): clearing a purged account
 from the findings whose risk it accepted.
 
+From compliance re-verification (``core.compliance_tasks``): a live TCP connect's
+answer on the port's service row (``record_port_reachability``).
+
 Moved code logs under the name it always had, so its log lines read as they
 did: ``scans.asset_syncer`` for the pipeline's, ``ccure.tasks`` for the
 standalone audit's.
@@ -38,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
 from core.checks.contract import normalize_severity
@@ -456,6 +460,29 @@ def upsert_network_service(db: Session, asset_id: str, scan_id: str, p: dict) ->
             },
         )
     )
+
+
+def record_port_reachability(
+    db: Session, asset_id: str, port: int, is_open: bool
+) -> bool:
+    """
+    Record a live TCP connect to an asset's port on its service row, for
+    compliance re-verification (``core.compliance_tasks``), which made this
+    write on the row itself until 1 Nov 2026. Returns whether a row was found;
+    the caller commits, as it did.
+
+    A live connect from the scanner is a direct reachability observation, so
+    it sets both the state and the reachability flag. Leaving the flag behind
+    would let a re-verified port keep whatever the original scan concluded.
+    """
+    svc = db.query(Service).filter_by(asset_id=asset_id, port=port).first()
+    if not svc:
+        return False
+    svc.state = "open" if is_open else "closed"
+    svc.network_reachable = is_open
+    svc.updated_at = datetime.now(timezone.utc)
+    db.add(svc)
+    return True
 
 
 # ── Catalogue rows and findings ──────────────────────────────────────────────

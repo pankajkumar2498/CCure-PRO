@@ -48,10 +48,6 @@
    "assets"
   ],
   [
-   "compliance",
-   "services"
-  ],
-  [
    "main",
    "compliance_controls"
   ],
@@ -104,12 +100,7 @@
    "vulnerability_definitions"
   ]
  ],
- "foreign_table_writes": [
-  [
-   "scans",
-   "assets"
-  ]
- ],
+ "foreign_table_writes": [],
  "lateral_edges": [
   [
    "core.asset_hosts",
@@ -117,15 +108,15 @@
   ],
   [
    "core.compliance_tasks",
+   "core.asset_compliance"
+  ],
+  [
+   "core.compliance_tasks",
    "core.credential_vault"
   ],
   [
    "core.compliance_tasks",
-   "db.models.assets:Asset"
-  ],
-  [
-   "core.compliance_tasks",
-   "db.models.findings:Service"
+   "core.findings.writer"
   ],
   [
    "core.risk",

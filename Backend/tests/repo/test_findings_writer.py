@@ -7,6 +7,7 @@ findings capability, unchanged. These tests hold what the move must keep true.
 
 import ast
 
+from row_changes import rows_changed
 from testpaths import BACKEND_ROOT
 
 WRITER = BACKEND_ROOT / "core" / "findings" / "writer.py"
@@ -46,9 +47,10 @@ def test_the_writers_value_helpers_are_the_asset_syncers():
 def test_the_writers_text_cleaner_is_the_credentialed_syncs():
     """
     ``_clean_text`` came with the credentialed audit's findings code and stays
-    in the credentialed sync for its identity code, for the same reason.
+    with its identity code, for the same reason: since 1 Nov 2026 that is the
+    asset registry's, ``core.asset_credentialed``.
     """
-    sync = _live_definitions(BACKEND_ROOT / "scans" / "tasks" / "credentialed_sync.py")
+    sync = _live_definitions(BACKEND_ROOT / "core" / "asset_credentialed.py")
     assert _live_definitions(WRITER)["_clean_text"] == sync["_clean_text"]
 
 
@@ -165,3 +167,45 @@ def test_the_writer_imports_no_asset_or_scan_model_and_nothing_above_it():
         "db.models.Scan",
     }
     assert not imported & forbidden, sorted(imported & forbidden)
+
+
+def _findings_models() -> set[str]:
+    from scripts.architecture import capability_map as cm
+
+    tables = _findings_tables()
+    return {name for name, (table, _) in cm._class_tables().items() if table in tables}
+
+
+def test_the_row_change_detector_sees_the_write_it_exists_for():
+    """Compliance re-verification's code before 1 Nov 2026, in miniature."""
+    old = ast.parse(
+        "def probe(db, finding, port, is_open):\n"
+        "    svc = db.query(Service).filter_by(asset_id=finding.asset_id, port=port).first()\n"
+        "    if svc:\n"
+        "        svc.state = 'open' if is_open else 'closed'\n"
+        "        svc.network_reachable = is_open\n"
+    )
+    assert rows_changed(old, _findings_models()) == [
+        (4, "svc.state"),
+        (5, "svc.network_reachable"),
+    ]
+
+
+def test_no_other_module_changes_a_loaded_findings_row():
+    """
+    A row loaded from a findings table and then changed is a write, as a
+    bulk update is: it belongs in the writer (``record_port_reachability``
+    took compliance re-verification's, 1 Nov 2026).
+    """
+    from scripts.architecture import capability_map as cm
+    from scripts.architecture.import_graph import discover_modules
+
+    models = _findings_models()
+    found = {}
+    for module, path in discover_modules().items():
+        if cm.capability_of(module) == "findings":
+            continue
+        changed = rows_changed(ast.parse(path.read_text(encoding="utf-8")), models)
+        if changed:
+            found[module] = changed
+    assert found == {}, found

@@ -296,6 +296,10 @@ PREFIXES: dict[str, str] = {
     "core.audit_event_translator": "assets",  # the asset timeline, not the audit log
     # The asset notes' and tags' part of a user purge (ccure_audit composes it).
     "core.asset_offboarding": "assets",
+    # What the compliance tasks read from and write to the asset registry.
+    "core.asset_compliance": "assets",
+    # The asset half of a standalone credentialed audit's sync.
+    "core.asset_credentialed": "assets",
     # The asset timeline's port for the scans it names (scans answers it).
     "core.asset_scans": "assets",
     "scans.asset_syncer": "assets",
@@ -1105,7 +1109,10 @@ CEILINGS = {
     # (their owners' modules answer them). 30 to 28.
     # 31 Oct 2026: the assets router's scans, and the scan-policy router's
     # scans and scan_schedules (their owners answer the ports). 28 to 25.
-    "foreign_table_references": 25,
+    # 1 Nov 2026: compliance re-verification's of services: a live connect's
+    # answer is recorded by the findings writer (record_port_reachability).
+    # 25 to 24.
+    "foreign_table_references": 24,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
@@ -1117,7 +1124,10 @@ CEILINGS = {
     # (core.topology_assets).
     # 30 Oct 2026: Audit's purge hook's to asset_notes, asset_tags and scans,
     # now core.asset_offboarding's and scans.offboarding's. 4 to 1.
-    "foreign_table_writes": 1,
+    # 1 Nov 2026: the standalone credentialed audit's asset identity, risk and
+    # system information, now the asset registry's (core.asset_credentialed).
+    # 1 to 0: no capability writes another's table.
+    "foreign_table_writes": 0,
 }
 
 _BASELINE_KEYS = (

@@ -480,8 +480,8 @@ def _password_policy_reads() -> set[str]:
 
 def test_password_policy_keys_written_are_the_keys_compliance_reads():
     written = _dict_literal_keys_in(
-        "scans/tasks/credentialed_sync.py",
-        "_sync_credentialed_asset_identity",
+        "core/asset_credentialed.py",
+        "finish_credentialed_asset",
         "lockout_threshold",
     )
     assert written == {

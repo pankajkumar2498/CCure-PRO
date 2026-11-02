@@ -877,7 +877,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1076,
+      "line": 1071,
       "function": "update_asset",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -887,7 +887,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1127,
+      "line": 1122,
       "function": "add_tag",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -897,7 +897,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1152,
+      "line": 1147,
       "function": "remove_tag",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -907,7 +907,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1181,
+      "line": 1176,
       "function": "add_note",
       "mechanism": "require_authorized",
       "permission": "audit.asset.update",
@@ -917,7 +917,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1308,
+      "line": 1303,
       "function": "import_amt_inventory",
       "mechanism": "require_authorized",
       "permission": "audit.asset.import_amt",
@@ -2177,7 +2177,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 309,
+      "line": 305,
       "function": "list_policies",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.read",
@@ -2187,7 +2187,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 336,
+      "line": 332,
       "function": "policy_settings",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.read",
@@ -2197,7 +2197,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 360,
+      "line": 356,
       "function": "validate_policy_body",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.read",
@@ -2207,7 +2207,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 381,
+      "line": 377,
       "function": "create_policy",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.manage",
@@ -2217,7 +2217,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 448,
+      "line": 444,
       "function": "get_policy",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.read",
@@ -2227,7 +2227,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 463,
+      "line": 459,
       "function": "update_policy",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.manage",
@@ -2237,7 +2237,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 553,
+      "line": 549,
       "function": "enable_policy",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.manage",
@@ -2247,7 +2247,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 608,
+      "line": 596,
       "function": "set_policy_status",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.manage",
@@ -2257,7 +2257,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 680,
+      "line": 660,
       "function": "new_policy_version",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.manage",
@@ -2267,7 +2267,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 784,
+      "line": 757,
       "function": "policy_usage",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.read",
@@ -2277,7 +2277,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 834,
+      "line": 794,
       "function": "delete_policy",
       "mechanism": "require_authorized",
       "permission": "audit.scan_policy.delete",

@@ -68,6 +68,7 @@ from routers.scan_schedules import router as scan_schedules_router
 # Audit registers what it detaches from a purged account (ccure_platform/offboarding.py).
 import ccure_audit.offboarding  # noqa: F401,E402
 import ccure_audit.preferences  # noqa: F401,E402  (Audit's user-preference block)
+import ccure_audit.policy_references  # noqa: F401,E402  (schedules naming a policy)
 import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's category)
 import core.scheduling.credential_references  # noqa: F401,E402  (answers the vault)
 

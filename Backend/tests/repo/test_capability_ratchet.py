@@ -124,7 +124,9 @@ def test_new_coupling_fails(measurement):
     grown = copy.deepcopy(measurement)
     grown["upward_edges"].append(["engines.port.port_engine", "routers.assets"])
     grown["foreign_table_writes"].append(["web_dast", "assets"])
-    grown["cycles"][0] = sorted(set(grown["cycles"][0]) | {"dashboard"})
+    # Appended, not enlarged: no capability cycle is left to enlarge (1 Nov
+    # 2026), and a new one goes through the same check.
+    grown["cycles"].append(["dashboard", "scans"])
     entry = "core.config_audit.engine"
     grown["load_profiles"][entry]["third_party"].append("sqlalchemy")
 
@@ -138,7 +140,9 @@ def test_new_coupling_fails(measurement):
 
 def test_removed_coupling_must_leave_the_baseline_too(measurement):
     shrunk = copy.deepcopy(measurement)
-    gone = shrunk["upward_edges"].pop()
+    # Lateral, not upward: there are no upward edges left to remove (31 Oct
+    # 2026), and both kinds go through the same check.
+    gone = shrunk["lateral_edges"].pop()
     problems = "\n".join(cm.ratchet_problems(shrunk))
     assert "gone — remove it from the baseline" in problems
     assert f"{gone[0]} -> {gone[1]}" in problems

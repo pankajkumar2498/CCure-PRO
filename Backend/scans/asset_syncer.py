@@ -26,7 +26,7 @@ from core.findings.writer import (
     upsert_tls_details,
     write_host_findings,
 )
-from scans.db_text import sanitize_for_db_in_place
+from db.safe_text import sanitize_for_db_in_place
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -1533,9 +1533,9 @@ def sync_vulnerability_audit(
         # comparison rather than a guard on the sweep.
         try:
             from core.findings import record_assessment_scope
-            from db.models.scans import Scan as _Scan
+            from core.findings.scan_directory import scan_record
 
-            _scan_row = db.query(_Scan).filter(_Scan.id == scan_id).first()
+            _scan_row = scan_record(db, scan_id)
             if _scan_row is not None:
                 from core.checks.plugin_outcomes import coverage_summary
 

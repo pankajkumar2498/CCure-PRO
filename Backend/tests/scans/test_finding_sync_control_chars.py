@@ -11,7 +11,7 @@ with 14 and 824 findings in its payload and none in ``asset_vulnerabilities``.
 
 Three properties are pinned here:
 
-1. ``scans.db_text`` removes exactly what PostgreSQL refuses, and cleans host
+1. ``db.safe_text`` removes exactly what PostgreSQL refuses, and cleans host
    records in place so the syncer's callers keep their references.
 2. ``sync_vulnerability_audit`` stores a finding whose evidence and host record
    carry NUL and other control bytes.
@@ -28,7 +28,7 @@ from core.scan_control import record_findings_sync_failure
 from db.models.findings import AssetVulnerability
 from db.models.rbac import Organization
 from db.models.scans import Scan
-from scans.db_text import (
+from db.safe_text import (
     UNSAFE_DB_CHARS,
     clean_db_text,
     sanitize_for_db,
@@ -39,7 +39,7 @@ from scans.db_text import (
 RAW_SNMP_ADDRESS = "\x01\x01\x01\x05\x00"
 
 
-# ── scans.db_text ────────────────────────────────────────────────────────────
+# ── db.safe_text ──────────────────────────────────────────────────────────────
 
 
 def test_nul_and_c0_controls_are_removed_but_whitespace_is_kept():

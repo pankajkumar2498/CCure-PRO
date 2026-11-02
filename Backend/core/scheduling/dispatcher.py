@@ -308,7 +308,7 @@ def _dispatch_network(
 ) -> DispatchOutcome:
     from core.celery_app import registered_task
     from core.task_names import RUN_HOST_DISCOVERY
-    from scans.db_helpers import create_scan
+    from core.scheduling.scan_records import create_scan
 
     # Resolved before the scan row exists: `create_scan` commits, so a refusal
     # afterwards would leave a committed scan stuck in `running` that nothing
@@ -373,7 +373,7 @@ def _dispatch_credentialed(
     from core import credential_vault
     from core.celery_app import registered_task
     from core.task_names import RUN_CREDENTIALED_SCAN
-    from scans.db_helpers import create_scan
+    from core.scheduling.scan_records import create_scan
 
     if not schedule.credential_id:
         # The foreign key is ON DELETE SET NULL, so this is what a deleted

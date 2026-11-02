@@ -310,9 +310,10 @@ RULES: tuple[Rule, ...] = (
             "core.throttle",
             "core.upload_guard",
             "core.user_agent",
-            # ReportLab helpers (fonts, escaping, numbered canvas) shared with
-            # Audit's PDF generators; the audit-log PDF export renders with them.
-            "reporting.report_helpers",
+            # ReportLab text safety and fonts, shared with Audit's PDF
+            # generators; the audit-log PDF export renders with them. (It was
+            # reporting.report_helpers, Audit's renderers, until 30 Oct 2026.)
+            "core.pdf_text",
         ),
         reason=(
             "ccure_platform is what all four CCure modules share: identity, "

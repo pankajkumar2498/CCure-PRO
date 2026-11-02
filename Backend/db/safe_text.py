@@ -15,6 +15,10 @@ way, and every finding the scan produced was lost while the scan still read
 "complete" (13 Oct 2026, scans of 10.180.6.45).
 
 Tab, line feed and carriage return are kept: evidence is multi-line text.
+
+Standard library only, and about the database rather than about scans: it was
+``scans/db_text.py`` until the asset registry's syncer, which uses it too, was
+found depending on the scans capability for it.
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ from scans.notification_vocabulary import (
     AuditNotificationCategory,
     AuditNotificationType,
 )
-from scans.db_text import sanitize_for_db
+from db.safe_text import sanitize_for_db
 from scans.asset_syncer import (
     sync_asset_discovery,
     sync_host_discovery,
@@ -38,7 +38,7 @@ def _sanitize_jsonb_value(value: Any) -> Any:
     payload at the persistence boundary without changing scan execution.
 
     The finding sync applies the same rule to the host records it writes
-    (``scans.db_text``); both must agree on what is unsafe.
+    (``db.safe_text``); both must agree on what is unsafe.
     """
     return sanitize_for_db(value)
 

@@ -51,6 +51,7 @@ assert (
     == SCRATCH
 )
 
+import ccure_audit.scan_directory  # noqa: E402,F401  (the comparison's scan directory)
 from core.findings import compare_scans  # noqa: E402
 from core.findings.comparison import previous_scan_for  # noqa: E402
 from db.models.compliance import ComplianceTenantFramework  # noqa: E402

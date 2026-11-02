@@ -62,8 +62,9 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
 
+from core.findings.scan_directory import earlier_completed_scans
+from core.findings.scan_directory import policy_context as _recorded_policy
 from db.models.findings import AssetVulnerability
-from db.models.scans import Scan
 
 log = logging.getLogger("ccure.findings.comparison")
 
@@ -318,7 +319,7 @@ class ScanComparison:
 
 
 def record_assessment_scope(
-    scan: Scan,
+    scan: Any,
     *,
     assets: Iterable[str],
     families: Iterable[str],
@@ -360,7 +361,7 @@ def record_assessment_scope(
     scan.options = options
 
 
-def policy_context(scan: Optional[Scan]) -> Dict[str, Any]:
+def policy_context(scan: Optional[Any]) -> Dict[str, Any]:
     """
     The assessment configuration a scan ran under, for the comparison payload.
 
@@ -374,21 +375,9 @@ def policy_context(scan: Optional[Scan]) -> Dict[str, Any]:
     know how this was configured", which is deliberately **not** treated as
     agreement — see ``policies_comparable`` below.
     """
-    from core.scan_policy import read_policy_snapshot
-
-    policy = read_policy_snapshot(scan)
-    if policy is None:
-        return {"recorded": False}
-    return {
-        "recorded": True,
-        "policy_id": policy.policy_id,
-        "policy_name": policy.policy_name or None,
-        "policy_family_code": policy.policy_family_code or None,
-        "version_number": policy.version_number or None,
-        "fingerprint": policy.fingerprint(),
-        "source": policy.source,
-        "summary": policy.describe(),
-    }
+    # The snapshot is scan policy's record; the scans capability reads it for
+    # us through the scan directory (core/findings/scan_directory.py).
+    return _recorded_policy(scan)
 
 
 def policies_comparable(
@@ -415,7 +404,7 @@ def policies_comparable(
     return bool(left) and left == right
 
 
-def read_assessment_scope(scan: Optional[Scan]) -> AssessmentScope:
+def read_assessment_scope(scan: Optional[Any]) -> AssessmentScope:
     if scan is None:
         return AssessmentScope()
     raw = (scan.options or {}).get(SCOPE_KEY) or {}
@@ -434,7 +423,7 @@ def read_assessment_scope(scan: Optional[Scan]) -> AssessmentScope:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _scan_window(scan: Scan) -> Tuple[Optional[datetime], Optional[datetime]]:
+def _scan_window(scan: Any) -> Tuple[Optional[datetime], Optional[datetime]]:
     """
     When the scan ran.
 
@@ -538,8 +527,8 @@ def _classify(
 def compare_scans(
     db: Session,
     *,
-    current: Scan,
-    baseline: Scan,
+    current: Any,
+    baseline: Any,
     asset_ids: Optional[Sequence[str]] = None,
     severities: Optional[Sequence[str]] = None,
     limit_findings: Optional[int] = None,
@@ -663,7 +652,7 @@ def compare_scans(
     return comparison
 
 
-def _scan_targets(scan: Scan) -> list[str]:
+def _scan_targets(scan: Any) -> list[str]:
     raw = getattr(scan, "target_hosts", None) or []
     if isinstance(raw, str):
         raw = [raw]
@@ -684,7 +673,7 @@ def _target_network(target: str):
         return None
 
 
-def targets_overlap(a: Scan, b: Scan) -> bool:
+def targets_overlap(a: Any, b: Any) -> bool:
     """
     Whether two scans examined at least one address in common.
 
@@ -714,7 +703,7 @@ def targets_overlap(a: Scan, b: Scan) -> bool:
 _BASELINE_LOOKBACK = 200
 
 
-def previous_scan_for(db: Session, scan: Scan) -> Optional[Scan]:
+def previous_scan_for(db: Session, scan: Any) -> Optional[Any]:
     """
     The most recent completed scan of the same shape, over the same hosts.
 
@@ -728,18 +717,7 @@ def previous_scan_for(db: Session, scan: Scan) -> Optional[Scan]:
     reported every finding as new — and remediation verification, which reads
     this baseline, judged fixes against a scan that never looked at the host.
     """
-    candidates = (
-        db.query(Scan)
-        .filter(
-            Scan.org_id == scan.org_id,
-            Scan.id != scan.id,
-            Scan.pipeline_mode == scan.pipeline_mode,
-            Scan.created_at < scan.created_at,
-            Scan.status.in_(("complete", "completed")),
-        )
-        .order_by(Scan.created_at.desc())
-        .limit(_BASELINE_LOOKBACK)
-    )
+    candidates = earlier_completed_scans(db, scan, _BASELINE_LOOKBACK)
     for candidate in candidates:
         if targets_overlap(scan, candidate):
             return candidate

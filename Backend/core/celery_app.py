@@ -48,6 +48,10 @@ celery_app.conf.imports = (
     # credentialed scan's report reads hosts, and raises HostDirectoryMissing
     # without it.
     "ccure_audit.host_directory",
+    # The findings side's scan directory: a comparison reads its baseline
+    # candidates and each scan's policy snapshot through it, and raises
+    # ScanDirectoryMissing without it.
+    "ccure_audit.scan_directory",
     # The scan kernel's shared MAC-vendor cache (G3): core.oui_lookup reads and
     # writes the asset registry's through it, and skips it when none is
     # registered.

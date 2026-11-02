@@ -156,6 +156,9 @@ LIBRARIES: dict[str, Library] = {
             "reporting.pdf_generator",
             "reporting.xlsx_generator",
             "reporting.report_helpers",
+            # The ReportLab text and font helpers report_helpers re-exports,
+            # shared with the platform's audit-log PDF (30 Oct 2026).
+            "core.pdf_text",
             "reporting.host_assessment",
             "core.checks",
             "scans.cvss",

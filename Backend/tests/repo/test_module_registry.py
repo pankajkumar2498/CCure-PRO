@@ -222,6 +222,26 @@ def test_infrastructure_may_read_the_registry_and_nothing_else_of_the_platform()
     assert rule.exempt_targets == ("ccure_platform.modules",)
 
 
+def test_the_registry_is_a_capability_below_infrastructure_and_the_platform():
+    """
+    Inside the platform, Celery's read of the registry put infra and the
+    platform in one capability cycle (1 Nov 2026, owner decision). Below both,
+    it closes none, so long as nothing leaves it: lazy imports count.
+    """
+    from scripts.architecture import capability_map as cm
+    from scripts.architecture.import_graph import collect_edges
+
+    assert cm.capability_of("ccure_platform.modules.registry") == "module_registry"
+    layer = cm.CAPABILITIES["module_registry"][0]
+    assert layer < cm.CAPABILITIES["infra"][0]
+    assert layer < cm.CAPABILITIES["platform"][0]
+    _, edges = cm.capability_edges(graph=collect_edges())
+    leaving = sorted(
+        (e.src, e.dst) for e, a, _ in cm._cross(edges) if a == "module_registry"
+    )
+    assert leaving == []
+
+
 # ── validation ───────────────────────────────────────────────────────────────
 def _m(**kw):
     base = dict(

@@ -544,7 +544,7 @@ class CVEDatabase:
             return []
 
     def _fallback_search(self, service_name: str, version: str) -> list[dict]:
-        from core.constants import CVE_HINTS
+        from core.cve_hints import CVE_HINTS
 
         service_name_lower = service_name.lower()
         cves: list[dict] = []

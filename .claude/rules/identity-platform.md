@@ -46,8 +46,9 @@ paths:
   - Verify with `tokens.verify(token, expected_kind=…)`; the kind is required,
     so an endpoint cannot accept the wrong kind of token. Never check
     `payload.get("type")` by hand.
-  - The any-kind `decode_token` is kept only for the two WebSocket logins
-    (Phase 10) and the rate-limit audit.
+  - The any-kind `decode_token` is kept only for the rate-limit audit. The
+    two WebSocket logins it served verify a ticket through
+    `ccure_platform.api.websocket_user` since 2 Nov 2026.
   - `tests/repo/test_token_guardrails.py` enforces all of this.
   - **Live token issuance is ES256** since 29 Sep 2026 (step 9.4), with the
     promoted `active` key `7jKp…`. Tokens are signed only by `tokens.sign()`,
@@ -112,9 +113,10 @@ paths:
 - **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
   (step 8.5) and take `require_authorized` /
   `current_user_flexible` from the API, never from `auth.*` or `db.models`.
-  Only three identity imports remain in module code, each with its reason
-  beside `KNOWN_IDENTITY_IMPORTS`: `core.tasks`'s mail-task re-export (a legacy
-  path), and the two WebSocket ticket logins (Phase 10).
+  No identity import remains in module code (`KNOWN_IDENTITY_IMPORTS` is
+  empty): both WebSocket ticket logins, the scan history's and web DAST's,
+  ask `ccure_platform.api.websocket_user`, and the `core.tasks` mail-task
+  re-export went with the facade (all 2 Nov 2026).
 - **Module code asks `ccure_platform.api` (since step 8.3)**, never
   `users`/`organizations`/`roles` directly:
   - `api.user()` and `api.organisation()` return frozen views;

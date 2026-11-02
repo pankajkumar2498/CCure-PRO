@@ -46,8 +46,11 @@ and the compliance router (Phase C, G1–G6, 22–24 Oct 2026).** Record:
   - **The registry is pinned.** `scripts/architecture/task_registry.json` pins
     every task's name, queue, limits, options and signature
     (`tests/repo/test_task_registry.py`).
-- **`core/tasks.py` is a compatibility facade.** It re-exports every name the
-  hub defined, and **refuses a patch**: setting an attribute on it raises.
+- **`core/tasks.py` is gone** (2 Nov 2026). It was the facade re-exporting
+  every name the hub defined; each is imported from the module that owns it
+  now (`OWNERS` in `tests/repo/test_task_modules.py`, which fails on an import
+  or patch of `core.tasks` in the application, the tests, the scripts or the
+  documents' scripts). `layer_rules` still forbids importing `core.tasks`.
   - **Where to patch:** in the `scans.tasks` module whose code reads the name.
     `mark_scan_failed`, for instance, is read inside `_settle_failure`, in
     `scans.tasks.common`.
@@ -75,7 +78,14 @@ and the compliance router (Phase C, G1–G6, 22–24 Oct 2026).** Record:
     the writer returns. The writer imports no asset or scan model.
   - **A new write to a findings table goes in the writer.**
     `tests/repo/test_findings_writer.py` refuses one anywhere else, as an ORM
-    write or in SQL. `scans.nvd_sync`, the NVD feed's catalogue load, is the
+    write, in SQL, or as an attribute set on a row loaded from a findings
+    model (since 1 Nov 2026, when compliance re-verification's write to
+    `services` moved into `record_port_reachability`).
+  - **The asset registry changes its own rows too.**
+    `tests/repo/test_asset_registry_writes.py` refuses an attribute set on a
+    loaded asset row anywhere else, with no exception: compliance asks
+    `core/asset_compliance.py`, and the standalone credentialed audit
+    `core/asset_credentialed.py` (1 Nov 2026). `scans.nvd_sync`, the NVD feed's catalogue load, is the
     one recorded SQL exception.
   - **Where to patch:** the moved code in `core.findings.writer`.
     `scans.asset_syncer._enrich_findings_with_intel` stayed, and is still
@@ -135,6 +145,20 @@ and the compliance router (Phase C, G1–G6, 22–24 Oct 2026).** Record:
   - **The assets router reads findings through `core/findings/reads.py`**,
     never the findings models.
   - **The guard:** `tests/repo/test_findings_assets_boundary.py`.
+- **Nothing below scans reads or creates a scan record** (Group 7, 30–31 Oct
+  2026). Each asker declares a port and the owner answers it:
+  - comparison: `core/findings/scan_directory.py`;
+  - asset timeline: `core/asset_scans.py`;
+  - a policy's scan usage: `core/scan_policy/scan_usage.py`;
+  - the scheduler's scan row: `core/scheduling/scan_records.py`;
+  - the policy API's schedules: `core/scan_policy/schedule_references.py`,
+    answered by scheduling.
+
+  The answers are registered by `ccure_audit/scan_directory.py` (in Celery's
+  `imports`) and `ccure_audit/policy_references.py` (`main.py`). An
+  unregistered port raises its `...Missing` error and never answers empty.
+  **The guard:** `tests/scans/test_scan_ports.py`, plus `upward_edges: 0` in
+  `capability_map.py`.
 - **The compliance router is mounted from its parts** (G6).
   - **The parts:** `routers/compliance_{catalogue,assessment,attestation,
     schedules,remediation,reports,framework_reports,common}.py`.
@@ -227,8 +251,17 @@ Two things Phase 3 deliberately left, which are **not** violations:
   - **The rules (E1)**, absolute in `capability_map.py`: no layer-3
     capability imports a higher layer; nothing outside scans and `main`
     imports `scan_helpers`; the platform loads no Audit capability; and E2
-    pins `PINNED_ENGINES`. The topology engine is not pinned: it persists its
-    own links.
+    pins `PINNED_ENGINES`.
+  - **The topology engine computes and writes nothing** (2 Nov 2026). It
+    reads `AssetRecord`s and `StoredLink`s and hands each run's enrolments,
+    filled asset gaps and link rows to its directory as one `TopologyPlan`;
+    `run_topology_mapping(db, …)` and `get_topology_graph(db, …)` keep their
+    signatures and only pass `db` along. The asset registry writes the assets
+    (`core/topology_assets.py`) and the topology store, the only writer of
+    `network_links`, the links and the transaction (`core/topology/links.py`),
+    composed by `ccure_audit/topology_directory.py`. The pure id helpers are
+    `db/ids.py`, re-exported by `db.base`. The engine is D1 library
+    `topology`; `tests/topology/test_topology_store.py` pins the writers.
 - **Web DAST reads its settings through `core.web.settings`, never `config`**
   (Group 4, D2). `current()` answers the object a host registered; Audit
   registers `config.WebScanConfig` itself (`ccure_audit/web_settings.py`, in
@@ -236,6 +269,25 @@ Two things Phase 3 deliberately left, which are **not** violations:
   setting read without a default goes in `READ`. The engine runs in the D1
   harness as library `web_dast`, and `tests/web/test_web_dast_pilot_host.py`
   fails if any web DAST module imports `config`.
+  - **The router names no identity, session or limiter of its own** (2 Nov
+    2026). The progress socket signs in through
+    `ccure_platform.api.websocket_user` (None means close 1008) and reads
+    through the request's `get_db` session, closed before it subscribes. The
+    two limits are declared with `core.web.rate_limits.limit` and enforced by
+    the limiter the host registers: Audit's is `core.rate_limiter.limiter`,
+    registered by `ccure_audit/web_routes.py`, which `main.py` loads. The keys
+    (`routers.web_scans.start_web_scan`, …) are unchanged; a limited route with
+    no limiter registered raises `RateLimiterMissing`.
+  - **The worker and the reaper** (2 Nov 2026). The web worker self-check's
+    database and Redis probes are registered by the host
+    (`core.web.self_check.register_infrastructure_probes`; Audit's in
+    `ccure_audit/web_settings.py`); an unregistered one is a missing required
+    component. The beat task `reap_stalled_web_scans` stays in
+    `scans/tasks/reapers.py` with its name and queue, but lists the live web
+    scans through `core.web.scan_status.non_terminal_web_scans` and asks
+    `core.web.timeout.stalled_web_scans` which stalled: the scans capability
+    names no `web_scans` table. Patch the listing's `SessionLocal` on
+    `core.web.scan_status`.
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.

@@ -54,7 +54,9 @@ each module's `README.md` is the guide its team works from.
 | Ccure Rank                | `Backend/ccure_rank/`   | `rank`             | `/rank`                           | empty, disabled                                                       |
 
 - **The registry is `ccure_platform/modules/`**, a stdlib-only leaf read by
-  `main.py` and `core/celery_app.py`. The platform owns each module's identity
+  `main.py` and `core/celery_app.py`. In `capability_map.py` it is its own
+  capability, `module_registry`, at layer 0 below infra and the platform
+  (1 Nov 2026), so nothing may leave it. The platform owns each module's identity
   (key, package, schema, route and task prefix, enabled) in `_IDENTITIES`; the
   module owns what it contributes — `routers`, `task_modules`, `models` — in its
   own `manifest.toml`. Turning a module on is a platform change. **Audit's

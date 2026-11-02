@@ -125,13 +125,27 @@ def _read_scan_row(web_scan_id: str):
         db.close()
 
 
-def _publish_timeout_frame(web_scan_id: str, reason: str) -> None:
-    """Notify the UI over the same Redis channel the progress WebSocket uses."""
+def publish_terminal_frame(
+    web_scan_id: str, reason: str, *, timed_out: bool = False
+) -> None:
+    """
+    Tell a browser on the live scan screen that the scan is over, on the same
+    Redis channel the web progress WebSocket subscribes to. Best effort: never
+    raises. ``timed_out`` marks the global-timeout frame, which carries it.
+    """
     try:
         import json
 
         from core.redis_client import get_redis_client
 
+        progress = {
+            "status": "failed",
+            "message": reason,
+            "error": reason,
+            "reason": reason,
+        }
+        if timed_out:
+            progress["timed_out"] = True
         get_redis_client().publish(
             f"scan_progress:{web_scan_id}",
             json.dumps(
@@ -139,18 +153,17 @@ def _publish_timeout_frame(web_scan_id: str, reason: str) -> None:
                     "scan_id": web_scan_id,
                     "scan_type": "web",
                     "phase": "failed",
-                    "progress": {
-                        "status": "failed",
-                        "message": reason,
-                        "error": reason,
-                        "reason": reason,
-                        "timed_out": True,
-                    },
+                    "progress": progress,
                 }
             ),
         )
     except Exception:
         log.debug("timeout: could not publish frame for %s", web_scan_id, exc_info=True)
+
+
+def _publish_timeout_frame(web_scan_id: str, reason: str) -> None:
+    """Notify the UI over the same Redis channel the progress WebSocket uses."""
+    publish_terminal_frame(web_scan_id, reason, timed_out=True)
 
 
 def release_scan_state(web_scan_id: str) -> None:
@@ -230,3 +243,134 @@ def enforce_global_timeout(
         "phase": phase,
         "timed_out": True,
     }
+
+
+# ── The stall reaper's deadlines (moved from scans.tasks.reapers, 2 Nov 2026) ──
+#
+# The beat task ``reap_stalled_web_scans`` lists the live web scans
+# (``core.web.scan_status.non_terminal_web_scans``), asks this which have
+# stalled, settles each through ``force_terminal_web_scan_status`` and
+# publishes its terminal frame. What follows is only the decision: plain values
+# in, plain values out.
+
+#: Grace, in minutes, beyond each deadline, so the tick and the phase-start
+#: stamp need not be perfectly aligned.
+STALL_GRACE_MINUTES = 10
+
+#: Just above each phase task's hard ``time_limit`` (recon/audit 2400s,
+#: crawl 4200s, detect 8400s), plus grace.
+PHASE_STALL_MINUTES = {
+    "recon": 40 + STALL_GRACE_MINUTES,
+    "crawl": 70 + STALL_GRACE_MINUTES,
+    "detect": 140 + STALL_GRACE_MINUTES,
+    "audit": 40 + STALL_GRACE_MINUTES,
+}
+
+
+def stalled_web_scans(rows, now: datetime, settings=None) -> list[dict]:
+    """
+    The scans among ``rows`` (``non_terminal_web_scans``' tuples) that have
+    stalled at ``now``, each ``{"web_scan_id", "phase", "reason"}``, in row
+    order.
+
+    A queued scan and a running scan get different deadlines and different
+    messages, because "no web-worker is running" and "a phase hung" send the
+    operator to different places. The running deadline is per phase, just above
+    the phase task's own hard limit, so a phase doing legitimate work inside its
+    budget is left alone. Independently, a scan running past the global
+    wall-clock cap (``WEB_SCAN_TIMEOUT``) plus grace is settled: this is the
+    backstop for a worker that died and could not enforce it itself.
+    """
+    if settings is None:
+        from core.web import settings as web_settings
+
+        settings = web_settings.current()
+
+    grace = STALL_GRACE_MINUTES
+    queued_minutes = int(getattr(settings, "WEB_SCAN_QUEUE_TIMEOUT_MINUTES", 15) or 0)
+    # 0 disables the global cap — the per-phase deadlines still apply.
+    _web_timeout = int(getattr(settings, "WEB_SCAN_TIMEOUT", 14400) or 0)
+    overall_seconds = (_web_timeout + grace * 60) if _web_timeout > 0 else 0
+
+    stalled: list[dict] = []
+    for r in rows:
+        (
+            scan_id,
+            status,
+            phase,
+            queued_at,
+            created_at,
+            started_at,
+            recon_at,
+            crawl_at,
+            detect_at,
+            audit_at,
+            updated_at,
+        ) = r
+        phase = (phase or "queued").lower()
+
+        # A scan that never left the queue: recon never stamped a start, so no
+        # phase deadline applies — only the queue deadline does.
+        never_started = phase in ("queued", "") or recon_at is None
+        if never_started:
+            if queued_minutes <= 0:
+                continue
+            anchor = _aware(queued_at) or _aware(created_at)
+            limit_minutes = queued_minutes
+            kind = "queued"
+        else:
+            phase_start = {
+                "recon": recon_at,
+                "crawl": crawl_at,
+                "detect": detect_at,
+                "audit": audit_at,
+            }.get(phase)
+            anchor = _aware(phase_start) or _aware(updated_at) or _aware(started_at)
+            limit_minutes = PHASE_STALL_MINUTES.get(phase, 140 + grace)
+            kind = "running"
+
+        if anchor is None:
+            # No timestamp to reason from: fall back to the absolute backstop
+            # against created_at, which every row has.
+            anchor = _aware(created_at)
+            if anchor is None:
+                continue
+
+        age = now - anchor
+        over_phase = age >= timedelta(minutes=limit_minutes)
+
+        # Independent global wall-clock backstop off the scan's own start.
+        start_anchor = _aware(started_at) or _aware(created_at)
+        over_overall = (
+            overall_seconds > 0
+            and start_anchor is not None
+            and (now - start_anchor) >= timedelta(seconds=overall_seconds)
+        )
+
+        if not (over_phase or over_overall):
+            continue
+
+        minutes = int(age.total_seconds() // 60)
+        if kind == "queued":
+            reason = (
+                f"Web scan was never picked up by a web-scanner worker after "
+                f"{minutes} minutes (limit {limit_minutes}). Check that the "
+                f"web-worker (queues web_recon,web_crawl,web_dast,web_audit) "
+                f"is running."
+            )
+        elif over_overall and not over_phase:
+            total_min = int((now - start_anchor).total_seconds() // 60)
+            reason = (
+                f"Web scan exceeded the global time limit "
+                f"({overall_seconds // 60} min): running for {total_min} minutes "
+                f"since it started. Settled by the watchdog because the worker "
+                f"did not self-enforce the timeout (it may have died)."
+            )
+        else:
+            reason = (
+                f"Web scan timed out in the {phase.upper()} phase: no progress "
+                f"for {minutes} minutes (limit {limit_minutes}). The phase task "
+                f"stopped responding or the web-worker is no longer running."
+            )
+        stalled.append({"web_scan_id": scan_id, "phase": phase, "reason": reason})
+    return stalled

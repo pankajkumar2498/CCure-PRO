@@ -126,3 +126,50 @@ def force_terminal_web_scan_status(
         return False
     finally:
         db.close()
+
+
+#: The statuses a stalled web scan can be stranded in: what the stall reaper
+#: lists (``scans.tasks.reapers.reap_stalled_web_scans``).
+REAPABLE_STATUSES: tuple[str, ...] = (
+    "queued",
+    "running",
+    "pending",
+    "recon",
+    "crawl",
+    "detect",
+    "audit",
+    "cancelling",
+)
+
+
+def non_terminal_web_scans() -> list:
+    """
+    Every live web scan in a non-terminal state, with the timestamps the stall
+    reaper reasons from: (id, status, pipeline_phase, queued_at, created_at,
+    started_at, recon_started_at, crawl_started_at, detect_started_at,
+    audit_started_at, updated_at).
+
+    Plain SQL, as the settler above, so it still works when the fault that
+    stranded a scan is the ORM itself. Moved here from the reaper on 2 Nov 2026
+    so that the scans capability names no web DAST table. Raises on failure:
+    the reaper reports it.
+    """
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        return db.execute(
+            text(
+                """
+                SELECT id, status, pipeline_phase, queued_at, created_at,
+                       started_at, recon_started_at, crawl_started_at,
+                       detect_started_at, audit_started_at, updated_at
+                  FROM web_scans
+                 WHERE status = ANY(:statuses)
+                   AND is_deleted IS NOT TRUE
+                """
+            ),
+            {"statuses": list(REAPABLE_STATUSES)},
+        ).fetchall()
+    finally:
+        db.close()

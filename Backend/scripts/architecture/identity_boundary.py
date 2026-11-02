@@ -109,6 +109,9 @@ PLATFORM_API_SURFACE = frozenset(
         # planned in the Phase 8 proposal
         "current_user",
         "current_user_flexible",
+        # D2 (2 Nov 2026): a WebSocket's ticket login, which web DAST's
+        # progress socket did itself with the any-kind decoder and a users query
+        "websocket_user",
         # RBAC-8: the permission-key guards — the only authorization decision point
         "require_authorized",
         "has_permission",
@@ -458,9 +461,9 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 #:   the patch targets ``core.tasks.send_*_task`` keep resolving. It is a
 #:   legacy compatibility path, kept while the other legacy paths are (8.5
 #:   deletes none of them).
-#: * ``routers.scan_history`` and ``routers.web_scans`` authenticate a WebSocket
-#:   ticket themselves (``decode_token`` plus a ``User`` query). That is gateway
-#:   work, deliberately left for Phase 10.
+#: * ``routers.scan_history`` and ``routers.web_scans`` authenticated a
+#:   WebSocket ticket themselves (``decode_token`` plus a ``User`` query) until
+#:   both moved to ``ccure_platform.api.websocket_user`` (2 Nov 2026).
 KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
     "core.tasks": frozenset(
         {
@@ -471,18 +474,11 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "auth.mail_tasks.send_verification_email_task",
         }
     ),
-    "routers.scan_history": frozenset(
-        {"auth.jwt_handler.decode_token", "db.models.User"}
-    ),
-    "routers.web_scans": frozenset({"auth.jwt_handler.decode_token", "db.models.User"}),
 }
 
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.
-KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
-    "routers.scan_history": {"User": 1},
-    "routers.web_scans": {"User": 1},
-}
+KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {}
 
 #: module -> {identity model: joins and eager loads}. 8 in 4 modules. The
 #: proposal's count (query() and select() only) did not look for these.

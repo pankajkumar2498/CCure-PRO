@@ -20,6 +20,14 @@ worker's own process/environment, and returns a structured verdict:
 
 No secret is ever emitted: database/redis checks report only a sanitized host
 and OK/FAIL, never a URL, user or password.
+
+The database and Redis probes are the host's (2 Nov 2026): which database and
+which Redis the worker must reach is the deployment's, not web DAST's. A host
+registers a probe for each with :func:`register_infrastructure_probes`; Audit's
+composition root registers its own (``ccure_audit/web_settings.py``, in
+Celery's ``imports``, so the worker has them before ``worker_ready``). A probe
+nothing registered reports as missing — a required component, so NOT_READY —
+never as reachable.
 """
 
 from __future__ import annotations
@@ -28,7 +36,7 @@ import logging
 import os
 import shutil
 import subprocess
-from typing import Dict
+from typing import Callable, Dict, Mapping
 
 log = logging.getLogger("ccure.web.self_check")
 
@@ -44,6 +52,38 @@ _ERROR = "error"
 REQUIRED = {"nuclei", "sqlmap", "playwright_chromium", "postgres", "redis"}
 #: Components whose absence reduces coverage but does not stop a scan.
 RECOMMENDED = {"nuclei_templates", "ffuf", "sslyze", "subfinder"}
+
+
+#: The host's probes, by component: each returns when the component answers
+#: and raises when it does not.
+_probes: Dict[str, Callable[[], object]] = {}
+
+
+def register_infrastructure_probes(probes: Mapping[str, Callable[[], object]]) -> None:
+    """
+    Register the host's ``postgres`` and ``redis`` probes. The same callables
+    again do nothing; a different one for a component already registered is
+    refused, because which answered would depend on import order.
+    """
+    for name, probe in probes.items():
+        if name not in ("postgres", "redis"):
+            raise ValueError(f"no infrastructure component {name!r}")
+        held = _probes.get(name)
+        if held is not None and held is not probe:
+            raise ValueError(f"a {name} probe is already registered")
+    _probes.update(probes)
+
+
+def _probe(name: str, label: str) -> dict:
+    probe = _probes.get(name)
+    if probe is None:
+        return _result(_MISSING, f"no {label} probe registered by the host", True)
+    try:
+        probe()
+        return _result(_OK, f"{label} reachable", True)
+    except Exception as exc:  # noqa: BLE001
+        # Never echo the URL/credentials — only the exception class.
+        return _result(_ERROR, f"{label} unreachable ({type(exc).__name__})", True)
 
 
 def _result(status: str, detail: str, required: bool) -> dict:
@@ -153,30 +193,11 @@ def _check_sslyze() -> dict:
 
 
 def _check_redis() -> dict:
-    try:
-        from core.redis_client import get_redis_client
-
-        get_redis_client().ping()
-        return _result(_OK, "redis reachable", True)
-    except Exception as exc:  # noqa: BLE001
-        # Never echo the URL/credentials — only the exception class.
-        return _result(_ERROR, f"redis unreachable ({type(exc).__name__})", True)
+    return _probe("redis", "redis")
 
 
 def _check_postgres() -> dict:
-    try:
-        from sqlalchemy import text
-
-        from db.base import SessionLocal
-
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            return _result(_OK, "postgres reachable", True)
-        finally:
-            db.close()
-    except Exception as exc:  # noqa: BLE001
-        return _result(_ERROR, f"postgres unreachable ({type(exc).__name__})", True)
+    return _probe("postgres", "postgres")
 
 
 def run_self_check() -> Dict[str, object]:
@@ -247,6 +268,11 @@ if __name__ == "__main__":
     import json
     import sys
 
+    # Run on its own, load what the worker loads at start-up: Celery's
+    # ``imports`` hold the host's registrations, the probes among them.
+    from core.celery_app import celery_app
+
+    celery_app.loader.import_default_modules()
     rep = log_self_check()
     print(json.dumps(rep, indent=2))
     sys.exit(0 if rep["status"] != NOT_READY else 1)

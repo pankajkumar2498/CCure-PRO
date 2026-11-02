@@ -1112,7 +1112,10 @@ CEILINGS = {
     # 1 Nov 2026: compliance re-verification's of services: a live connect's
     # answer is recorded by the findings writer (record_port_reachability).
     # 25 to 24.
-    "foreign_table_references": 24,
+    # 2 Nov 2026: the web scan reaper's of web_scans: web DAST lists its live
+    # scans and decides which stalled (core.web.scan_status, core.web.timeout).
+    # 24 to 23.
+    "foreign_table_references": 23,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
@@ -1134,7 +1137,10 @@ CEILINGS = {
     # purpose — the composition root's startup order, an engine or kernel
     # module kept free of config, the database or Redis at import, a heavy or
     # optional package, or a best-effort block — and the count may only fall.
-    "lazy_cross_capability_imports": 149,
+    # 2 Nov 2026: 146. The web scan reaper's Redis import and the worker
+    # self-check's database and Redis imports went to web DAST's owner code
+    # and Audit's composition root.
+    "lazy_cross_capability_imports": 146,
 }
 
 _BASELINE_KEYS = (

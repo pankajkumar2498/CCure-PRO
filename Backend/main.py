@@ -69,6 +69,7 @@ from routers.scan_schedules import router as scan_schedules_router
 import ccure_audit.offboarding  # noqa: F401,E402
 import ccure_audit.preferences  # noqa: F401,E402  (Audit's user-preference block)
 import ccure_audit.policy_references  # noqa: F401,E402  (schedules naming a policy)
+import ccure_audit.web_routes  # noqa: F401,E402  (web DAST's limits, enforced by ours)
 import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's category)
 import core.scheduling.credential_references  # noqa: F401,E402  (answers the vault)
 

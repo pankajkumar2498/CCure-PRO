@@ -15,27 +15,36 @@ OAST client on the pilot's settings, in a fresh interpreter that refuses
 ``config`` — is ``test_web_dast_engine_pilot.py``, which the library isolation
 harness runs as library ``web_dast``.
 
+Since 2 Nov 2026 the router names no identity, session or limiter of its own:
+its progress WebSocket signs in through ``ccure_platform.api.websocket_user``
+and reads through the request's session, so the host's stubs serve the socket
+too; its two rate limits are declared through ``core.web.rate_limits`` and
+enforced by the limiter the host registers (``test_web_dast_rate_limits.py``).
+
 Rows are committed and removed by prefix, as in
 ``test_web_scan_authorization.py``; nothing logs in, because a login commits
 the session the app shares with the fixtures.
 """
 
+import ast
 import uuid
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, WebSocketDisconnect, status
 from fastapi.testclient import TestClient
 
 from config import WebScanConfig
 from core.web import settings as web_settings
 from core.web.sqlmap.wrapper import SqlmapWrapper
-from ccure_platform.identity.dependencies import get_current_user
-from db.base import gen_user_id, get_db, utcnow
+from ccure_platform.identity.dependencies import get_current_user, get_websocket_user
+from db.base import SessionLocal, gen_user_id, get_db, utcnow
+from db.models import Organization
 from db.models.web_scans import WebScan
 from native_rbac import create_user, fixture_role
 from routers import web_scans as web_scans_router
 from scripts.architecture import capability_map as cm
+from scripts.architecture.identity_boundary import PLATFORM_API_SURFACE
 from scripts.architecture.import_graph import collect_edges
 from test_web_dast_engine_pilot import PilotWebSettings
 from testpaths import BACKEND_ROOT
@@ -166,3 +175,124 @@ def test_no_web_dast_module_imports_the_global_configuration():
         }
     )
     assert importers == []
+
+
+# ── The progress socket, through the host's stubs ─────────────────────────────
+
+
+class _QuietPubSub:
+    """Redis's place: subscribes, then reports the client gone."""
+
+    async def subscribe(self, channel):
+        self.channel = channel
+
+    async def get_message(self, **_):
+        raise WebSocketDisconnect(1000)
+
+    async def unsubscribe(self, channel):
+        pass
+
+    async def close(self):
+        pass
+
+
+class _QuietRedis:
+    def pubsub(self):
+        return _QuietPubSub()
+
+
+def _fresh_session():
+    # The socket closes its session before subscribing, so it is not handed
+    # the fixtures' shared one.
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def socket_host(host, monkeypatch):
+    client, identity = host
+    socket_identity = {"account": None}
+    client.app.dependency_overrides[get_websocket_user] = lambda: socket_identity[
+        "account"
+    ]
+    client.app.dependency_overrides[get_db] = _fresh_session
+    monkeypatch.setattr(web_scans_router, "redis_client", _QuietRedis())
+    return client, socket_identity
+
+
+def test_the_host_signs_the_progress_socket_in(socket_host, db_session, test_org):
+    client, identity = socket_host
+    scan = _scan(db_session, test_org.id)
+    identity["account"] = _account(db_session, test_org, [])
+
+    with client.websocket_connect(f"/web-scans/{scan.id}/progress") as socket:
+        frame = socket.receive_json()
+    assert frame["scan_id"] == scan.id
+    assert frame["scan_type"] == "web"
+    assert frame["scan"]["target_url"] == "http://target.invalid/"
+    assert frame["progress"]["percentage"] == 100
+
+
+def test_the_progress_socket_refuses_no_account(socket_host, db_session, test_org):
+    client, _ = socket_host
+    scan = _scan(db_session, test_org.id)
+    with pytest.raises(WebSocketDisconnect) as refused:
+        with client.websocket_connect(f"/web-scans/{scan.id}/progress"):
+            pass
+    assert refused.value.code == 1008
+
+
+def test_the_progress_socket_keeps_to_the_accounts_organisation(
+    socket_host, db_session, test_org
+):
+    client, identity = socket_host
+    uid = uuid.uuid4().hex[:8]
+    other = Organization(
+        id=f"org_{uid}", name=f"Other {uid}", slug=f"other-{uid}", is_active=True
+    )
+    db_session.add(other)
+    db_session.commit()
+    scan = _scan(db_session, other.id)
+    identity["account"] = _account(db_session, test_org, [])
+
+    with client.websocket_connect(f"/web-scans/{scan.id}/progress") as socket:
+        frame = socket.receive_json()
+        assert frame["phase"] == "not_found"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+    assert closed.value.code == 1008
+
+
+# ── What the router imports ───────────────────────────────────────────────────
+
+
+def test_the_router_names_no_identity_session_or_limiter_of_its_own():
+    tree = ast.parse((BACKEND_ROOT / "routers" / "web_scans.py").read_text())
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported |= {f"{node.module}.{alias.name}" for alias in node.names}
+    refused = (
+        "auth.",  # the legacy identity paths, decode_token among them
+        "ccure_platform.identity",
+        "ccure_platform.models",
+        "db.models.User",
+        "db.base.SessionLocal",
+        "core.rate_limiter",
+        "scan_helpers",
+        "slowapi",
+    )
+    assert sorted(n for n in imported if n.startswith(refused)) == []
+    platform = {n for n in imported if n.startswith("ccure_platform.")}
+    surface = {f"ccure_platform.api.{name}" for name in PLATFORM_API_SURFACE}
+    assert platform <= surface | {"ccure_platform.api"}
+
+
+def test_importing_the_router_loads_no_limiter():
+    profile = cm.measure()["load_profiles"]["routers.web_scans"]
+    assert "slowapi" not in profile["third_party"]

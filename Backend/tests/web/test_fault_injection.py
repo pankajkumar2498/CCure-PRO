@@ -181,9 +181,10 @@ def test_force_terminal_never_raises_when_db_down(monkeypatch):
 
 
 def test_reaper_survives_db_listing_failure(monkeypatch):
-    import scans.tasks.reapers as CT  # the module whose code reads SessionLocal
+    import core.web.scan_status as SS  # whose code lists the web scans
+    import scans.tasks.reapers as CT
 
-    monkeypatch.setattr(CT, "SessionLocal", lambda: _DeadSession())
+    monkeypatch.setattr(SS, "SessionLocal", lambda: _DeadSession())
     res = CT.reap_stalled_web_scans()
     assert res.get("success") is False  # reported, not crashed
 

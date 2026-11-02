@@ -2047,17 +2047,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 451,
-      "function": "_get_websocket_user",
-      "mechanism": "has_permission",
-      "permission": "audit.scan.read",
-      "status": "migrated",
-      "reason": "in-handler permission check",
-      "site_id": "routers/scan_history.py::_get_websocket_user::has_permission::audit.scan.read#1"
-    },
-    {
-      "file": "routers/scan_history.py",
-      "line": 489,
+      "line": 454,
       "function": "list_scans",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2067,7 +2057,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 529,
+      "line": 494,
       "function": "stream_scan_history",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2077,7 +2067,17 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 612,
+      "line": 572,
+      "function": "scan_progress_ws",
+      "mechanism": "has_permission",
+      "permission": "audit.scan.read",
+      "status": "migrated",
+      "reason": "in-handler permission check",
+      "site_id": "routers/scan_history.py::scan_progress_ws::has_permission::audit.scan.read#1"
+    },
+    {
+      "file": "routers/scan_history.py",
+      "line": 583,
       "function": "scan_progress_ws",
       "mechanism": "acts_across_organisations",
       "permission": null,
@@ -2087,7 +2087,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 702,
+      "line": 674,
       "function": "get_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2097,7 +2097,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 720,
+      "line": 692,
       "function": "scan_policy_record",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2107,7 +2107,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 837,
+      "line": 809,
       "function": "compare_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2117,7 +2117,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 895,
+      "line": 867,
       "function": "archive_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.lifecycle",
@@ -2127,7 +2127,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 925,
+      "line": 897,
       "function": "stop_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2137,7 +2137,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 1008,
+      "line": 980,
       "function": "restore_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.lifecycle",
@@ -2147,7 +2147,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 1068,
+      "line": 1040,
       "function": "delete_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.lifecycle",
@@ -2157,7 +2157,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 1103,
+      "line": 1075,
       "function": "purge_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.purge",
@@ -2487,7 +2487,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 73,
+      "line": 72,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -2497,7 +2497,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 457,
+      "line": 456,
       "function": "start_web_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2507,7 +2507,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 614,
+      "line": 613,
       "function": "list_web_scans",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2517,7 +2517,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 651,
+      "line": 650,
       "function": "get_web_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2527,7 +2527,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 702,
+      "line": 701,
       "function": "get_web_scan_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -2537,7 +2537,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 750,
+      "line": 749,
       "function": "get_web_scan_assets",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2547,7 +2547,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 789,
+      "line": 788,
       "function": "get_web_scan_parameters",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2557,7 +2557,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 872,
+      "line": 871,
       "function": "get_web_scan_forms",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2567,7 +2567,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 920,
+      "line": 919,
       "function": "get_web_scan_api_operations",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2577,7 +2577,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 973,
+      "line": 972,
       "function": "cancel_web_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2587,7 +2587,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1043,
+      "line": 1042,
       "function": "triage_finding",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -2597,7 +2597,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1079,
+      "line": 1078,
       "function": "triage_finding",
       "mechanism": "has_permission",
       "permission": "audit.finding.accept_risk",
@@ -2607,7 +2607,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1136,
+      "line": 1135,
       "function": "get_finding_screenshot",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -2617,7 +2617,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1178,
+      "line": 1177,
       "function": "download_web_scan_report",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2627,7 +2627,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1285,
+      "line": 1286,
       "function": "web_scan_progress_ws",
       "mechanism": "acts_across_organisations",
       "permission": null,

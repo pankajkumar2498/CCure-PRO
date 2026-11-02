@@ -35,8 +35,6 @@ TOKEN_MODULES = frozenset({TOKEN_MODULE, VERIFICATION_MODULE})
 
 #: Who may still call the any-kind ``decode_token``, and why. Shrinks only.
 LEGACY_DECODE_CALLERS = {
-    "routers.scan_history": "WebSocket ticket login — Phase 10",
-    "routers.web_scans": "WebSocket ticket login — Phase 10",
     "main": "hands the decoder to core.rate_limit_audit, which checks the kind",
 }
 

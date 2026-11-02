@@ -32,6 +32,7 @@ from __future__ import annotations
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "auth.email_risk_signals")
+from config import AppConfig
 
 import datetime
 import logging
@@ -56,7 +57,6 @@ def mx_hosts(domain: str) -> tuple[list[str] | None, str]:
     still not worth blocking over: a handful of domains accept mail on their A
     record, which is legal and rare.
     """
-    from config import AppConfig
 
     try:
         import dns.exception
@@ -95,7 +95,6 @@ def domain_registered_at(domain: str) -> tuple[datetime.datetime | None, str]:
     Only the registrable domain is queried — RDAP has no record of
     `mail.example.com`, only of `example.com`.
     """
-    from config import AppConfig
 
     try:
         import requests
@@ -148,7 +147,6 @@ def collect_signals(domain: str) -> dict:
     Returns a dict with a `flags` list and a `signals` mapping, shaped to merge
     straight into `users.email_risk`.
     """
-    from config import AppConfig
 
     from ccure_platform.identity.email_domain_guard import (
         FLAG_NO_MX,

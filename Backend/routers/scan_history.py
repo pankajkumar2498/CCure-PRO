@@ -40,6 +40,13 @@ from scans.scan_access import (  # noqa: F401  (the old private names stay)
 )
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
+from core.findings import compare_scans
+from core.findings.comparison import policy_context
+from core.findings.comparison import previous_scan_for
+from core.scan_policy import read_policy_snapshot
+from core.scan_policy.spec import effective_from_config
+from db.models.scan_policies import ScanPolicy
+import core.redis_client as core_redis_client
 
 log = logging.getLogger("ccure.scans")
 router = APIRouter(prefix="/scans", tags=["Scan History"])
@@ -654,9 +661,7 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
     finally:
         db.close()
 
-    from core.redis_client import redis_client
-
-    pubsub = redis_client.pubsub()
+    pubsub = core_redis_client.redis_client.pubsub()
     await pubsub.subscribe(f"scan_progress:{scan_id}")
 
     log.info(
@@ -731,7 +736,6 @@ def scan_policy_record(
     route uses, so another organisation's scan answers 404 rather than
     disclosing its configuration.
     """
-    from core.findings.comparison import policy_context
 
     scan = _get_scan_or_404(scan_id, user, db, org_id)
     context = policy_context(scan)
@@ -746,7 +750,6 @@ def scan_policy_record(
     }
 
     if context.get("recorded"):
-        from core.scan_policy import read_policy_snapshot
 
         effective = read_policy_snapshot(scan)
         # The full effective configuration, field by field, so a client can
@@ -758,8 +761,6 @@ def scan_policy_record(
         # policy edited since is exactly the case the snapshot exists for, and
         # this is how a reader learns the two have diverged.
         if effective and effective.policy_id:
-            from db.models.scan_policies import ScanPolicy
-            from core.scan_policy.spec import effective_from_config
 
             row = (
                 db.query(ScanPolicy)
@@ -848,8 +849,6 @@ def compare_scan(
     is the sample. That split is deliberate — a truncated count would be a
     wrong number rather than a short page.
     """
-    from core.findings import compare_scans
-    from core.findings.comparison import previous_scan_for
 
     current = _get_scan_or_404(scan_id, user, db, org_id)
 
@@ -984,9 +983,8 @@ def stop_scan(
     # frame the operator presses Stop, sees the scan carry on, and presses it
     # again.
     try:
-        from core.redis_client import publish_progress_sync
 
-        publish_progress_sync(
+        core_redis_client.publish_progress_sync(
             scan_id,
             1,
             {

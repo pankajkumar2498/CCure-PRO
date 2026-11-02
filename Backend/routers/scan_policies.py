@@ -84,6 +84,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
+from db.base import _rand
 
 log = logging.getLogger("ccure.scan_policies")
 
@@ -123,7 +124,6 @@ def _get_policy(db: Session, policy_id: str, org_id: str) -> ScanPolicy:
 
 def _gen_policy_id(org_slug: str) -> str:
     """``spol_{org_token}_{rand}`` — the shape every other id in this schema has."""
-    from db.base import _rand
 
     return f"spol_{gen_org_token(org_slug)}_{_rand()}"
 

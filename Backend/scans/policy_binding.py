@@ -42,6 +42,7 @@ from core.scan_policy import (
     resolve_policy,
 )
 from fastapi import HTTPException
+from db.models.scan_policies import ScanPolicy
 
 log = logging.getLogger("ccure.scans.policy_binding")
 
@@ -142,7 +143,6 @@ def _increment_use_count(db, policy_id: str, org_id: str) -> None:
     column would be a poor trade. The authoritative count is
     ``GET /scan-policies/{id}/usage``, which counts snapshots.
     """
-    from db.models.scan_policies import ScanPolicy
 
     try:
         row = (

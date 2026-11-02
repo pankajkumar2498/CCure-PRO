@@ -115,6 +115,8 @@ def test_the_ceilings_are_never_above_what_they_were_introduced_at():
         "lateral_edges": 74,
         "foreign_table_references": 80,
         "foreign_table_writes": 17,
+        # Introduced 1 Nov 2026.
+        "lazy_cross_capability_imports": 149,
     }
     for name, value in cm.CEILINGS.items():
         assert value <= introduced[name], name
@@ -146,6 +148,19 @@ def test_removed_coupling_must_leave_the_baseline_too(measurement):
     problems = "\n".join(cm.ratchet_problems(shrunk))
     assert "gone — remove it from the baseline" in problems
     assert f"{gone[0]} -> {gone[1]}" in problems
+
+
+def test_lazy_imports_can_only_fall(measurement):
+    grown = copy.deepcopy(measurement)
+    grown["cross_capability_imports"]["lazy"] += 1
+    assert any(
+        "lazy cross-capability imports rose" in p for p in cm.ratchet_problems(grown)
+    )
+    shrunk = copy.deepcopy(measurement)
+    shrunk["cross_capability_imports"]["lazy"] -= 1
+    assert any(
+        "lazy cross-capability imports fell" in p for p in cm.ratchet_problems(shrunk)
+    )
 
 
 def test_an_unclassified_module_fails_the_ratchet():

@@ -36,6 +36,8 @@ from db.models.compliance import (
 )
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from db.base import gen_compliance_scan_run_id
+import core.redis_client as core_redis_client
 
 log = logging.getLogger("ccure.compliance.tasks")
 
@@ -1608,9 +1610,8 @@ def _invalidate_evidence_cache(
     finding: ComplianceFinding, rule: ComplianceRule
 ) -> None:
     """Invalidate Redis cache for compliance evidence provider."""
-    from core.redis_client import get_redis_client
 
-    redis_client = get_redis_client()
+    redis_client = core_redis_client.get_redis_client()
     if redis_client:
         cache_key = f"compliance:evidence:{finding.asset_id}:{rule.evidence_source}"
         try:
@@ -2008,7 +2009,6 @@ _SCHEDULE_INTERVALS: dict[str, timedelta] = {
 @celery_app.task(name="compliance.run_scheduled_scans", queue="compliance")
 def run_scheduled_scans() -> dict:
     """Periodic task executed by Celery Beat to query and trigger scheduled compliance scans."""
-    from db.base import gen_compliance_scan_run_id
     from db.models.compliance import ComplianceScanSchedule
     from sqlalchemy import or_
 

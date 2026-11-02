@@ -38,6 +38,43 @@ from scans.tasks.credentialed_sync import (
     _normalize_mac,
     _sync_credentialed_asset_identity,
 )
+from core.checks.contract import CheckOutcome
+from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
+from core.compliance_catalogue.benchmark_selection import benchmark_checks_for_org
+from core.config_audit import CollectionContext
+from core.config_audit import ConfigAuditEngine
+from core.config_audit import select_checks
+from core.config_audit.builtin import builtin_checks
+from core.config_audit.collectors import register_builtin_collectors
+from core.config_audit.findings import config_definition_id
+from core.credential_scope import credential_plan_entries
+from core.credential_scope import validate_credential_options
+from core.credential_vault import resolve
+from core.findings.writer import service_identity_from_process
+from core.oui_lookup import lookup_vendor
+from core.risk import calculate_risk
+from core.scan_policy import read_policy_snapshot
+from core.scan_policy.spec import severity_at_least
+from db.models.assets import Asset
+from engines.credentialed.database_executor import DEFAULT_PORTS
+from engines.credentialed.database_executor import DatabaseSession
+from engines.credentialed.database_executor import normalize_engine
+from engines.credentialed.windows_patch import MicrosoftApplicationMatcher
+from engines.credentialed.windows_patch import WindowsPatchMatcher
+from scans.asset_syncer import CREDENTIALED_STATUS_FAILED
+from scans.finding_normalizer import _name_tokens
+from scans.finding_normalizer import vendor_build_for
+from scans.finding_normalizer import verify_credentialed_report
+from scans.finding_normalizer import verify_host_findings
+from scans.finding_normalizer import version_precision
+from core.findings import compare_scans
+from core.findings.comparison import policy_context
+from core.findings.comparison import previous_scan_for
+from core.utils import InputValidator
+import core.redis_client as redis_client
+import core.vuln_intel as vuln_intel
+import engines.credentialed.os_detection as os_detection
+import engines.credentialed.vuln_matcher as vuln_matcher
 
 log = logging.getLogger("ccure.tasks")
 
@@ -90,7 +127,6 @@ def _credentialed_plan_for_scan(db, scan_row) -> list[dict]:
     plan refuses enrichment and records incomplete coverage; an inaccessible
     credential is skipped without widening the other credentials' scopes.
     """
-    from core.credential_scope import credential_plan_entries
 
     if not scan_row or not scan_row.options:
         return []
@@ -187,11 +223,6 @@ def _upgrade_network_fingerprints(
     corrected. Deliberately conservative: only an exact host-side version, and
     only where the two observations agree on what the product is.
     """
-    from scans.finding_normalizer import (
-        _name_tokens,
-        vendor_build_for,
-        version_precision,
-    )
 
     by_key: dict[tuple[int, str], dict] = {}
     for listener in listeners or []:
@@ -269,7 +300,6 @@ def _ports_probed_in_phase2(scan_row) -> list[int] | None:
     if not scan_row:
         return None
     try:
-        from core.utils import InputValidator
 
         summary = phase_summary_from_scan(scan_row, "asset_discovery", "phase2") or {}
         spec = summary.get("ports_probed_spec")
@@ -348,10 +378,6 @@ def _apply_credentialed_enrichment(
     no credentials were configured — in which case the scan is an ordinary
     unauthenticated audit and nothing here should alter it.
     """
-    from core.redis_client import publish_progress_sync
-    from core.risk import calculate_risk
-    from scans.asset_syncer import CREDENTIALED_STATUS_FAILED
-    from scans.finding_normalizer import verify_host_findings
 
     plan = _credentialed_plan_for_scan(db, scan_row)
     if not plan:
@@ -365,7 +391,6 @@ def _apply_credentialed_enrichment(
         # asked for a credentialed audit had no way to tell they had not got
         # one.
         requested = (scan_row.options or {}).get("credentials") if scan_row else None
-        from core.credential_scope import validate_credential_options
 
         invalid_scope = False
         try:
@@ -428,15 +453,11 @@ def _apply_credentialed_enrichment(
     # report and the comparison read — so what executed and what is recorded
     # cannot disagree. A scan with no snapshot resolves everything installed,
     # which is exactly the pre-policy behaviour.
-    from core.scan_policy import read_policy_snapshot
 
     _policy = read_policy_snapshot(scan_row)
     _org_id = getattr(scan_row, "org_id", None)
     _benchmark_checks: list = []
     if _org_id:
-        from core.compliance_catalogue.benchmark_selection import (
-            benchmark_checks_for_org,
-        )
 
         _benchmark_checks = benchmark_checks_for_org(
             db,
@@ -524,7 +545,7 @@ def _apply_credentialed_enrichment(
             )
 
         if scan_id:
-            publish_progress_sync(
+            redis_client.publish_progress_sync(
                 scan_id,
                 3,
                 {
@@ -578,7 +599,6 @@ def _apply_credentialed_enrichment(
         # the inventory is in hand. Doing it now means the stored host record
         # does not have to carry a few thousand package rows per host purely so
         # the asset sync can repeat the lookup later.
-        from core.findings.writer import service_identity_from_process
 
         packages = stored_report.get("packages") or []
         listeners = []
@@ -753,12 +773,6 @@ def _run_configuration_audit(
     it. A benchmark with fifty package rules would otherwise enumerate
     installed software fifty times.
     """
-    from core.checks.contract import CheckOutcome
-    from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
-    from core.config_audit.builtin import builtin_checks
-    from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
-    from core.config_audit.findings import config_definition_id
-    from engines.credentialed.vuln_matcher import compare_distro_versions
 
     platform = "windows" if os_type == "windows" else "linux"
     # Built-ins plus whatever benchmark content the organisation has loaded.
@@ -796,7 +810,6 @@ def _run_configuration_audit(
         min_severity = getattr(policy, "min_severity", None)
 
     if include_builtin:
-        from core.scan_policy.spec import severity_at_least
 
         selected_builtin = [
             c
@@ -844,7 +857,7 @@ def _run_configuration_audit(
         timeout=timeout,
         # The package matcher's version ordering, for the SCAP evaluator's
         # version comparisons; injected so the audit imports no engine (B10).
-        version_compare=compare_distro_versions,
+        version_compare=vuln_matcher.compare_distro_versions,
     )
     report = ConfigAuditEngine().run(checks, context)
 
@@ -970,7 +983,6 @@ def _sync_configuration_compliance(
     error would be a far worse outcome than a missing compliance row. The
     exception is logged with its traceback so it is fixable.
     """
-    from db.models.assets import Asset
 
     summary = (system_data or {}).get("config_audit") or {}
     results = summary.get("results") or []
@@ -1155,7 +1167,6 @@ def _resolve_stored_credential(
     organisation is read here, because the vault sits below the scans
     capability and does not read its table.
     """
-    from core.credential_vault import resolve
     from db.models.scans import Scan
 
     scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
@@ -1216,10 +1227,7 @@ def audit_credentialed_host(
     """
     from engines.credentialed.linux_collector import LinuxCollector
     from engines.credentialed.ssh_scanner import SSHScanner
-    from engines.credentialed.vuln_matcher import VulnMatcher
     from engines.credentialed.windows_collector import WindowsCollector
-    from engines.credentialed.os_detection import detect_os
-    from scans.finding_normalizer import verify_credentialed_report
 
     def _emit(message, percentage=0, stage=None):
         if emit:
@@ -1317,7 +1325,9 @@ def audit_credentialed_host(
             )
         else:
             _emit("Detecting Operating System...", 20, "detection")
-            os_type = os_type_req if os_type_req != "auto" else detect_os(ssh)
+            os_type = (
+                os_type_req if os_type_req != "auto" else os_detection.detect_os(ssh)
+            )
 
         _emit(f"Collecting system data ({os_type})...", 30, "collection")
         collector = (
@@ -1380,7 +1390,7 @@ def audit_credentialed_host(
 
     _emit("Analyzing packages for vulnerabilities...", 70, "analysis")
     packages = system_data.get("packages", [])
-    matcher = VulnMatcher()
+    matcher = vuln_matcher.VulnMatcher()
     # The host's own /etc/os-release, so OSV advisories are matched against the
     # release the packages were actually installed from. Without it every
     # distribution in the database was in scope and a 24.04 host was assessed
@@ -1416,7 +1426,6 @@ def audit_credentialed_host(
     # to V2606 or later version". On OT products the vendor advisory is often
     # the only place a remediation is stated at all.
     try:
-        from core.vuln_intel import csaf_advisories_for, exploit_intel_for
 
         cve_ids = [f.get("cve_id") for f in cve_list]
 
@@ -1424,7 +1433,7 @@ def audit_credentialed_host(
         # `exploit_sources`, but not whether an exploit was reproduced, seen
         # against a honeypot, or used in ransomware — and those are the
         # distinctions triage acts on.
-        intel = exploit_intel_for(cve_ids)
+        intel = vuln_intel.exploit_intel_for(cve_ids)
         promoted = 0
         for finding in cve_list:
             entry = intel.get(str(finding.get("cve_id") or "").upper())
@@ -1436,7 +1445,7 @@ def audit_credentialed_host(
         if promoted:
             log.info("Exploit provenance attached to %d finding(s)", promoted)
 
-        advisories = csaf_advisories_for(cve_ids)
+        advisories = vuln_intel.csaf_advisories_for(cve_ids)
         enriched = 0
         for finding in cve_list:
             matches = advisories.get(str(finding.get("cve_id") or "").upper())
@@ -1529,10 +1538,6 @@ def audit_credentialed_host(
     # software name. Linux distributions need none of this — their kernel and
     # userland are packages, and OSV already covers them.
     if os_type == "windows":
-        from engines.credentialed.windows_patch import (
-            MicrosoftApplicationMatcher,
-            WindowsPatchMatcher,
-        )
 
         os_result = WindowsPatchMatcher().match(
             {
@@ -1771,8 +1776,6 @@ def audit_credentialed_host(
 
     _emit("Generating report and syncing assets...", 90, "syncing")
 
-    from core.oui_lookup import lookup_vendor
-
     hostname, fqdn, raw_hostname_fqdn = _extract_credentialed_identity_names(
         system_data
     )
@@ -1950,18 +1953,6 @@ def audit_database_target(
     ``audit_credentialed_host`` so the scan task's per-target loop keeps one
     shape.
     """
-    from core.checks.contract import CheckOutcome
-    from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
-    from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
-    from core.config_audit.builtin import builtin_checks
-    from core.config_audit.collectors import register_builtin_collectors
-    from core.config_audit.findings import config_definition_id
-    from engines.credentialed.database_executor import (
-        DEFAULT_PORTS,
-        DatabaseSession,
-        normalize_engine,
-    )
-    from engines.credentialed.vuln_matcher import compare_distro_versions
 
     register_builtin_collectors()
 
@@ -2011,7 +2002,6 @@ def audit_database_target(
         _families = list(getattr(policy, "check_families", ()) or ()) if policy else []
         _builtin = builtin_checks()
         if policy is not None:
-            from core.scan_policy.spec import severity_at_least
 
             _excluded = {
                 str(c) for c in (getattr(policy, "excluded_check_ids", ()) or ())
@@ -2046,7 +2036,7 @@ def audit_database_target(
             timeout=max(timeout, 30),
             # As on the host path, so every context production builds carries
             # the same comparator (B10).
-            version_compare=compare_distro_versions,
+            version_compare=vuln_matcher.compare_distro_versions,
         )
         report = ConfigAuditEngine().run(checks, context)
 
@@ -2386,7 +2376,6 @@ def run_credentialed_scan_task(
     only when no host could be audited at all, which keeps the single-target
     case — where that is the same thing — behaving exactly as before.
     """
-    from core.redis_client import publish_progress_sync
 
     host_list = [t for t in (targets or []) if t] or ([ip] if ip else [])
     if not host_list:
@@ -2408,16 +2397,12 @@ def run_credentialed_scan_task(
     # all read one source. A scan with no snapshot (an older release's task
     # still in the queue, or a caller that named no policy) resolves everything
     # installed, which is the pre-policy behaviour unchanged.
-    from core.scan_policy import read_policy_snapshot
 
     _scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
     policy = read_policy_snapshot(_scan_row)
     benchmark_checks: list = []
     _scan_owner = platform_api.user(db, user_id)
     if _scan_owner is not None:
-        from core.compliance_catalogue.benchmark_selection import (
-            benchmark_checks_for_org,
-        )
 
         benchmark_checks = benchmark_checks_for_org(
             db,
@@ -2434,7 +2419,7 @@ def run_credentialed_scan_task(
     def emit(status, message, percentage=0, stage=None):
         if not scan_id:
             return
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id,
             5,
             {
@@ -2768,7 +2753,6 @@ def run_credentialed_scan_task(
         # and a report that showed the other would be describing a scan that
         # does not exist.
         try:
-            from core.findings.comparison import policy_context
 
             _policy_ctx = policy_context(scan)
             if _policy_ctx.get("recorded"):
@@ -2788,8 +2772,6 @@ def run_credentialed_scan_task(
         # the report is still generated, without it.
         try:
             db.flush()
-            from core.findings import compare_scans
-            from core.findings.comparison import previous_scan_for
 
             _baseline = previous_scan_for(db, scan)
             if _baseline is not None:
@@ -2878,9 +2860,8 @@ def run_credentialed_scan_task(
             {"scan_no": getattr(scan, "scan_no", None), "scan_id": str(scan.id)}
         )
         try:
-            from core.vuln_intel import get_feed_freshness
 
-            _fresh = get_feed_freshness()
+            _fresh = vuln_intel.get_feed_freshness()
             if _fresh.get("last_modified"):
                 report_result["metadata"]["cve_feed_updated"] = _fresh["last_modified"]
         except Exception as _feed_exc:  # never block a report on this

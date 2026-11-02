@@ -69,6 +69,8 @@ from db.models.compliance import (
     ComplianceRuleControl,
     ComplianceTenantFramework,
 )
+from core.checks.contract import CheckResult
+from core.checks.contract import Evidence
 
 log = logging.getLogger("ccure.config_audit.compliance_sync")
 
@@ -268,7 +270,6 @@ def _rehydrate(row: Mapping[str, Any], outcome: CheckOutcome):
     stored fields through as they are, so the verdict describes what was
     actually recorded.
     """
-    from core.checks.contract import CheckResult, Evidence
 
     evidence: List[Evidence] = []
     for item in row.get("evidence") or []:

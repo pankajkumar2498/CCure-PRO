@@ -10,6 +10,9 @@ import logging
 from core.celery_app import celery_app
 from db.base import SessionLocal, utcnow
 from sqlalchemy import text
+from config import AppConfig
+from config import WebScanConfig
+from core.web.scan_status import force_terminal_web_scan_status
 
 log = logging.getLogger("ccure.tasks")
 
@@ -50,7 +53,6 @@ def reap_stalled_scans() -> dict:
     """
     from datetime import timedelta, timezone
 
-    from config import AppConfig
     from core.redis_client import publish_progress_sync
     from core.scan_control import force_terminal_status
 
@@ -172,9 +174,6 @@ def reap_stalled_web_scans() -> dict:
     minutes is within its 140-minute limit and is left alone.
     """
     from datetime import timedelta, timezone
-
-    from config import WebScanConfig
-    from core.web.scan_status import force_terminal_web_scan_status
 
     # Just above each phase task's hard `time_limit` (recon/audit 2400s,
     # crawl 4200s, detect 8400s), plus grace so the tick and the phase-start

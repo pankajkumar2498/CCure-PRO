@@ -65,6 +65,8 @@ from sqlalchemy.orm import Session
 from core.findings.scan_directory import earlier_completed_scans
 from core.findings.scan_directory import policy_context as _recorded_policy
 from db.models.findings import AssetVulnerability
+from core.checks.definitions import DEFINITION_TYPE_CVE
+from core.checks.definitions import definition_type_for_id
 
 log = logging.getLogger("ccure.findings.comparison")
 
@@ -192,11 +194,6 @@ class AssessmentScope:
         assessed = self.assessed_checks
         if not assessed:
             return True
-
-        from core.checks.definitions import (
-            DEFINITION_TYPE_CVE,
-            definition_type_for_id,
-        )
 
         identifier = str(vuln_id or "")
         if not identifier:

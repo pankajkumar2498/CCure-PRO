@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, Query
 from scans import reads as scans
 from scans.cvss import canonical_severity, display_severity
 from sqlalchemy.orm import Session
+from core.web.finding_view import finding_detail as _finding_detail
 
 log = logging.getLogger("ccure.dashboard")
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -984,7 +985,6 @@ def get_web_findings_drilldown(
     user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """Org-wide web findings with the same filters the dashboard counts use."""
-    from core.web.finding_view import finding_detail as _finding_detail
 
     org = _resolve_org(user, org_id)
     total, rows = web.finding_page(

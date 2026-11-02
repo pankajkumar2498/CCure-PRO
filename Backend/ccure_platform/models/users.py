@@ -21,6 +21,9 @@ ID Convention (Stripe-Style)
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "db.models.users")
+from db.base import engine
+from db.base import gen_user_id
+from db.email_canonical import canonicalize_email
 
 from db.base import TIMESTAMPTZ, Base, gen_uuid, utcnow
 from sqlalchemy import (
@@ -137,7 +140,6 @@ class User(Base):
 
     def __init__(self, **kwargs):
         if "id" not in kwargs:
-            from db.base import gen_user_id
 
             org_id = kwargs.get("org_id", "org_default")
             org_slug = org_id.replace("org_", "") if org_id else "default"
@@ -413,7 +415,6 @@ def ensure_user_schema():
     Additive migration for the users table so existing databases gain the
     deleted-user lifecycle columns without destructive schema changes.
     """
-    from db.base import engine
 
     inspector = inspect(engine)
     if "users" not in inspector.get_table_names():
@@ -605,8 +606,6 @@ def _backfill_email_canonical(conn) -> None:
     is the wrong place to decide which of two real accounts is the impostor.
     """
     import logging
-
-    from db.email_canonical import canonicalize_email
 
     log = logging.getLogger(__name__)
 

@@ -26,6 +26,7 @@ import logging
 
 from core.celery_app import celery_app
 from db.base import SessionLocal
+from config import AppConfig
 
 log = logging.getLogger("ccure.tasks")
 
@@ -43,7 +44,6 @@ def purge_stale_unverified_accounts() -> dict:
     """
     import datetime
 
-    from config import AppConfig
     from ccure_platform.models import User
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
@@ -104,7 +104,6 @@ def purge_expired_refresh_sessions() -> dict:
     """
     import datetime
 
-    from config import AppConfig
     from ccure_platform.models import RefreshTokenSession
 
     days = AppConfig.REFRESH_SESSION_RETENTION_DAYS

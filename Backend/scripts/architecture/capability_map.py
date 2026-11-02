@@ -1128,6 +1128,13 @@ CEILINGS = {
     # system information, now the asset registry's (core.asset_credentialed).
     # 1 to 0: no capability writes another's table.
     "foreign_table_writes": 0,
+    # 1 Nov 2026, introduced at 149 (349 the day before): imports inside a
+    # function that cross a capability boundary. Such an import is a real
+    # dependency the module's header does not show; what remains is lazy on
+    # purpose — the composition root's startup order, an engine or kernel
+    # module kept free of config, the database or Redis at import, a heavy or
+    # optional package, or a best-effort block — and the count may only fall.
+    "lazy_cross_capability_imports": 149,
 }
 
 _BASELINE_KEYS = (
@@ -1137,6 +1144,7 @@ _BASELINE_KEYS = (
     "lateral_edges",
     "foreign_table_references",
     "foreign_table_writes",
+    "cross_capability_imports",
     "load_profiles",
 )
 
@@ -1164,6 +1172,7 @@ def ceiling_problems(baseline: dict) -> list[str]:
         "lateral_edges": len(baseline["lateral_edges"]),
         "foreign_table_references": len(baseline["foreign_table_references"]),
         "foreign_table_writes": len(baseline["foreign_table_writes"]),
+        "lazy_cross_capability_imports": baseline["cross_capability_imports"]["lazy"],
     }
     return [
         f"the baseline's {name} ({size}) exceeds its ceiling ({CEILINGS[name]}); "
@@ -1218,6 +1227,19 @@ def ratchet_problems(measurement: dict | None = None, baseline=None) -> list[str
             f"CEILINGS: {label}: {a} -> {b}"
             for a, b in sorted(known - current)
         ]
+
+    lazy_now = measurement["cross_capability_imports"]["lazy"]
+    lazy_then = baseline["cross_capability_imports"]["lazy"]
+    if lazy_now > lazy_then:
+        problems.append(
+            f"lazy cross-capability imports rose from {lazy_then} to {lazy_now}: "
+            "import at module level, or through the owner's port"
+        )
+    elif lazy_now < lazy_then:
+        problems.append(
+            f"lazy cross-capability imports fell from {lazy_then} to {lazy_now} — "
+            "rewrite the baseline (--write-baseline) and lower CEILINGS to lock that in"
+        )
 
     for entry, now in sorted(measurement["load_profiles"].items()):
         then = baseline["load_profiles"].get(entry)

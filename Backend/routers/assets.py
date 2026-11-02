@@ -46,6 +46,7 @@ from pydantic import BaseModel
 from core.rate_limiter import limiter
 from sqlalchemy import String, func, or_
 from sqlalchemy.orm import Session, joinedload
+from core.task_names import RECONCILE_AMT_INVENTORY
 
 log = logging.getLogger("ccure.assets")
 router = APIRouter(prefix="/assets", tags=["Assets"])
@@ -1475,7 +1476,6 @@ def import_amt_inventory(
     # 6. Dispatch reconciliation only after the commit — the worker reads these
     # rows, and handing it an uncommitted import is a race it cannot win.
     from core.celery_app import registered_task
-    from core.task_names import RECONCILE_AMT_INVENTORY
 
     task = registered_task(RECONCILE_AMT_INVENTORY).delay(org_id=org)
 

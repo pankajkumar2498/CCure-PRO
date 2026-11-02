@@ -3,6 +3,7 @@
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "db.models.rbac")
+from db.base import gen_org_id
 
 from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
@@ -94,7 +95,6 @@ class Organization(Base):
                     kwargs.get("name", "").lower().replace(" ", "-")
                     or uuid.uuid4().hex[:8]
                 )
-            from db.base import gen_org_id
 
             kwargs["id"] = gen_org_id(slug)
         super().__init__(**kwargs)

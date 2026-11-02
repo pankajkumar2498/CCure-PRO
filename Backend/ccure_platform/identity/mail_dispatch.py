@@ -40,6 +40,7 @@ from __future__ import annotations
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "auth.mail_dispatch")
+from config import AppConfig
 
 import logging
 import time
@@ -174,8 +175,6 @@ def _dispatch(kind: str, *args: Any) -> str:
     except Exception:
         log.error("Could not load mail senders for %r", kind, exc_info=True)
         return "failed"
-
-    from config import AppConfig
 
     # Escape hatch for tests and for deployments that want the old behaviour.
     # With this off, dispatch is exactly `.delay()` and nothing is ever sent

@@ -52,6 +52,8 @@ from scans.policy_binding import (
     resolve_scan_policy as _resolve_scan_policy,
 )
 from sqlalchemy.orm import Session
+from core.scan_scope import org_scan_scope
+from core.utils import InputValidator
 
 router = APIRouter(tags=["Phase-Selective Scans"])
 
@@ -73,7 +75,6 @@ def _org_scope(db: Session, org_id: str):
     scope configured" — the same as a NULL scope, so a dangling org_id cannot
     become a way to scan without a scope under REQUIRE_SCAN_SCOPE.
     """
-    from core.scan_scope import org_scan_scope
 
     return org_scan_scope(db, org_id)
 
@@ -122,7 +123,6 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
       with the same 422 / 403 Host Discovery gives.
 
     """
-    from core.utils import InputValidator
 
     addresses = []
     for host in hosts or []:

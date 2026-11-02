@@ -57,6 +57,7 @@ from fastapi import (
 from pydantic import BaseModel, Field, field_validator
 from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
+from core.redis_client import redis_client
 
 log = logging.getLogger("ccure.routers.web_scans")
 
@@ -1311,8 +1312,6 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
         )
     finally:
         db.close()
-
-    from core.redis_client import redis_client
 
     pubsub = redis_client.pubsub()
     await pubsub.subscribe(f"scan_progress:{scan_id}")

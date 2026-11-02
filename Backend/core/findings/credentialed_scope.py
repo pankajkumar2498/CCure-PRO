@@ -18,6 +18,7 @@ answer differently:
 from __future__ import annotations
 
 from typing import Any, Mapping
+from core.config_audit.findings import config_definition_id
 
 #: Identifiers only an authenticated session produces: configuration and
 #: privilege checks, and the credentialed audit's own not-assessed markers.
@@ -41,7 +42,6 @@ def assessed_check_ids(config_summary: Any) -> set:
     ids: set = set()
     if not isinstance(config_summary, dict) or not config_summary.get("assessed"):
         return ids
-    from core.config_audit.findings import config_definition_id
 
     for result in config_summary.get("results") or []:
         if not isinstance(result, dict):

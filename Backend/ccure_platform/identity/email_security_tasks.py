@@ -15,6 +15,7 @@ from __future__ import annotations
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "core.email_security_tasks")
+from config import AppConfig
 
 import datetime
 import logging
@@ -40,7 +41,6 @@ def enrich_email_risk(user_id: str) -> dict:
     Merges into whatever the inline guard recorded; it never overwrites the
     blocklist verdict, which is the authoritative half.
     """
-    from config import AppConfig
 
     if not AppConfig.EMAIL_RISK_ENRICHMENT_ENABLED:
         return {"success": True, "skipped": "enrichment disabled"}
@@ -203,7 +203,6 @@ def purge_stale_unapproved_accounts() -> dict:
     an administrator has approved is never touched, whatever its email looks
     like.
     """
-    from config import AppConfig
     from ccure_platform.models import User
 
     ttl_days = AppConfig.UNAPPROVED_ACCOUNT_TTL_DAYS

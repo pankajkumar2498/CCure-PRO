@@ -41,6 +41,7 @@ from sqlalchemy.dialects.postgresql import (
     MACADDR,
 )
 from sqlalchemy.orm import relationship
+from db.base import engine
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Asset  (the persistent host identity record)
@@ -309,7 +310,6 @@ def ensure_mac_vendor_schema():
     """
     Additive schema migration to create the mac_vendor_cache table.
     """
-    from db.base import engine
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)

@@ -13,6 +13,9 @@ FastAPI router that wires up all authentication endpoints:
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "auth.router")
+from config import AppConfig
+from core.ip_resolver import get_client_ip
+import core.throttle as throttle
 
 import logging
 import os
@@ -337,7 +340,6 @@ def _issue_verification_token(db: Session, user: User, request: Request | None =
     import secrets
     from datetime import datetime, timedelta, timezone
 
-    from config import AppConfig
     from ccure_platform.identity.mail_dispatch import dispatch_email
     from ccure_platform.models import EmailVerificationToken
 
@@ -712,7 +714,6 @@ def register(
 
 def _queue_email_risk_enrichment(user_id: str) -> None:
     """Ask a worker to add the network-derived risk signals for one account."""
-    from config import AppConfig
 
     if not AppConfig.EMAIL_RISK_ENRICHMENT_ENABLED:
         return
@@ -763,9 +764,7 @@ def verify_email(
     import hashlib
     from datetime import datetime, timezone
 
-    from config import AppConfig
     from ccure_platform.audit_log.writer import log_audit_event
-    from db.base import utcnow
     from ccure_platform.models import EmailVerificationToken
 
     invalid = HTTPException(
@@ -901,7 +900,6 @@ def login(
     import datetime
 
     from ccure_platform.audit_log.writer import log_audit_event
-    from db.base import utcnow
 
     identifier = req.email_or_username.strip()
     user = (
@@ -1280,10 +1278,8 @@ def forgot_password(
     import secrets
     from datetime import datetime, timedelta, timezone
 
-    from config import AppConfig
     from ccure_platform.audit_log.writer import log_audit_event
     from ccure_platform.identity.mail_dispatch import dispatch_email
-    from core.throttle import hit
     from ccure_platform.models import PasswordResetToken
 
     identifier = req.email_or_username.strip()
@@ -1322,7 +1318,7 @@ def forgot_password(
     # account-existence oracle: only a real account can exceed a per-account
     # ceiling, so the status code would disclose exactly what the uniform
     # response exists to hide.
-    if user and hit(
+    if user and throttle.hit(
         "pwreset:account",
         str(user.id),
         AppConfig.PASSWORD_RESET_ACCOUNT_HOURLY_LIMIT,
@@ -1416,12 +1412,10 @@ def reset_password_endpoint(
     from datetime import datetime, timezone
 
     from ccure_platform.identity.jwt_handler import hash_password
-    from config import AppConfig
     from ccure_platform.audit_log.writer import log_audit_event
-    from core.throttle import client_identity, hit
     from ccure_platform.models import PasswordResetToken, RefreshTokenSession
 
-    caller = client_identity(request)
+    caller = throttle.client_identity(request)
 
     def _reject_bad_token() -> NoReturn:
         """Count a failed submission, then answer the uniform 400.
@@ -1430,7 +1424,7 @@ def reset_password_endpoint(
         whose user has since been removed: the three are indistinguishable to
         the caller, so none of them can be used to probe for a live token.
         """
-        if hit(
+        if throttle.hit(
             "pwreset:ip",
             caller,
             AppConfig.PASSWORD_RESET_IP_HOURLY_LIMIT,
@@ -1517,7 +1511,6 @@ def reset_password_endpoint(
     # broken SMTP server must not turn a completed reset into a 500 that
     # invites the user to try again with a token that no longer exists.
     try:
-        from core.ip_resolver import get_client_ip
         from ccure_platform.identity.mail_dispatch import dispatch_email
 
         dispatch_email(
@@ -1542,7 +1535,6 @@ def reset_password_endpoint(
 
 def encrypt_secret(plain_secret: str) -> str:
     """Symmetrically encrypt the secret key using Fernet."""
-    from config import AppConfig
     from cryptography.fernet import Fernet
 
     f = Fernet(AppConfig.MFA_KEY)
@@ -1551,7 +1543,6 @@ def encrypt_secret(plain_secret: str) -> str:
 
 def decrypt_secret(encrypted_secret: str) -> str:
     """Symmetrically decrypt the secret key using Fernet."""
-    from config import AppConfig
     from cryptography.fernet import Fernet
 
     f = Fernet(AppConfig.MFA_KEY)
@@ -1577,7 +1568,6 @@ def send_email_otp(
     from datetime import timedelta
 
     from ccure_platform.identity.mail_dispatch import dispatch_email
-    from db.base import utcnow
 
     payload = tokens.verify(
         req.mfa_token,
@@ -1626,7 +1616,6 @@ def verify_mfa(
     Rate limited to 5 requests/minute.
     """
     from ccure_platform.audit_log.writer import log_audit_event
-    from db.base import utcnow
 
     payload = tokens.verify(
         req.mfa_token,

@@ -39,13 +39,16 @@ from ccure_audit.services.assessment_read import (
 )
 from ccure_audit.services.assessment_read import scan_host_audits as _scan_host_audits
 from ccure_audit.services.views import view
+from core.checks.definitions import definition_type_for_id
+from core.remediation.sla import sla_state
+from db.models.assets import Asset
+from db.models.findings import AssetVulnerability
+from db.models.scans import Scan
 
 log = logging.getLogger("ccure.reporting.exports")
 
 
 def finding_query(db: Session, org_id: str):
-    from db.models.assets import Asset
-    from db.models.findings import AssetVulnerability
 
     return (
         db.query(AssetVulnerability, Asset)
@@ -92,7 +95,6 @@ def finding_pairs(
     (every finding currently held against the assets this scan touched). The
     body is the export's own query, moved unchanged.
     """
-    from db.models.findings import AssetVulnerability
 
     org_id = str(getattr(scan, "org_id", "") or "")
     scan_id = str(getattr(scan, "id", "") or "")
@@ -203,8 +205,6 @@ def finding_context_map(
     same holds for an identifier shared by per-product rows of one CVE whose
     records differ.
     """
-    from core.remediation.sla import sla_state
-    from db.models.findings import AssetVulnerability
 
     org_id = str(getattr(scan, "org_id", "") or "")
     scan_id = str(getattr(scan, "id", "") or "")
@@ -353,7 +353,6 @@ def _opt(value: Any) -> Optional[str]:
 
 
 def _finding_view(finding: Any, asset: Any, title: str, state: str) -> FindingView:
-    from core.checks.definitions import definition_type_for_id
 
     return FindingView(
         finding_id=str(finding.id),
@@ -429,9 +428,6 @@ class FindingReadService:
         ``finding_id`` order, ``limit`` at a time. Cursor paging by id, so a
         page never skips or repeats a finding however the data is paged.
         """
-        from core.remediation.sla import sla_state
-        from db.models.findings import AssetVulnerability
-        from db.models.scans import Scan
 
         if not org_id:
             raise ValueError("org_id is required: an assessment belongs to one tenant")

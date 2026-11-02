@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from core.device_classifier import classify_device
+import engines.vulnerability.plugins.snmp_probe as snmp_probe
 
 log = logging.getLogger("ccure.orchestrator.host_enrichment")
 
@@ -48,27 +50,15 @@ def snmp_system_query(ip: str) -> dict | None:
     The read the probe used to make itself, moved here unchanged: sysObjectID
     first, and nothing more unless it answers with an OID.
     """
-    from engines.vulnerability.plugins.snmp_probe import (
-        _ENTERPRISE_VENDORS,
-        _OID_BRIDGE_ADDR,
-        _OID_IF_NUMBER,
-        _OID_IP_FORWARD,
-        _OID_SYS_DESCR,
-        _OID_SYS_NAME,
-        _OID_SYS_OBJ_ID,
-        _extract_integer,
-        _extract_mac,
-        _extract_oid_value,
-        _extract_string,
-        _snmp_get_raw,
-    )
 
     # Query sysObjectID using community 'public'
-    data = _snmp_get_raw(ip, "public", _OID_SYS_OBJ_ID, timeout=1.0)
+    data = snmp_probe._snmp_get_raw(
+        ip, "public", snmp_probe._OID_SYS_OBJ_ID, timeout=1.0
+    )
     if not data:
         return None
 
-    sys_obj = _extract_oid_value(data)
+    sys_obj = snmp_probe._extract_oid_value(data)
     if not sys_obj:
         return None
 
@@ -92,16 +82,20 @@ def snmp_system_query(ip: str) -> dict | None:
     }
 
     # Get sysDescr
-    descr_data = _snmp_get_raw(ip, "public", _OID_SYS_DESCR, timeout=1.0)
+    descr_data = snmp_probe._snmp_get_raw(
+        ip, "public", snmp_probe._OID_SYS_DESCR, timeout=1.0
+    )
     if descr_data:
-        snmp_info["sys_descr"] = _extract_string(descr_data)
+        snmp_info["sys_descr"] = snmp_probe._extract_string(descr_data)
 
     # sysName is the device's own idea of its hostname. It is authoritative
     # in a way reverse DNS is not — a host with no PTR record still answers
     # this — so it is queried here rather than left blank.
-    name_data = _snmp_get_raw(ip, "public", _OID_SYS_NAME, timeout=1.0)
+    name_data = snmp_probe._snmp_get_raw(
+        ip, "public", snmp_probe._OID_SYS_NAME, timeout=1.0
+    )
     if name_data:
-        snmp_info["sys_name"] = _extract_string(name_data) or ""
+        snmp_info["sys_name"] = snmp_probe._extract_string(name_data) or ""
 
     # Parse sysObjectID to get enterprise ID and vendor/vendor_device
     parts = sys_obj.split(".")
@@ -110,7 +104,7 @@ def snmp_system_query(ip: str) -> dict | None:
         try:
             enterprise = int(parts[6])
             snmp_info["enterprise_id"] = enterprise
-            vendor_info = _ENTERPRISE_VENDORS.get(enterprise)
+            vendor_info = snmp_probe._ENTERPRISE_VENDORS.get(enterprise)
             if vendor_info:
                 snmp_info["vendor"] = vendor_info[0]
                 snmp_info["vendor_device"] = vendor_info[1]
@@ -118,19 +112,25 @@ def snmp_system_query(ip: str) -> dict | None:
             pass
 
     # Parse device-type OIDs
-    fwd_data = _snmp_get_raw(ip, "public", _OID_IP_FORWARD, timeout=1.0)
+    fwd_data = snmp_probe._snmp_get_raw(
+        ip, "public", snmp_probe._OID_IP_FORWARD, timeout=1.0
+    )
     if fwd_data:
-        snmp_info["ip_forwarding"] = _extract_integer(fwd_data)
+        snmp_info["ip_forwarding"] = snmp_probe._extract_integer(fwd_data)
 
-    ifn_data = _snmp_get_raw(ip, "public", _OID_IF_NUMBER, timeout=1.0)
+    ifn_data = snmp_probe._snmp_get_raw(
+        ip, "public", snmp_probe._OID_IF_NUMBER, timeout=1.0
+    )
     if ifn_data:
-        snmp_info["if_count"] = _extract_integer(ifn_data) or 0
+        snmp_info["if_count"] = snmp_probe._extract_integer(ifn_data) or 0
 
     # dot1dBaseBridgeAddress is a MacAddress. Searching the datagram for an
     # OctetString tag found the community string, so every SNMP agent was
     # reported as a bridge.
-    bridge_data = _snmp_get_raw(ip, "public", _OID_BRIDGE_ADDR, timeout=1.0)
-    snmp_info["bridge_mib"] = bool(bridge_data and _extract_mac(bridge_data))
+    bridge_data = snmp_probe._snmp_get_raw(
+        ip, "public", snmp_probe._OID_BRIDGE_ADDR, timeout=1.0
+    )
+    snmp_info["bridge_mib"] = bool(bridge_data and snmp_probe._extract_mac(bridge_data))
 
     return snmp_info
 
@@ -200,7 +200,6 @@ async def _ot_enrichment_check(hosts: list[dict], exclude_ot_from_nmap: bool) ->
     """
     Check if any OT ports are open on active hosts and perform deep OT identity probing.
     """
-    from core.device_classifier import classify_device
     from core.discovery.enrichment import _ot_protocol_probes
 
     def _check_host(host: dict):

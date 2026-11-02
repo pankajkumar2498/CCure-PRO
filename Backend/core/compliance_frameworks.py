@@ -45,6 +45,7 @@ rather than quietly repurposed.
 from __future__ import annotations
 
 import os
+from core.benchmarks.pack import BENCHMARK_FRAMEWORK_PREFIX
 
 # The frameworks this installation offers. Order is the order the workspace
 # lists them in.
@@ -147,7 +148,6 @@ def is_benchmark_framework(framework_id: str | None) -> bool:
     only the standard library; the pack format loads the first time a
     framework id is asked about.
     """
-    from core.benchmarks.pack import BENCHMARK_FRAMEWORK_PREFIX
 
     return bool(framework_id) and framework_id.startswith(BENCHMARK_FRAMEWORK_PREFIX)
 

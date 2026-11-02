@@ -32,6 +32,9 @@ from scans.scan_creation import (
     create_credentialed_scan,
     expand_targets,
 )
+from core.scan_scope import ScanScopeError
+from core.scan_scope import enforce_org_scan_scope
+from core.scan_scope import org_scan_scope
 
 #: The API's logger, as scan_helpers names it, so these records are unchanged.
 log = logging.getLogger("ccure.api")
@@ -49,7 +52,6 @@ def _enforce_credentialed_scan_scope(
     scans. It lives here rather than there because this route expands its own
     targets and never calls that helper.
     """
-    from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
     target_org_id = resolve_active_organisation(user, org_id)
 

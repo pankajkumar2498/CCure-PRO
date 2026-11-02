@@ -27,6 +27,12 @@ from scans.asset_syncer import (
 )
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
+from core.task_names import SYNC_ASSET_DISCOVERY
+from core.task_names import SYNC_HOST_DISCOVERY
+from core.task_names import SYNC_VULNERABILITY_AUDIT
+from ccure_platform.api import NotificationCategory
+from ccure_platform.api import create_notification
+from ccure_platform.api import fan_out_notification
 
 log = logging.getLogger("ccure.scans.db_helpers")
 
@@ -252,7 +258,6 @@ def update_scan_phase1(
 
     # Asset Sync in background (AFTER commit to avoid FK race condition)
     from core.celery_app import registered_task
-    from core.task_names import SYNC_HOST_DISCOVERY
 
     registered_task(SYNC_HOST_DISCOVERY).delay(
         str(scan.id), org_id, user_id, hosts_data
@@ -260,10 +265,6 @@ def update_scan_phase1(
 
     if is_final:
         try:
-            from ccure_platform.api import (
-                NotificationCategory,
-                create_notification,
-            )
 
             create_notification(
                 db=db,
@@ -539,7 +540,6 @@ def update_scan_phase(
     # Synchronization (AFTER commit to avoid FK race condition)
     if phase == 2:
         from core.celery_app import registered_task
-        from core.task_names import SYNC_ASSET_DISCOVERY
 
         registered_task(SYNC_ASSET_DISCOVERY).delay(
             str(scan.id), org_id, user_id, hosts_data
@@ -548,7 +548,6 @@ def update_scan_phase(
         # Reached only for a non-final phase-3 update, or when the inline sync
         # above failed and the work still has to happen.
         from core.celery_app import registered_task
-        from core.task_names import SYNC_VULNERABILITY_AUDIT
 
         registered_task(SYNC_VULNERABILITY_AUDIT).delay(
             str(scan.id), org_id, user_id, hosts_data
@@ -556,11 +555,6 @@ def update_scan_phase(
 
     if is_final:
         try:
-            from ccure_platform.api import (
-                NotificationCategory,
-                create_notification,
-                fan_out_notification,
-            )
 
             # Additional logic: if critical vulns were found, send a Security notification
             if getattr(scan, "critical_count", 0) > 0:
@@ -676,10 +670,6 @@ def mark_scan_failed(
         db.commit()
 
     try:
-        from ccure_platform.api import (
-            NotificationCategory,
-            create_notification,
-        )
 
         ntype = AuditNotificationType.SCAN_FAILED
         title = f"Scan {scan.scan_no} Failed"
@@ -857,11 +847,6 @@ def create_completed_scan(
             db.commit()
 
     try:
-        from ccure_platform.api import (
-            NotificationCategory,
-            create_notification,
-            fan_out_notification,
-        )
 
         # Check if credentialed report has criticals
         vulns = (

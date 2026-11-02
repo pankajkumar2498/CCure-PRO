@@ -24,6 +24,7 @@ from __future__ import annotations
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "auth.registration_limits")
+from config import AppConfig
 
 import datetime
 import logging
@@ -60,7 +61,6 @@ def daily_ip_quota_exceeded(request) -> bool:
     addresses that get refused is exactly the traffic worth capping, and
     counting only successes would let them probe indefinitely.
     """
-    from config import AppConfig
 
     limit = AppConfig.REGISTRATION_DAILY_IP_LIMIT
     if limit <= 0:
@@ -102,7 +102,6 @@ def pending_queue_full(db) -> bool:
     the correct failure: the accounts already queued are the ones that need
     looking at, and adding more does not help anyone.
     """
-    from config import AppConfig
 
     limit = AppConfig.PENDING_APPROVAL_QUEUE_LIMIT
     if limit <= 0:

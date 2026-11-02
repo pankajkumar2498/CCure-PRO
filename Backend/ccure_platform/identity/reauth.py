@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException, status
+from config import AppConfig
 
 logger = logging.getLogger("ccure.security")
 
@@ -34,7 +35,6 @@ ENROLMENT_REQUIRED = "mfa_enrolment_required"
 
 
 def _mode() -> str:
-    from config import AppConfig
 
     raw = (
         (getattr(AppConfig, "RBAC_REAUTH_MODE", "enforce") or "enforce").strip().lower()

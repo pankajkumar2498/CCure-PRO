@@ -76,6 +76,8 @@ from scans.cvss import (
 from sqlalchemy import case, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
+from core.checks.endpoint_evidence import render_observations
+from core.checks.plugin_outcomes import coverage_summary
 
 logger = logging.getLogger("scans.asset_syncer")
 
@@ -1279,7 +1281,6 @@ def write_host_findings(
         # the service, the version fingerprinted on it, the banner returned,
         # and the published range that version was tested against.
         finding_service = service_by_id.get(finding_service_id)
-        from core.checks.endpoint_evidence import render_observations
 
         for observation in v.get("endpoint_observations") or []:
             try:
@@ -1428,7 +1429,6 @@ def write_host_findings(
             continue
         elif "plugin_outcomes" in host:
             # Absence after an incomplete network assessment is not remediation.
-            from core.checks.plugin_outcomes import coverage_summary
 
             if not coverage_summary([host])["complete"]:
                 continue
@@ -1571,10 +1571,6 @@ def _sync_credentialed_vulnerabilities(
     scan_id: str,
     cve_list: list[dict],
 ) -> None:
-    from core.checks.definitions import (
-        DEFINITION_TYPE_CVE,
-        definition_type_for_id,
-    )
 
     source_family = "credentialed_package"
     for vuln in cve_list or []:
@@ -1612,7 +1608,6 @@ def _sync_credentialed_vulnerabilities(
         # made GROUP BY return two rows for one severity and cost the dashboard
         # 100 of 146 findings. Deriving from the score also stops a feed's
         # textual rating disagreeing with the vector it published.
-        from scans.cvss import canonical_severity, severity_from_score
 
         severity = (
             severity_from_score(cvss).lower()
@@ -1868,8 +1863,6 @@ def sweep_credentialed_findings(
     # or a feed lookup that failed, cve_list carries no package CVEs, and the
     # sweep below used to read that as every package finding remediated.
     _packages_assessed = packages_assessed(stored_report)
-
-    from core.checks.definitions import DEFINITION_TYPE_CVE, definition_type_for_id
 
     for f in current_open:
         if _finding_family(_finding_source_from_record(f)) != "credentialed_package":

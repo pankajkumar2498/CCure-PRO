@@ -77,6 +77,13 @@ from ccure_audit.services.finding_read import (  # noqa: F401
     finding_pairs,
     owner_names as _owner_names,
 )
+from core.checks.plugin_outcomes import coverage_summary
+from core.checks.definitions import definition_type_for_id
+from core.candidate_enumeration import describe
+from core.candidate_enumeration import truncated_searches
+from core.findings.comparison import policy_context
+from core.remediation.sla import sla_state
+from scans.reads import phases_newest_first
 
 log = logging.getLogger("ccure.reporting.exports")
 
@@ -302,8 +309,6 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
     snapshot exists, and an export that resolved the live row instead would
     misreport every scan whose policy has moved on.
     """
-    from core.findings.comparison import policy_context
-    from core.checks.plugin_outcomes import coverage_summary
 
     org_name = organisation_name(db, scan)
 
@@ -331,7 +336,6 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
 
 
 def _truncated_searches(db: Session, scan: Any) -> List[str] | None:
-    from core.candidate_enumeration import describe, truncated_searches
 
     hosts = _scan_hosts(db, scan)
     if not any("candidate_enumeration" in h for h in hosts):
@@ -701,7 +705,6 @@ def finding_export_rows(
     moment it was written. ``sla_due_at`` itself *is* materialised — that is the
     indexed predicate — and this only compares it against now.
     """
-    from core.remediation.sla import sla_state
 
     context = dict(context or scan_context(db, scan))
 
@@ -777,7 +780,6 @@ def finding_export_rows(
 
 def _definition_type(vuln_id: Any) -> str:
     try:
-        from core.checks.definitions import definition_type_for_id
 
         return _text(definition_type_for_id(str(vuln_id or "")))
     except Exception:
@@ -835,7 +837,6 @@ def _scan_hosts(db: Session, scan: Any) -> List[Dict[str, Any]]:
     carries everything an earlier one found plus its own results, so the
     highest phase with hosts is the scan's inventory.
     """
-    from scans.reads import phases_newest_first
 
     phases = phases_newest_first(db, str(getattr(scan, "id", "") or ""))
     for phase in phases:

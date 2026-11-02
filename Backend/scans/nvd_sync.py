@@ -42,6 +42,7 @@ from scans.cve_engine.nvd_client import (
     split_window,
 )
 from scans.cvss import severity_from_score
+from db.base import engine as primary_engine
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,6 @@ def _catalogue_engine() -> Engine:
     Imported inside the call rather than at module scope so importing this
     module does not require a configured database.
     """
-    from db.base import engine as primary_engine
 
     return primary_engine
 

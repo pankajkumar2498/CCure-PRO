@@ -4,7 +4,7 @@ The architecture ratchets — layering, import cycles, the identity boundary, th
 capability map — and the secret-handling guards are tests. A test protects
 nothing unless something runs it before a change lands. This page records what
 runs them, when, and what was **not** running when it was written, so that "CI
-enforces it" is only said where it is true. Measured 16 Oct 2026.
+enforces it" is only said where it is true. Measured 16 Oct 2026; updated 3 Nov 2026.
 
 ## The three paths
 
@@ -68,12 +68,15 @@ share the pushes, and no push starts both:
   child interpreter none of the job's environment, as it does locally; what
   the runner adds is a network, which the import and exercise checks do not
   depend on. Measured outside the image, from a pip-installed environment:
-  9 isolated in about 20 seconds.
+  9 isolated in about 20 seconds. Ten libraries since 2 Nov 2026, when the topology engine
+  joined.
 - **Not a required check.** `Architecture Guards` never runs on a pull
   request, so it must not be added to the ruleset (see
   [BRANCH_PROTECTION.md](BRANCH_PROTECTION.md)).
 - **GitLab is unchanged.** A merge request there reaches these checks only
-  when the commit is pushed to `github` too; D-5 stays open.
+  when the commit is pushed to `github` too; D-5 stays open. **Deferred** by the
+  project owner on 3 Nov 2026, with the findings golden replay of the final tree, as
+  follow-up hardening ([architecture README](../architecture/README.md) §7).
 
 ## Running them
 
@@ -86,7 +89,8 @@ python3 scripts/ci/select_tests.py --base origin/master   # what CI would select
 
 `local_guard_tests.sh` builds everything it uses and removes it on exit:
 
-- a copy of the tracked and untracked-but-not-ignored files, never `.env` or `backups/`;
+- a copy of the tracked and untracked-but-not-ignored files, never `.env` or `backups/`
+  (a tracked file deleted in the working tree is left out, since 2 Nov 2026);
 - a throwaway PostgreSQL and Redis on an internal Docker network;
 - credentials generated for that run.
 

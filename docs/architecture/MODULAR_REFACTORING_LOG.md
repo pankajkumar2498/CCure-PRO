@@ -4723,6 +4723,34 @@ remains (149) is lazy on purpose:**
 directions. `data/rbac/authorization_migration_inventory.json` was regenerated; only line numbers
 changed.
 
+### Milestone, 3 Nov 2026 — the work committed, and what is deferred
+
+The work of 30 Oct – 2 Nov 2026 (Group 7's passes, Group 4's completion, Group 3's topology
+split and the facade's removal) is seven commits on `refactor/modular-architecture`, each
+built and tested on its own tree, with its own baseline and RBAC inventory:
+
+| Commit    | Change                                                                                    | Full backend suite on that tree |
+| --------- | ----------------------------------------------------------------------------------------- | ------------------------------- |
+| `80f5643` | Capability ownership: owners' modules, the scan ports, the module registry capability     | 8,433 passed, 211 skipped       |
+| `6265b1b` | The findings writer and the asset registry as their rows' only writers                    | 8,458 passed, 211 skipped       |
+| `9c5dcb5` | Lazy cross-capability imports 348 → 149, ratcheted                                        | 8,459 passed, 211 skipped       |
+| `a53656e` | Web DAST and identity: the platform's WebSocket login, the limit port, self-check, reaper | 8,505 passed, 211 skipped       |
+| `054756f` | Topology: the engine computes; the asset registry and the topology store write            | 8,520 passed, 211 skipped       |
+| `ffb870b` | `core/tasks.py` removed; callers import from the owning modules                           | 8,532 passed, 211 skipped       |
+| `b00247d` | These records                                                                             | documents only                  |
+
+At `b00247d`: no capability cycle, no upward edge, no write to another capability's table,
+26 lateral edges, 23 references (reads), 146 lazy cross-capability imports, ten D1 libraries.
+The current architecture is described in [`README.md`](README.md) §3–8.
+
+**Deferred** by the project owner on 3 Nov 2026, as follow-up hardening:
+
+- GitLab CI enforcement (D-5, below);
+- the findings golden replay of the final tree on a restored database;
+- the `openapi-contract` hook's report while committing `a53656e`: it said it had modified a
+  file, yet the commit was made and nothing changed; the hook passes on that tree and at
+  `HEAD`.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |

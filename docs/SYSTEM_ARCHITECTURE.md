@@ -24,7 +24,7 @@ store and one RBAC model:
 
 A fifth capability, **network topology mapping**, is not a pipeline of its own —
 it is an optional Phase 4 chained onto any network scan when SNMP credentials
-are present in `scan.options` (`Backend/core/tasks.py::_chain_topology_if_needed`).
+are present in `scan.options` (`Backend/scans/tasks/topology.py::_chain_topology_if_needed`).
 
 ---
 
@@ -313,7 +313,13 @@ task twice, and a second "purge stale accounts" is not harmless.
 
 ### Task inventory
 
-**`core/tasks.py` — network + credentialed (queue `scanner` unless noted)**
+**`scans/tasks/` — network + credentialed (queue `scanner` unless noted)**
+
+One module per area — `phases`, `credentialed`, `topology`, `maintenance`, `schedules`,
+`reapers` — dispatched by registered name (`core/task_names.py`); the mail tasks are
+`ccure_platform/identity/mail_tasks.py`. The names keep their `ccure.tasks.` prefix.
+(`core/tasks.py`, which held them all until G1 and then re-exported them, was removed
+on 2 Nov 2026.)
 
 | Task name                                   | Function                          | Role                                      |
 | ------------------------------------------- | --------------------------------- | ----------------------------------------- | ----- | ------ | ------- | ------- |

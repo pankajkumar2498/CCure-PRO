@@ -15,8 +15,18 @@
 # module. `policy_pro`, `rank` and `ir` are reserved for the other three
 # modules, which will own tables in their own schemas.
 #
-# `capability` is the part of the module that owns the table, for the day a
-# capability is extracted or split; it is informational, not enforced.
+# `capability` is the part of the module that owns the table, and it is
+# enforced. scripts/architecture/capability_map.py reads it (the platform's
+# identity, tenancy, rbac, audit_log and notifications map to its `platform`
+# capability) and attributes every model class to the capability owning its
+# table. The capability ratchet then fails CI on a new write to another
+# capability's table (ceiling 0) or a new reference to one, and the
+# single-writer tests (tests/repo/test_findings_writer.py,
+# tests/repo/test_asset_registry_writes.py) read it to decide whose rows a
+# module may change. Each value must name a capability in
+# capability_map.CAPABILITIES (or one of the platform's five), and each entry
+# stays one flow mapping on one line: the map parses this file with a regular
+# expression, and tests/repo/test_capability_ratchet.py checks both.
 
 modules: [platform, audit, policy_pro, rank, ir]
 

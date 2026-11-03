@@ -30,6 +30,7 @@ from ccure_platform.rbac import contract as c
 from ccure_platform.rbac import engine, resolver
 from fastapi import HTTPException
 from sqlalchemy.orm import object_session
+import db.base as base
 
 logger = logging.getLogger("ccure.rbac.scope")
 
@@ -61,9 +62,8 @@ class _Session:
 
     def __enter__(self):
         if self.db is None:
-            from db.base import SessionLocal
 
-            self.db, self.own = SessionLocal(), True
+            self.db, self.own = base.SessionLocal(), True
         return self.db
 
     def __exit__(self, *exc):
@@ -125,9 +125,8 @@ def _audit(user, draft_builder) -> bool:
         if _audit_session is not None:
             emit(_audit_session, [draft_builder()], actor=user)
             return True
-        from db.base import SessionLocal
 
-        session = SessionLocal()
+        session = base.SessionLocal()
         try:
             actor = session.get(type(user), user.id)
             emit(session, [draft_builder()], actor=actor)

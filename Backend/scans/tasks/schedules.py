@@ -10,6 +10,9 @@ import logging
 from core.celery_app import celery_app
 from db.base import SessionLocal
 from sqlalchemy import text
+from core.scheduling.dispatcher import dispatch_schedule
+from core.scheduling.dispatcher import due_schedules
+from db.models.scan_schedules import RUN_STATUS_DISPATCHED
 
 log = logging.getLogger("ccure.tasks")
 
@@ -50,8 +53,6 @@ def run_due_scan_schedules() -> dict:
     Each schedule is committed independently. One tenant's broken schedule must
     not roll back another tenant's successful dispatch.
     """
-    from core.scheduling.dispatcher import due_schedules, dispatch_schedule
-    from db.models.scan_schedules import RUN_STATUS_DISPATCHED
 
     db = SessionLocal()
     dispatched = 0

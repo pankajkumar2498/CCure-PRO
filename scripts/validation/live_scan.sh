@@ -221,6 +221,7 @@ ENVS=(
   -e CCURE_LIVE_SCANNER_ADDRESS="$VALIDATION_SCANNER_ADDRESS"
   -e CCURE_LIVE_SSH_TARGET="$SSH_TARGET" -e CCURE_LIVE_PG_TARGET="$PG_TARGET"
   -e CCURE_LIVE_WEB_TARGET="$WEB_TARGET"
+  -e DEFAULT_ORG_NAME="Test Default Organisation" -e DEFAULT_ORG_SLUG=test-default
 )
 
 echo "bootstrapping the schema and catalogue"

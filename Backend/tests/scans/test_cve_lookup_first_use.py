@@ -104,7 +104,7 @@ def test_an_empty_query_builds_nothing(fresh, monkeypatch):
 
 
 def test_without_the_database_module_the_hint_table_answers(fresh, monkeypatch):
-    from core.constants import CVE_HINTS
+    from core.cve_hints import CVE_HINTS
 
     monkeypatch.setitem(sys.modules, "core.cve_database", None)  # ImportError
     key = next(iter(CVE_HINTS))

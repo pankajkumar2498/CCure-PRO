@@ -732,7 +732,7 @@ and arbitrary-file-read guard.
 looked up scoped to the resolved organization and its stored `port` is used.
 Targets are expanded with `ScanOrchestrator._expand_targets` **in the API**, so an
 unusable target set is rejected while the operator is still on the form. The host
-count is capped by `core.tasks.MAX_CREDENTIALED_TARGETS`. With exactly one target,
+count is capped by `scans.scan_creation.MAX_CREDENTIALED_TARGETS`. With exactly one target,
 `SSHScanner.test_connectivity(ip, port, timeout=5)` must succeed or the request is
 rejected; with several, unreachable hosts are recorded as failed hosts in the
 report instead of blocking the run. The scan row is created with
@@ -1111,7 +1111,7 @@ read-only catalogue.
 
 **There is deliberately no "run a configuration audit" endpoint.**
 Configuration checks run inside the credentialed scan, on the session the
-collectors already opened — `core.tasks.audit_credentialed_host`. A separate
+collectors already opened — `scans.tasks.credentialed.audit_credentialed_host`. A separate
 dispatch endpoint would be a second way to start a scan against a
 caller-named target, needing its own scope check, quota check, rate limit and
 audit entry, and it would produce a scan row Scan History and the reports

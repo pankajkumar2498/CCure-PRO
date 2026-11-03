@@ -76,6 +76,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
+from core.scan_policy import ResolvedPolicyError
+from core.scan_policy import resolve_policy
+from core.scan_scope import org_scan_scope
+from core.scan_targets import validate_scan_targets
 
 log = logging.getLogger("ccure.scan_schedules")
 
@@ -122,8 +126,6 @@ def _validate_policy(
     """
     if not policy_id:
         return
-
-    from core.scan_policy import ResolvedPolicyError, resolve_policy
 
     try:
         resolve_policy(
@@ -431,12 +433,10 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
     schedule is written — but rejecting an unusable target here means the user
     finds out while the form is open rather than from a failed run tomorrow.
     """
-    from core.scan_targets import validate_scan_targets
 
     cleaned = [str(t).strip() for t in (targets or []) if str(t or "").strip()]
     if not cleaned:
         raise HTTPException(status_code=400, detail="At least one target is required.")
-    from core.scan_scope import org_scan_scope
 
     return validate_scan_targets(cleaned, scope=org_scan_scope(db, org_id))
 

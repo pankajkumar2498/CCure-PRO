@@ -79,7 +79,6 @@ _CORE_GROUPS = {
     "core.scanctl": {"scan_control", "scan_scope", "risk"},
     "core.vulnintel": {"cve_database", "vuln_intel"},
     "core.email_security": {"email_security_tasks"},
-    "core.tasks": {"tasks"},
 }
 _CORE_LOOKUP = {name: group for group, names in _CORE_GROUPS.items() for name in names}
 

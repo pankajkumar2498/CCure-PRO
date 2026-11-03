@@ -114,6 +114,10 @@ jobs:
           pip install "pytest==7.4.4"
 
       - name: Bootstrap Database Schema & Seeding
+        # The initializer creates the default organisation only from these.
+        env:
+          DEFAULT_ORG_NAME: Test Default Organisation
+          DEFAULT_ORG_SLUG: test-default
         run: |
           cd Backend
           python db/migrate_production_schema.py

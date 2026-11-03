@@ -14,7 +14,8 @@ ceiling, and a test fails on anything outside it):
 
 * **Request identity** — ``current_user``, ``current_user_flexible``: the FastAPI
   dependencies routes already use, re-exported unchanged. They hand a route the ORM
-  ``User``. ``CurrentUser`` (step 8.5) is the name a route annotates that parameter with.
+  ``User``. ``websocket_user`` is a WebSocket's ticket login: the account, or None
+  for the route to close the connection. ``CurrentUser`` (step 8.5) is the name a route annotates that parameter with.
 * **Authorization (RBAC-8, final)** — ``require_authorized(key)`` and
   ``has_permission(db, account, key, org_id=)``: the Platform RBAC engine is the **only**
   authorization decision point. A route names the permission key it enforces
@@ -58,6 +59,7 @@ from ccure_platform.organisation_settings.scan_scope import ScanScopeView, scan_
 from ccure_platform.identity.dependencies import (
     get_current_user_flexible as current_user_flexible,
 )
+from ccure_platform.identity.dependencies import get_websocket_user as websocket_user
 from ccure_platform.accounts import (
     UserView,
     users_holding_permission,
@@ -108,6 +110,7 @@ __all__ = (
     "CurrentUser",
     "current_user",
     "current_user_flexible",
+    "websocket_user",
     # RBAC-4: permission-key guards that replaced role-name checks
     "require_authorized",
     "has_permission",

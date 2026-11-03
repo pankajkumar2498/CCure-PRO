@@ -72,7 +72,7 @@ from core.scan_policy.spec import (
 from core.scan_policy.validation import validate_policy
 from db.base import gen_org_token, get_db
 from ccure_platform import api as platform_api
-from db.models import ScanSchedule
+from core.scan_policy.schedule_references import schedule_count, schedules_using
 from db.models.scan_policies import (
     POLICY_STATUS_ACTIVE,
     POLICY_STATUS_ARCHIVED,
@@ -84,6 +84,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
+from db.base import _rand
 
 log = logging.getLogger("ccure.scan_policies")
 
@@ -123,7 +124,6 @@ def _get_policy(db: Session, policy_id: str, org_id: str) -> ScanPolicy:
 
 def _gen_policy_id(org_slug: str) -> str:
     """``spol_{org_token}_{rand}`` — the shape every other id in this schema has."""
-    from db.base import _rand
 
     return f"spol_{gen_org_token(org_slug)}_{_rand()}"
 
@@ -198,11 +198,7 @@ def _serialize(policy: ScanPolicy, db: Optional[Session] = None) -> Dict[str, An
         "updated_at": policy.updated_at.isoformat() if policy.updated_at else None,
     }
     if db is not None:
-        payload["schedule_count"] = (
-            db.query(ScanSchedule.id)
-            .filter(ScanSchedule.policy_id == policy.id)
-            .count()
-        )
+        payload["schedule_count"] = schedule_count(db, policy.id)
     return payload
 
 
@@ -566,15 +562,7 @@ def enable_policy(
     policy = _get_policy(db, policy_id, resolved_org)
     policy.is_enabled = bool(body.is_enabled)
 
-    affected = (
-        db.query(ScanSchedule)
-        .filter(
-            ScanSchedule.policy_id == policy.id,
-            ScanSchedule.org_id == resolved_org,
-            ScanSchedule.is_enabled.is_(True),
-        )
-        .all()
-    )
+    affected = schedules_using(db, resolved_org, policy.id, enabled_only=True)
 
     _audit_policy_change(
         db,
@@ -633,15 +621,7 @@ def set_policy_status(
         )
 
     if body.status == POLICY_STATUS_ARCHIVED:
-        blocking = (
-            db.query(ScanSchedule)
-            .filter(
-                ScanSchedule.policy_id == policy.id,
-                ScanSchedule.org_id == resolved_org,
-                ScanSchedule.is_enabled.is_(True),
-            )
-            .all()
-        )
+        blocking = schedules_using(db, resolved_org, policy.id, enabled_only=True)
         if blocking:
             # Refused rather than cascaded. Archiving here would leave enabled
             # schedules failing every night with an error about a policy nobody
@@ -738,14 +718,7 @@ def new_policy_version(
     if body.activate:
         current.status = POLICY_STATUS_ARCHIVED
 
-    schedules = (
-        db.query(ScanSchedule)
-        .filter(
-            ScanSchedule.policy_id == current.id,
-            ScanSchedule.org_id == resolved_org,
-        )
-        .all()
-    )
+    schedules = schedules_using(db, resolved_org, current.id)
 
     _audit_policy_change(
         db,
@@ -791,26 +764,13 @@ def policy_usage(
     from ``scans.options``, not a join — the snapshot is the record and a scan
     keeps it after the policy is deleted.
     """
-    from db.models.scans import Scan
+    from core.scan_policy.scan_usage import scans_recorded_under
 
     resolved_org = _resolve_org(user, org_id)
     policy = _get_policy(db, policy_id, resolved_org)
 
-    schedules = (
-        db.query(ScanSchedule)
-        .filter(
-            ScanSchedule.policy_id == policy.id, ScanSchedule.org_id == resolved_org
-        )
-        .all()
-    )
-    scan_count = (
-        db.query(Scan.id)
-        .filter(
-            Scan.org_id == resolved_org,
-            Scan.options["scan_policy"]["policy_id"].astext == str(policy.id),
-        )
-        .count()
-    )
+    schedules = schedules_using(db, resolved_org, policy.id)
+    scan_count = scans_recorded_under(db, resolved_org, policy.id)
     return {
         "policy_id": policy.id,
         "use_count": policy.use_count,
@@ -850,13 +810,7 @@ def delete_policy(
     resolved_org = _resolve_org(user, org_id)
     policy = _get_policy(db, policy_id, resolved_org)
 
-    schedules = (
-        db.query(ScanSchedule)
-        .filter(
-            ScanSchedule.policy_id == policy.id, ScanSchedule.org_id == resolved_org
-        )
-        .all()
-    )
+    schedules = schedules_using(db, resolved_org, policy.id)
     if schedules and not force:
         raise HTTPException(
             status_code=409,

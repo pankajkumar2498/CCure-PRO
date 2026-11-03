@@ -84,6 +84,7 @@ from scans.finding_normalizer import (
     group_findings_for_report,
     upgrade_target,
 )
+from core.checks.endpoint_evidence import render_observations
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Palette
@@ -2410,7 +2411,6 @@ def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     # merely restated Port / Service / Product / Version, all four of which are
     # already in the metadata grid a few lines above.
     if finding.endpoint_observations and finding.evidence_available:
-        from core.checks.endpoint_evidence import render_observations
 
         for observation in finding.endpoint_observations:
             # Separate flowables preserve every endpoint and allow page breaks.

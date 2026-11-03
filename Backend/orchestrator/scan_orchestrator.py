@@ -47,6 +47,14 @@ from engines.port.port_engine import (
 )
 from engines.vulnerability.vulnerability_engine import VulnerabilityEngine
 from scans.finding_normalizer import version_precision
+from config import AppConfig
+from core.checks.plugin_outcomes import coverage_summary
+from core.device_classifier import classify_device
+from core.nmap.wrapper import NMAP_AVAILABLE
+from core.nmap.wrapper import NmapScanner
+from core.scan_scope import filter_to_scope
+from core.scan_scope import scope_for_org
+import core.discovery.enrichment as enrichment
 
 if PDF_AVAILABLE:
     from reporting.pdf_generator import ScanReportGenerator
@@ -685,7 +693,6 @@ class ScanOrchestrator:
         parsed_custom_ports = None
         if custom_ports:
             try:
-                from core.utils import InputValidator
 
                 parsed_custom_ports = InputValidator.parse_custom_ports(custom_ports)
             except ValueError as e:
@@ -694,7 +701,6 @@ class ScanOrchestrator:
         parsed_exclude_ports = None
         if exclude_ports:
             try:
-                from core.utils import InputValidator
 
                 parsed_exclude_ports = InputValidator.parse_exclude_ports(exclude_ports)
             except ValueError as e:
@@ -963,7 +969,6 @@ class ScanOrchestrator:
             "candidate_searches": searches_run(formatted),
             "candidate_searches_truncated": truncated_searches(formatted),
         }
-        from core.checks.plugin_outcomes import coverage_summary
 
         summary["network_plugin_coverage"] = coverage_summary(formatted)
         return {
@@ -995,7 +1000,6 @@ class ScanOrchestrator:
 
         If Nmap fails or is unavailable, the host data from Phase 2 is used as-is.
         """
-        from core.nmap.wrapper import NMAP_AVAILABLE, NmapScanner
 
         if not NMAP_AVAILABLE:
             return
@@ -1141,7 +1145,6 @@ class ScanOrchestrator:
     def apply_scan_scope(self, scope) -> None:
         """Bind this run to an organisation's authorised scan scope (a
         ``ScanScopeView`` from core.scan_scope.org_scan_scope, or None)."""
-        from core.scan_scope import scope_for_org
 
         self.scan_scope = scope_for_org(scope)
 
@@ -1157,7 +1160,6 @@ class ScanOrchestrator:
         """
         if self.scan_scope is None:
             return ips
-        from core.scan_scope import filter_to_scope
 
         allowed, denied = filter_to_scope(ips, self.scan_scope)
         if denied:
@@ -1171,8 +1173,6 @@ class ScanOrchestrator:
     @staticmethod
     def _is_blacklisted(ip: str, custom_exclude_list: list | None = None) -> bool:
         import ipaddress
-
-        from config import AppConfig
 
         try:
             ip_obj = ipaddress.ip_address(ip)
@@ -1437,9 +1437,6 @@ class ScanOrchestrator:
     def _apply_os_inference(hosts: list[dict], ot_enrichment: bool = False) -> None:
         from concurrent.futures import ThreadPoolExecutor
 
-        from core.device_classifier import classify_device
-        from core.discovery.enrichment import _ot_protocol_probes
-
         active_hosts = [h for h in hosts if h.get("is_active")]
         if active_hosts and ot_enrichment:
 
@@ -1447,7 +1444,7 @@ class ScanOrchestrator:
                 ip = host.get("ip_address") or host.get("ip")
                 if ip:
                     try:
-                        _ot_protocol_probes(ip, host)
+                        enrichment._ot_protocol_probes(ip, host)
                     except Exception:
                         pass
 

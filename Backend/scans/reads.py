@@ -159,3 +159,27 @@ def scan_by_id(db: Session, scan_id: str) -> Scan | None:
     """The scan record, or None (G3: the topology API reads it through the
     topology directory, to check who may see the scan's map)."""
     return db.query(Scan).filter(Scan.id == scan_id).first()
+
+
+def pipeline_modes(db: Session, scan_ids) -> dict:
+    """``{scan_id: pipeline_mode}`` for the scans among *scan_ids* that exist
+    (the asset timeline labels its groups with them, ``core.asset_scans``)."""
+    ids = list(scan_ids)
+    if not ids:
+        return {}
+    rows = db.query(Scan.id, Scan.pipeline_mode).filter(Scan.id.in_(ids)).all()
+    return {row.id: row.pipeline_mode for row in rows}
+
+
+def scans_recorded_under(db: Session, org_id: str, policy_id: str) -> int:
+    """Scans of the organisation whose snapshot names the policy id, read from
+    ``scans.options``, not a join: the snapshot is the record and a scan keeps
+    it after the policy is deleted (``core.scan_policy.scan_usage``)."""
+    return (
+        db.query(Scan.id)
+        .filter(
+            Scan.org_id == org_id,
+            Scan.options["scan_policy"]["policy_id"].astext == str(policy_id),
+        )
+        .count()
+    )

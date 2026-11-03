@@ -83,7 +83,7 @@ if str(_BACKEND) not in sys.path:
 import psycopg2  # noqa: E402
 from psycopg2.extras import execute_values  # noqa: E402
 
-from config import AppConfig  # noqa: E402
+from config import AppConfig, VulnIntelConfig  # noqa: E402
 
 log = logging.getLogger("ccure.vuln.osv")
 
@@ -632,7 +632,8 @@ def sync_ecosystem(conn, archive: Path, ecosystem: str, include_git: bool) -> di
 
 
 def _connect():
-    url = AppConfig.VULN_DB_URL
+    # Refuses with the missing setting's name rather than connecting without it.
+    url = VulnIntelConfig.require_database_url()
     # AppConfig hands out a SQLAlchemy URL; psycopg2 wants a libpq one.
     return psycopg2.connect(url.replace("postgresql+psycopg2://", "postgresql://"))
 

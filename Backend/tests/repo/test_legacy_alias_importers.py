@@ -42,12 +42,11 @@ ALLOWED: dict[str, set[str]] = {
     # the composition root creates the email-screening tables at start-up;
     # the module moved into ccure_platform.models in B8
     "db.models.email_security": {"main.py"},
-    # the two WebSocket ticket logins decode a token (identity_boundary
-    # KNOWN_IDENTITY_IMPORTS, Phase 10) and the root decodes the same way
-    "auth.jwt_handler": {"main.py", "routers/scan_history.py", "routers/web_scans.py"},
-    # the scan tasks' compatibility facade re-exports the mail tasks so
-    # `core.tasks.send_*` resolves
-    "auth.mail_tasks": {"core/tasks.py"},
+    # the root hands the any-kind decoder to the rate-limit audit; both
+    # WebSocket logins ask ccure_platform.api.websocket_user (2 Nov 2026)
+    "auth.jwt_handler": {"main.py"},
+    # auth.mail_tasks had one importer, the core.tasks facade, removed on
+    # 2 Nov 2026
 }
 
 

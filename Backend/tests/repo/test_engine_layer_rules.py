@@ -42,10 +42,13 @@ def test_the_scan_engines_load_no_forbidden_package(measurement):
         assert entry in cm.ENTRY_POINTS
 
 
-def test_the_topology_engine_is_not_pinned_yet():
-    """It persists its own links through SQLAlchemy; pinning it would fail,
-    and nothing exempts it (the log's Group 3 records why)."""
-    assert "core.topology.engine" not in cm.PINNED_ENGINES
+def test_the_topology_engine_is_a_library():
+    """It persisted its own links through SQLAlchemy until 2 Nov 2026; its
+    writes go to its directory now, and it is pinned as a D1 library."""
+    from scripts.architecture.library_isolation import LIBRARIES
+
+    assert LIBRARIES["topology"].entry_points == ("core.topology.engine",)
+    assert "core.topology.engine" in cm.ENTRY_POINTS
 
 
 def test_the_measured_boundaries_moved_where_g3_put_them():

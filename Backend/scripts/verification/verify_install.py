@@ -44,7 +44,7 @@ print("=" * 60 + "\n")
 # -- Layer 1: core --
 check(
     "core.constants imports",
-    lambda: __import__("core.constants", fromlist=["CVE_HINTS", "PORT_DB"]),
+    lambda: __import__("core.constants", fromlist=["PORT_DB"]),
 )
 
 check(

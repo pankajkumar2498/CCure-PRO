@@ -28,6 +28,7 @@ DENY rules is a different power and lives here.
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "routers.admin_email_domains")
+from config import AppConfig
 
 
 import logging
@@ -219,7 +220,6 @@ def rule_stats(
     blocklist that did not load is a worse outage than the abuse it prevents —
     which means an empty corpus is silent. This is where that becomes visible.
     """
-    from config import AppConfig
 
     corpus = db.query(DisposableDomain).count()
     newest = db.query(func.max(DisposableDomain.last_seen_at)).scalar()

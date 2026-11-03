@@ -20,7 +20,7 @@ from ccure_platform.identity.tokens import (
 )
 from db.base import get_db
 from ccure_platform.models import User
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session, joinedload
 
@@ -169,3 +169,32 @@ def get_current_user_flexible(
 
     payload = _decode_access_payload(final_token)
     return _load_auth_context_from_payload(payload, db).user
+
+
+def get_websocket_user(
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """
+    The account a WebSocket's ``ticket`` query parameter signs in, or None.
+
+    A WebSocket cannot be answered 401: a route handed None closes the
+    connection (1008) without accepting it. The ticket must be a valid
+    ``ticket``-kind token naming an account that exists and is neither deleted
+    nor inactive. The account is loaded in the request's session, so a host
+    overriding ``get_db`` (or this dependency) supplies both.
+    """
+    ticket = websocket.query_params.get("ticket")
+    if not ticket:
+        return None
+    payload = verify(
+        ticket, expected_kind=TICKET, issuer=ISSUER, audience=USER_AUDIENCE
+    )
+    if not payload or not payload.get("sub"):
+        return None
+    user = db.query(User).filter(User.id == str(payload["sub"])).first()
+    if not user:
+        return None
+    if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
+        return None
+    return user

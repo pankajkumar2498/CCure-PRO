@@ -11,6 +11,7 @@ import os
 from core import task_names
 from core.celery_app import celery_app
 from db.base import SessionLocal
+from core.remediation import expire_due_exceptions
 
 log = logging.getLogger("ccure.tasks")
 
@@ -39,7 +40,6 @@ def expire_risk_acceptances() -> dict:
     reason and the date it lapsed, so the trail shows what the acceptance was
     for and that it ended on its own rather than being withdrawn.
     """
-    from core.remediation import expire_due_exceptions
 
     db = SessionLocal()
     try:

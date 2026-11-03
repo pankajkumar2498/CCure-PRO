@@ -73,6 +73,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
+from core.scan_scope import ScanScopeError
+from core.scan_scope import enforce_org_scan_scope
+from core.scan_scope import org_scan_scope
+from engines.credentialed.database_executor import available_engines
 
 log = logging.getLogger("ccure.credentials")
 
@@ -90,7 +94,6 @@ _database_default_port = credential_vault.database_default_port
 
 def _database_drivers() -> Dict[str, bool]:
     """Which database engines this build has a driver for."""
-    from engines.credentialed.database_executor import available_engines
 
     return available_engines()
 
@@ -512,7 +515,6 @@ def validate_credential(
     address — otherwise it is a way to make this host try credentials against
     anything on the network.
     """
-    from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
     org = _resolve_org(user, org_id)
     cred = _get(db, credential_id, org)

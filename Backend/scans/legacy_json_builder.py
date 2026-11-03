@@ -16,6 +16,7 @@ from db.models.findings import AssetVulnerability, Service, VulnerabilityDefinit
 from db.models.scans import Scan, ScanPhase
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from core.vuln_intel import get_vuln_engine
 
 BACKEND_DIR = Path(__file__).absolute().parents[1]
 
@@ -380,7 +381,6 @@ def _load_threat_intel(db: Session, cve_ids: set[str]) -> dict[str, dict]:
     # database, not the application database, so the lookup runs against that
     # engine. If it is not configured the report simply omits these columns
     # rather than showing a default that could be mistaken for real data.
-    from core.vuln_intel import get_vuln_engine
 
     engine = get_vuln_engine()
     if engine is None:

@@ -47,6 +47,7 @@ from __future__ import annotations
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "auth.email_domain_guard")
+from config import AppConfig
 
 import logging
 import threading
@@ -319,7 +320,6 @@ class _RuleCache:
             self._loaded_at = 0.0
 
     def get(self, db) -> tuple[frozenset[str], frozenset[str], frozenset[str], bool]:
-        from config import AppConfig
 
         ttl = AppConfig.EMAIL_DOMAIN_CACHE_TTL_SECONDS
         now = time.monotonic()
@@ -459,7 +459,6 @@ def _name_flags(domain: str) -> list[str]:
 
 
 def current_mode() -> str:
-    from config import AppConfig
 
     mode = (AppConfig.EMAIL_DOMAIN_GUARD_MODE or MODE_ENFORCE).strip().lower()
     if mode not in (MODE_OFF, MODE_FLAG, MODE_ENFORCE):

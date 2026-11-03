@@ -34,6 +34,14 @@ from scans.report_inputs import with_report_inputs
 from scans.legacy_json_builder import build_legacy_scan_results
 from scans.scan_access import report_scan_or_404
 from sqlalchemy.orm import Session
+from core.findings import compare_scans
+from core.findings.comparison import previous_scan_for
+from reporting.csv_generator import generate_host_inventory_csv
+from reporting.csv_generator import generate_scan_csv
+from reporting.csv_generator import scan_has_findings
+from reporting.xlsx_generator import XlsxUnavailable
+from reporting.xlsx_generator import write_workbook
+import core.vuln_intel as vuln_intel
 
 # The logger scan_helpers named, so the lines this module writes are unchanged.
 log = logging.getLogger("ccure.api")
@@ -162,9 +170,8 @@ def _load_scan_report_paths(db: Session, scan: Any) -> dict:
     # the report states the feed date instead of implying it is current.
     feed = {}
     try:
-        from core.vuln_intel import get_feed_freshness
 
-        freshness = get_feed_freshness()
+        freshness = vuln_intel.get_feed_freshness()
         if freshness.get("last_modified"):
             feed["cve_feed_updated"] = freshness["last_modified"]
         if freshness.get("cve_count"):
@@ -485,11 +492,6 @@ def download_report(
         _attach_asset_lifecycle_dates(db, scan, payload)
         csv_filename = f"scan_{scan.scan_no}_{scan_id[:8]}.csv"
         csv_path = os.path.join(_REPORTS_DIR, csv_filename)
-        from reporting.csv_generator import (
-            generate_host_inventory_csv,
-            generate_scan_csv,
-            scan_has_findings,
-        )
 
         # Host discovery produces hosts and no findings by design. Running the
         # findings exporter over it wrote a header row and nothing else, so the
@@ -638,8 +640,6 @@ def _comparison_for(
     that dropped every finding after the five-hundredth would be the silent
     truncation the reconciliation requirement exists to catch.
     """
-    from core.findings import compare_scans
-    from core.findings.comparison import previous_scan_for
 
     if baseline_id:
         if user is None:
@@ -672,7 +672,6 @@ def _build_scan_workbook(
     losing those to a comparison failure would be the worse outcome.
     """
     from reporting.exports import export_payload, workbook_sheets
-    from reporting.xlsx_generator import XlsxUnavailable, write_workbook
 
     try:
         comparison = _comparison_for(db, scan, None, user)
@@ -881,8 +880,6 @@ def export_scan_dataset(
             for row in block["rows"]:
                 writer.writerow(_csv_safe(cell) for cell in row)
         return FileResponse(path=path, media_type="text/csv", filename=filename)
-
-    from reporting.xlsx_generator import XlsxUnavailable, write_workbook
 
     filename = f"{stem}.xlsx"
     path = os.path.join(_REPORTS_DIR, filename)

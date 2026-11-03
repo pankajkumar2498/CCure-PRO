@@ -15,8 +15,18 @@ Pipeline:
   4. Anchor those identities on inventory, so one device observed under two
      identifiers becomes one node.
   5. Merge observations of the same adjacency, keeping the strongest evidence.
-  6. Upsert links in canonical orientation, in one transaction, enrolling
-     assets for LLDP/CDP neighbours inventory has not seen.
+  6. Plan the links in canonical orientation, enrolling assets for LLDP/CDP
+     neighbours inventory has not seen, and hand the plan to the directory,
+     which writes it in one transaction.
+
+The engine computes on plain values and writes nothing itself (2 Nov 2026).
+Assets arrive as ``AssetRecord``s and stored links as ``StoredLink``s; what a
+run decides to write — enrolments, the gaps it filled on assets, the links —
+goes over as one ``TopologyPlan``. The asset registry writes the assets and
+the topology store (``core/topology/links.py``) the links, in its transaction;
+Audit's composition root registers both (``core/topology/directory.py``). So
+the engine loads no SQLAlchemy, no model and no settings, and the ``db`` its
+two entry points take is only passed to the directory.
 
 Design decisions:
   - Endpoint identity is computed once, at the walk boundary. An LLDP chassis
@@ -54,10 +64,13 @@ from core.topology.identity import (
     make_endpoint,
     normalize_mac,
 )
-from db.base import gen_asset_id, gen_network_link_id, utcnow
-from core.topology.directory import directory
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from core.topology.directory import (
+    AssetRecord,
+    StoredLink,
+    TopologyPlan,
+    directory,
+)
+from db.ids import gen_asset_id, gen_network_link_id
 
 log = logging.getLogger("ccure.topology.engine")
 
@@ -65,9 +78,6 @@ log = logging.getLogger("ccure.topology.engine")
 #: idle-waiting, so this is I/O bound; the ceiling exists to avoid flooding
 #: small network gear with simultaneous sessions.
 SNMP_WALK_CONCURRENCY = int(os.getenv("CCURE_SNMP_WALK_CONCURRENCY", "8"))
-
-#: Postgres caps bind parameters per statement; IN-lists are chunked to fit.
-_ID_CHUNK = 500
 
 #: Relative strength of each discovery protocol as evidence of adjacency.
 #: LLDP, CDP and EDP all describe a physical wire and rank together; ARP proves
@@ -562,9 +572,12 @@ class AssetIndex:
     MACADDR column.
     """
 
-    def __init__(self, db: Session, org_id: str):
+    def __init__(self, db: Any, org_id: str):
         self.db = db
         self.org_id = org_id
+        #: Every asset the run holds, by id: one record per asset, as the
+        #: session's identity map kept one row per asset when they were rows.
+        self.by_id: dict[str, Any] = {}
         self.by_mac: dict[str, Any] = {}
         self.by_ip: dict[str, Any] = {}
         self.by_hostname: dict[str, Any] = {}
@@ -572,6 +585,10 @@ class AssetIndex:
         #: across an estate identifies nothing, so it must never resolve.
         self._ambiguous_hostnames: set[str] = set()
         self.created: list[Any] = []
+        #: What this run writes about assets, for its plan: the fields of each
+        #: asset it enrols, and the gaps it filled (asset id → field → value).
+        self.enrolments: list[dict] = []
+        self.changes: dict[str, dict[str, Any]] = {}
         #: endpoint key → asset-anchored identity, memoised because an FDB walk
         #: can present the same endpoint thousands of times.
         self._canonical_cache: dict[str, Endpoint] = {}
@@ -579,8 +596,14 @@ class AssetIndex:
         for asset in directory().organisation_assets(db, org_id):
             self.register(asset)
 
+    def fill(self, asset: AssetRecord, name: str, value: Any) -> None:
+        """Fill a gap on an asset, and record it for the plan."""
+        setattr(asset, name, value)
+        self.changes.setdefault(asset.id, {})[name] = value
+
     def register(self, asset: Any) -> None:
         """Index an asset under every identifier it carries."""
+        self.by_id.setdefault(asset.id, asset)
         mac = normalize_mac(asset.mac_address)
         if mac:
             self.by_mac.setdefault(mac, asset)
@@ -660,26 +683,32 @@ class AssetIndex:
             return None
 
         asset_id = gen_asset_id(self.org_id, seed)
-        existing = directory().asset(self.db, asset_id)
+        existing = self.by_id.get(asset_id)
+        if existing is None:
+            existing = directory().asset(self.db, asset_id)
         if existing is not None:
             self.register(existing)
             self._enrich(existing, endpoint, device_category)
             return existing
 
-        now = utcnow()
-        # Flushed by the directory, so the PK is available for the link's FK.
-        asset = directory().enrol(
-            self.db,
+        # Enrolled when the plan is written, before the links that need its key;
+        # the writer stamps it.
+        fields = {
+            "id": asset_id,
+            "org_id": self.org_id,
+            "ip_address": endpoint.ip,
+            "mac_address": endpoint.mac,
+            "hostname": endpoint.name or None,
+            "device_category": device_category,
+            "discovery_method": "topology",
+        }
+        self.enrolments.append(fields)
+        asset = AssetRecord(
             id=asset_id,
-            org_id=self.org_id,
-            ip_address=endpoint.ip,
-            mac_address=endpoint.mac,
-            hostname=endpoint.name or None,
+            ip_address=fields["ip_address"],
+            mac_address=fields["mac_address"],
+            hostname=fields["hostname"],
             device_category=device_category,
-            discovery_method="topology",
-            last_seen_at=now,
-            created_at=now,
-            updated_at=now,
         )
         self.register(asset)
         self.created.append(asset)
@@ -723,16 +752,16 @@ class AssetIndex:
     ) -> None:
         """Fill gaps on an existing asset without overwriting better data."""
         if not asset.mac_address and endpoint.mac:
-            asset.mac_address = endpoint.mac
+            self.fill(asset, "mac_address", endpoint.mac)
             self.by_mac.setdefault(endpoint.mac, asset)
         if not asset.hostname and endpoint.name:
-            asset.hostname = endpoint.name
+            self.fill(asset, "hostname", endpoint.name)
             self.by_hostname.setdefault(endpoint.name.lower(), asset)
         current = (asset.device_category or "").lower()
         # An inventory category that says something specific — "printer",
         # "server" — outranks anything topology can infer.
         if device_category and current in _GENERIC_CATEGORIES:
-            asset.device_category = device_category
+            self.fill(asset, "device_category", device_category)
 
 
 # ─── Mapping run ─────────────────────────────────────────────────────────────
@@ -759,7 +788,7 @@ def _register_walked_target(index: AssetIndex, ip: str, walk) -> Endpoint:
         return seed
 
     if sys_name and not asset.hostname:
-        asset.hostname = sys_name
+        index.fill(asset, "hostname", sys_name)
 
     return index.canonical(seed)
 
@@ -838,7 +867,7 @@ def _walk_targets(target_ips: list[str], creds) -> tuple[dict, list[str]]:
 
 
 def run_topology_mapping(
-    db: Session,
+    db: Any,
     scan_id: str,
     org_id: str,
     snmp_config: dict,
@@ -850,7 +879,8 @@ def run_topology_mapping(
     Execute the full topology mapping pipeline.
 
     Args:
-        db: SQLAlchemy session.
+        db: What the directory reads and writes with (a SQLAlchemy session,
+            in Audit); the engine only passes it along.
         scan_id: The scan that triggered this mapping.
         org_id: Organization ID (for scoping).
         snmp_config: SNMP credentials dict from scan.options["snmp"].
@@ -918,7 +948,14 @@ def run_topology_mapping(
         len(observations),
     )
 
-    created, updated = _persist_links(db, org_id, scan_id, merged, index)
+    plan = TopologyPlan(
+        enrolments=index.enrolments,
+        asset_changes=index.changes,
+        links=plan_links(org_id, scan_id, merged, index),
+    )
+    created, updated = directory().record_topology(
+        db, org_id=org_id, scan_id=scan_id, plan=plan
+    )
 
     log.info(
         "Topology mapping complete for scan=%s: %d created, %d updated, "
@@ -941,66 +978,45 @@ def run_topology_mapping(
     }
 
 
-def _persist_links(
-    db: Session,
+def plan_links(
     org_id: str,
     scan_id: str,
     merged: dict[str, MergedLink],
     index: AssetIndex,
-) -> tuple[int, int]:
+) -> list[dict]:
     """
-    Upsert merged links, resolving both endpoints to assets.
+    The values of each link row to upsert, resolving both endpoints to assets.
 
-    Runs as one transaction: a partially written topology is worse than none,
-    because the map cannot tell the difference between "not adjacent" and
-    "not written yet".
+    Infrastructure links enrol the neighbours inventory lacks, into the index's
+    plan; the directory writes the rows, after the assets they reference, in
+    one transaction.
     """
-    from db.models import NetworkLink
+    rows: list[dict] = []
+    for link in merged.values():
+        source, target, source_side, target_side = link.oriented()
 
-    if not merged:
-        db.commit()
-        return 0, 0
+        if link.is_infrastructure_link:
+            # LLDP/CDP neighbours are network devices the scan proved exist;
+            # enrol the ones inventory has not seen so the map is complete.
+            source_asset = index.get_or_create(
+                source, classify_neighbor_category(source.name)
+            )
+            target_asset = index.get_or_create(
+                target, classify_neighbor_category(target.name)
+            )
+        else:
+            source_asset = index.resolve(source)
+            target_asset = index.resolve(target)
 
-    link_ids = list(merged.keys())
-    existing_ids: set[str] = set()
-    for start in range(0, len(link_ids), _ID_CHUNK):
-        chunk = link_ids[start : start + _ID_CHUNK]
-        existing_ids.update(
-            row[0]
-            for row in db.query(NetworkLink.id)
-            .filter(NetworkLink.org_id == org_id, NetworkLink.id.in_(chunk))
-            .all()
-        )
+        vlan_id = _valid_vlan(link.vlan_id)
+        # Record the VLAN on the endpoint that sits in it. The source side
+        # of an ARP/FDB link is the reporting switch, whose own VLAN this
+        # is not.
+        if vlan_id and target_asset is not None and not target_asset.vlan_id:
+            index.fill(target_asset, "vlan_id", vlan_id)
 
-    created = 0
-    updated = 0
-    now = utcnow()
-
-    try:
-        for link in merged.values():
-            source, target, source_side, target_side = link.oriented()
-
-            if link.is_infrastructure_link:
-                # LLDP/CDP neighbours are network devices the scan proved exist;
-                # enrol the ones inventory has not seen so the map is complete.
-                source_asset = index.get_or_create(
-                    source, classify_neighbor_category(source.name)
-                )
-                target_asset = index.get_or_create(
-                    target, classify_neighbor_category(target.name)
-                )
-            else:
-                source_asset = index.resolve(source)
-                target_asset = index.resolve(target)
-
-            vlan_id = _valid_vlan(link.vlan_id)
-            # Record the VLAN on the endpoint that sits in it. The source side
-            # of an ARP/FDB link is the reporting switch, whose own VLAN this
-            # is not.
-            if vlan_id and target_asset is not None and not target_asset.vlan_id:
-                target_asset.vlan_id = vlan_id
-
-            values = {
+        rows.append(
+            {
                 "id": link.link_id,
                 "org_id": org_id,
                 "scan_id": scan_id,
@@ -1020,37 +1036,9 @@ def _persist_links(
                 "speed_bps": link.speed_bps,
                 "link_type": link.link_type,
                 "observed_types": ",".join(sorted(link.observed_types)),
-                "first_seen_at": now,
-                "last_seen_at": now,
-                "created_at": now,
             }
-
-            stmt = insert(NetworkLink).values(**values)
-            # Endpoints are part of the conflict target's identity, but they are
-            # still refreshed: a device that gains a MAC between scans must have
-            # it recorded, and first_seen_at must survive.
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["id"],
-                set_={
-                    key: values[key]
-                    for key in values
-                    if key not in ("id", "org_id", "first_seen_at", "created_at")
-                },
-            )
-            db.execute(stmt)
-
-            if link.link_id in existing_ids:
-                updated += 1
-            else:
-                created += 1
-
-        db.commit()
-    except Exception:
-        db.rollback()
-        log.exception("Topology persistence failed for scan %s; rolled back", scan_id)
-        raise
-
-    return created, updated
+        )
+    return rows
 
 
 # ─── Graph rendering ─────────────────────────────────────────────────────────
@@ -1073,7 +1061,7 @@ class _GraphNode:
 
 
 def get_topology_graph(
-    db: Session,
+    db: Any,
     org_id: str,
     scan_id: str | None = None,
     subnet_mask: int = 24,
@@ -1090,27 +1078,20 @@ def get_topology_graph(
     an org-wide map is the union of every link ever recorded — including
     decommissioned hosts — which is history, not topology.
     """
+    links = directory().stored_links(
+        db,
+        org_id=org_id,
+        scan_id=scan_id,
+        active_within_days=active_within_days,
+    )
+    return build_topology_graph(links, subnet_mask=subnet_mask)
+
+
+def build_topology_graph(links: list[StoredLink], subnet_mask: int = 24) -> dict:
+    """The graph of these stored links: :func:`get_topology_graph`'s answer,
+    computed from plain values alone."""
     import hashlib
     import ipaddress
-    from datetime import timedelta
-
-    from db.models import NetworkLink
-    from sqlalchemy.orm import selectinload
-
-    query = db.query(NetworkLink).filter(NetworkLink.org_id == org_id)
-    if scan_id:
-        query = query.filter(NetworkLink.scan_id == scan_id)
-    if active_within_days:
-        cutoff = utcnow() - timedelta(days=active_within_days)
-        query = query.filter(NetworkLink.last_seen_at >= cutoff)
-    # Both asset relationships are read for every link; without eager loading
-    # this is two queries per link.
-    query = query.options(
-        selectinload(NetworkLink.source_asset),
-        selectinload(NetworkLink.target_asset),
-    )
-
-    links = query.all()
 
     try:
         from core.oui_lookup import lookup_vendor

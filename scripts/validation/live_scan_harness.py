@@ -458,7 +458,7 @@ def dispatch_credentialed(org_id: str, user_id: str, credential_id: str, target:
         expand_targets = scan_creation.expand_targets
         max_targets = scan_creation.MAX_CREDENTIALED_TARGETS
     else:
-        from core.tasks import MAX_CREDENTIALED_TARGETS as max_targets
+        from scans.scan_creation import MAX_CREDENTIALED_TARGETS as max_targets
         from orchestrator.scan_orchestrator import ScanOrchestrator
 
         expand_targets = ScanOrchestrator._expand_targets

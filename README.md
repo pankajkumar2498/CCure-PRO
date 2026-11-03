@@ -194,14 +194,17 @@ If the clone fails with `unable to get local issuer certificate`, see
 
 There are **two** environment files, for two audiences:
 
-| File           | Read by                                                                | Holds                                                                                               |
-| -------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `.env` (root)  | Docker Compose, which passes each value it uses to the services        | Database passwords, encryption keys, the token key directory, web and mail settings                 |
-| `Backend/.env` | The `api` container (it is bind-mounted) and scripts run on the host   | Application settings Compose does not pass: the first administrator, feed tokens, rate limits, logging |
+| File           | Read by                                                             | Holds                                                                                                                      |
+| -------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `.env` (root)  | Docker Compose, which passes each value it uses to the services     | Everything the containers use: database passwords, encryption keys, the token key directory, the organisation and first administrator, web and mail settings, and optional application settings |
+| `Backend/.env` | Processes started on the host: the feed syncs and operator scripts | The database connection, the encryption keys those scripts need, and feed tokens                                            |
 
-Both are git-ignored. `worker`, `web-worker` and `beat` set
-`SKIP_DOTENV_LOAD=1` and never read `Backend/.env`. Where both files set a
-variable, the value Compose passes wins.
+Both are git-ignored. No container reads `Backend/.env`: `api`, `worker`,
+`web-worker` and `beat` all set `SKIP_DOTENV_LOAD=1`, and `docker-compose.yml`
+passes each setting explicitly. Optional application settings (logging, rate
+limits, scan limits, …) are listed commented out in `.env.example` with the
+default the code uses; uncomment one in the root `.env` to change it, and
+recreate the containers (`docker compose up -d`) for it to take effect.
 
 ```bash
 cp .env.example .env
@@ -219,9 +222,17 @@ chmod 600 .env Backend/.env
 | `MFA_ENCRYPTION_KEY`          | A generated secret. **Never change it later**: stored MFA secrets would become unreadable     |
 | `COMPLIANCE_ENCRYPTION_KEY`   | A generated secret. Encrypts stored scan credentials; changing it means re-entering them      |
 | `CCURE_TOKEN_KEYS_HOST_DIR`   | The absolute path of the key directory you create in [2.4](#24-prepare-the-host)              |
+| `VULN_DB_PASSWORD`            | A password for the `vuln_intel` owner                                                         |
+| `DEFAULT_ORG_NAME`, `DEFAULT_ORG_SLUG` | The default organisation. On an existing installation, the one it already has (its id is `org_<slug>`) |
 
-Also set `VULN_DB_PASSWORD`, and the `SMTP_*` values if the application should
-send mail. Generate each secret with:
+For a new installation also set `DEFAULT_ADMIN_EMAIL` and
+`DEFAULT_ADMIN_PASSWORD` (commented out in the example): the first
+administrator, created only while the database has no users. Remove the
+password from `.env` after the first sign-in.
+
+Also set the `SMTP_*` values if the application should send mail, and
+`CORS_ALLOW_ORIGINS`, `FRONTEND_URL` and `REFRESH_COOKIE_SECURE=true` for the
+HTTPS address users reach. Generate each secret with:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -236,8 +247,8 @@ run on the workers). Every variable is explained in the file.
 
 | Variable                                        | What to put                                                                                                    |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_ADMIN_EMAIL`, `DEFAULT_ADMIN_PASSWORD` | The first administrator. Used only on the first start, while the database has no users                         |
 | `POSTGRES_PASSWORD`, `VULN_DB_PASSWORD`         | The same values as the root `.env`; used by scripts run on the host                                            |
+| `COMPLIANCE_ENCRYPTION_KEY`                     | The same value as the root `.env`, for a host script that decrypts stored credentials                          |
 | `VULN_DB_PORT`, and the port in `DATABASE_URL`  | The root `.env`'s `POSTGRES_PORT_BINDING` (host scripts reach PostgreSQL through the published loopback port) |
 | `NVD_API_KEY`, `VULNCHECK_API_TOKEN`            | Optional feed credentials (commented out in the example)                                                       |
 
@@ -336,7 +347,9 @@ Nothing has to be run by hand for the schema or the catalogues:
 
 If the administrator variables were empty, the API logs
 `Database has no users and DEFAULT_ADMIN_EMAIL/PASSWORD are not set. No admin seeded.`
-Set them in `Backend/.env` and run `docker compose restart api`.
+Set them in the root `.env` and recreate the API with
+`docker compose up -d --no-deps api` (`docker compose restart` keeps the old
+environment).
 
 ### 2.7 Install the audit-log chain (once, as the database superuser)
 
@@ -423,9 +436,11 @@ VulnCheck is scheduled only once `VULNCHECK_API_TOKEN` is set in
 
 - **Malware scanning of evidence uploads:**
   `docker compose --profile av up -d clamav`, then set `CLAMAV_HOST=clamav` in
-  `Backend/.env` and restart the API. Until then each upload reports
-  `malware_scan: not_configured`. Leave `UPLOAD_AV_REQUIRED` at its default
-  until clamd is confirmed healthy.
+  the root `.env` and recreate the API (`docker compose up -d --no-deps api`).
+  Until then each upload reports `malware_scan: not_configured`. Once
+  `CLAMAV_HOST` is set, `UPLOAD_AV_REQUIRED` defaults to true and an
+  unreachable scanner refuses uploads; set it to `False` only while clamd is
+  being brought up.
 - **Portainer** at `https://127.0.0.1:9443`. A new instance must be given an
   admin user within 5 minutes of starting, using the setup token from
   `docker logs portainer`; otherwise it locks until `docker restart portainer`.
@@ -440,9 +455,9 @@ No real credential is in the repository; both example files hold placeholders.
 | Database passwords                                      | root `.env` (and `Backend/.env` for host scripts) | The database and every service                              |
 | `MFA_ENCRYPTION_KEY`, `COMPLIANCE_ENCRYPTION_KEY`       | root `.env`                              | Stored MFA secrets and stored scan credentials                       |
 | Token signing key                                       | `CCURE_TOKEN_KEYS_HOST_DIR`              | Every sign-in                                                        |
-| First administrator                                     | `Backend/.env`                           | The first sign-in                                                    |
+| First administrator                                     | root `.env` (first start only)           | The first sign-in                                                    |
 | SMTP account                                            | root `.env` `SMTP_*`                     | Verification and password-reset mail                                 |
-| NVD API key (optional)                                  | `Backend/.env` `NVD_API_KEY`             | Faster NVD downloads; NVD works without one, heavily rate limited    |
+| NVD API key (optional)                                  | root `.env` and `Backend/.env` `NVD_API_KEY` | Faster NVD downloads (the API's daily sync; the host's initial load); NVD works without one, heavily rate limited |
 | VulnCheck token (optional, free tier)                   | `Backend/.env` `VULNCHECK_API_TOKEN`     | The VulnCheck KEV feed                                               |
 | Scan credentials (SSH, WinRM/SMB, database, SNMP)       | Entered in the application               | Credentialed scans; stored encrypted                                 |
 | CDAC GitLab account                                     | [git.cdacb.in](https://git.cdacb.in)     | Contributing ([section 4](#4-git-collaboration-workflow-cdac-gitlab)) |
@@ -503,10 +518,11 @@ adapters. See [Frontend/README.md](Frontend/README.md) for required CI checks
 and [the final migration report](docs/ux4g/B7_B10_FINAL_CLOSURE.md) for validation.
 
 **The production VM is different.** It runs on the Linux VM `ccurepro`
-(`https://ccurepro.cdac.in`), everything in Docker, and since 13 Oct 2026 from
+(`https://10.180.22.127`, a temporary address until an approved domain is
+available), everything in Docker, and since 13 Oct 2026 from
 **released images**, not from the working tree: editing files there changes
-nothing live. Releases are built, deployed and rolled back as described in
-CLAUDE.md, "Deployment: Linux VM" → "Releases". The Windows-host deployment it
+nothing live. Releases are built, deployed and rolled back as described in the
+`release` skill (`.claude/skills/release/SKILL.md`). The Windows-host deployment it
 ran on until 17 Sep 2026 was retired on 9 Oct 2026, and its PowerShell start,
 host-worker, backup and nginx scripts were removed with it; git history keeps
 them. `scripts/tls/*.ps1` remain, for Windows client machines that must trust

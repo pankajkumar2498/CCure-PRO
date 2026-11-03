@@ -1,6 +1,7 @@
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "routers.admin_users")
+from config import AppConfig
 
 import logging
 from datetime import datetime
@@ -912,7 +913,6 @@ def approve_user(
     # committed, and a broken SMTP server must not turn an administrator's
     # decision into a 500.
     try:
-        from config import AppConfig
         from ccure_platform.identity.mail_dispatch import dispatch_email
 
         dispatch_email(

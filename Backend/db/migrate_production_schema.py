@@ -6,7 +6,8 @@ Schema initialization and RBAC seeding script.
 This script:
   1. Runs Alembic migrations to create/update all database schema
   2. Synchronizes the native RBAC catalogue and five system roles
-  3. Seeds a default 'default' Organization
+  3. Finds the default organisation named by DEFAULT_ORG_SLUG, creating it
+     (with DEFAULT_ORG_NAME) only on a database that has no organisation
   4. Prints a final summary of what was created
 
 IMPORTANT: Alembic handles all schema creation. This script only handles data initialization.
@@ -22,8 +23,10 @@ Usage
 
 import io
 import os
+import re
 import subprocess
 import sys
+from dataclasses import dataclass
 
 # Force UTF-8 output on Windows (cp1252 terminal cannot handle checkmarks/arrows) when run directly
 if __name__ == "__main__":
@@ -253,25 +256,120 @@ def _run_alembic(command: list[str]) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-DEFAULT_ORG_NAME = os.getenv("DEFAULT_ORG_NAME", "superadmin")
-DEFAULT_ORG_SLUG = os.getenv("DEFAULT_ORG_SLUG", "KING")
+# The default organisation is named by configuration and nothing else. The code
+# used to fall back to "superadmin"/"KING", so a start without the variables on
+# an existing installation silently created a second organisation beside the
+# real one. Now there is no fallback: the organisation is found by its slug or
+# by its id (org_<slug>), created only on a database with no organisation at
+# all, and anything else is refused with the reason.
+DEFAULT_ORG_NAME = os.getenv("DEFAULT_ORG_NAME")
+DEFAULT_ORG_SLUG = os.getenv("DEFAULT_ORG_SLUG")
+
+#: A slug is URL-safe and lower case; the organisations.slug column holds 100.
+ORG_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
+
+
+class DefaultOrganisationError(RuntimeError):
+    """The default organisation's configuration cannot be applied safely."""
+
+
+@dataclass(frozen=True)
+class DefaultOrgPlan:
+    action: str  # "use", "create" or "skip"
+    org_id: str | None
+    message: str
+
+
+def plan_default_org(existing, name, slug) -> DefaultOrgPlan:
+    """
+    Decide what to do about the default organisation, without side effects.
+
+    ``existing`` is every organisation as ``(id, name, slug)``. Raises
+    DefaultOrganisationError when the configuration is missing where an
+    organisation must be created, invalid, ambiguous, or names no organisation
+    on a database that already has some.
+    """
+    name = (name or "").strip()
+    slug = (slug or "").strip()
+    existing = [tuple(row) for row in existing]
+
+    if not slug:
+        if not existing:
+            raise DefaultOrganisationError(
+                "DEFAULT_ORG_NAME and DEFAULT_ORG_SLUG must be set: the database has "
+                "no organisation, and the default one is created from them."
+            )
+        return DefaultOrgPlan(
+            "skip",
+            None,
+            "DEFAULT_ORG_SLUG is not set; the existing organisations are left as "
+            "they are and none is created.",
+        )
+    if not ORG_SLUG_PATTERN.match(slug):
+        raise DefaultOrganisationError(
+            f"DEFAULT_ORG_SLUG {slug!r} is not a valid slug: lower-case letters, "
+            "digits, '.', '_' and '-', starting with a letter or digit, at most "
+            "100 characters."
+        )
+
+    org_id = gen_org_id(slug)
+    by_slug = [row for row in existing if row[2] == slug]
+    by_id = [row for row in existing if row[0] == org_id]
+    if by_slug and by_id and by_slug[0][0] != by_id[0][0]:
+        raise DefaultOrganisationError(
+            f"DEFAULT_ORG_SLUG {slug!r} is ambiguous: slug {slug!r} belongs to "
+            f"{by_slug[0][0]}, but its id {org_id} is a different organisation. "
+            "Set the slug of the organisation that is the default."
+        )
+    match = (by_slug or by_id or [None])[0]
+    if match:
+        note = ""
+        if name and match[1] != name:
+            note = f" Its name stays {match[1]!r}; DEFAULT_ORG_NAME does not rename it."
+        return DefaultOrgPlan(
+            "use",
+            match[0],
+            f"Default organization already exists: '{match[1]}' (id={match[0]}).{note}",
+        )
+
+    if existing:
+        known = ", ".join(f"{row[0]} (slug {row[2]!r})" for row in existing)
+        raise DefaultOrganisationError(
+            f"DEFAULT_ORG_SLUG {slug!r} matches no organisation (by slug or by id "
+            f"{org_id}), and the database already has {len(existing)}: {known}. "
+            "On an existing installation it must name the default organisation it "
+            "already has; a new organisation is never created implicitly here."
+        )
+    if not name:
+        raise DefaultOrganisationError(
+            "DEFAULT_ORG_NAME must be set: the database has no organisation, and "
+            "the default one is created with that name."
+        )
+    if len(name) > 255:
+        raise DefaultOrganisationError(
+            "DEFAULT_ORG_NAME is longer than 255 characters."
+        )
+    return DefaultOrgPlan(
+        "create", org_id, f"Creating default organization '{name}' (id={org_id})."
+    )
 
 
 def seed_default_org(conn):
+    """The default organisation's id, created only on an empty database."""
     _print_header("Step 3: Seeding Default Organization (Stripe-Style ID)")
-    org_id = gen_org_id(DEFAULT_ORG_SLUG)
-
     existing = conn.execute(
-        text("SELECT id, name FROM organizations WHERE slug = :slug OR id = :id"),
-        {"slug": DEFAULT_ORG_SLUG, "id": org_id},
-    ).fetchone()
+        text("SELECT id, name, slug FROM organizations ORDER BY id")
+    ).fetchall()
+    plan = plan_default_org(existing, DEFAULT_ORG_NAME, DEFAULT_ORG_SLUG)
 
-    if existing:
-        print(
-            f"  ✓ Default organization already exists: '{existing[1]}' (id={existing[0]})"
-        )
-        return existing[0]
+    if plan.action == "skip":
+        print(f"  ! {plan.message}")
+        return None
+    if plan.action == "use":
+        print(f"  ✓ {plan.message}")
+        return plan.org_id
 
+    org_id = plan.org_id
     result = conn.execute(
         text(
             """
@@ -282,7 +380,11 @@ def seed_default_org(conn):
             RETURNING id, name
         """
         ),
-        {"id": org_id, "name": DEFAULT_ORG_NAME, "slug": DEFAULT_ORG_SLUG},
+        {
+            "id": org_id,
+            "name": DEFAULT_ORG_NAME.strip(),
+            "slug": DEFAULT_ORG_SLUG.strip(),
+        },
     )
     row = result.fetchone()
     print(f"  + Created default organization: '{row[1]}' (id={row[0]})")
@@ -405,8 +507,12 @@ def run_migration():
         print(f"  ✗ Failed to run additive Topology schema updates: {e}")
 
     # Step 2 & 3: Seed RBAC and default org in a transaction
-    with engine.begin() as conn:
-        seed_default_org(conn)
+    try:
+        with engine.begin() as conn:
+            seed_default_org(conn)
+    except DefaultOrganisationError as exc:
+        print(f"\n  ✗ Default organization: {exc}")
+        sys.exit(1)
 
     # Use the operator entry point, as schema initialization uses Alembic.
     # The database layer does not import the authorization capability.

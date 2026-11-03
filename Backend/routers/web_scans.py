@@ -24,17 +24,17 @@ from ccure_platform.api import (
     has_permission,
     resolve_active_organisation,
     acts_across_organisations,
+    websocket_user,
 )
-from auth.jwt_handler import decode_token
 from ccure_platform.api import log_audit_event
-from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
+from db.base import gen_web_scan_id, get_db, utcnow
 from ccure_platform import api as platform_api
-from db.models import User
 from core.web.finding_view import (  # noqa: F401  (the old private names stay)
     finding_curl as _finding_curl,
     finding_detail as _finding_detail,
 )
 from core.web.auth.secrets import encrypt_auth_config
+from core.web import rate_limits
 from db.models.web_scans import (
     WebApiOperation,
     WebAsset,
@@ -55,8 +55,8 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from pydantic import BaseModel, Field, field_validator
-from core.rate_limiter import limiter
 from sqlalchemy.orm import Session
+from core.redis_client import redis_client
 
 log = logging.getLogger("ccure.routers.web_scans")
 
@@ -445,7 +445,7 @@ class TriageFindingRequest(BaseModel):
 # the caller names, so an unbounded loop here is an unbounded outbound attack
 # from this host's address — the abuse lands on somebody else's network and
 # arrives with our name on it.
-@limiter.limit("5/minute")
+@rate_limits.limit("5/minute")
 def start_web_scan(
     request: Request,
     response: Response,
@@ -1168,7 +1168,7 @@ def get_finding_screenshot(
 
 
 @router.get("/{scan_id}/report")
-@limiter.limit("10/minute")
+@rate_limits.limit("10/minute")
 def download_web_scan_report(
     request: Request,
     scan_id: str,
@@ -1262,20 +1262,22 @@ def download_web_scan_report(
 
 
 @router.websocket("/{scan_id}/progress")
-async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
+async def web_scan_progress_ws(
+    websocket: WebSocket,
+    scan_id: str,
+    current_user: CurrentUser | None = Depends(websocket_user),
+    db: Session = Depends(get_db),
+):
     """
     Real-time web scan progress over Redis PubSub.
     Sends a DB snapshot first so clients do not miss early progress events.
     """
-    try:
-        current_user = _get_websocket_user(websocket)
-    except HTTPException:
+    if current_user is None:
         await websocket.close(code=1008)
         return
 
     await websocket.accept()
 
-    db = SessionLocal()
     try:
         query = db.query(WebScan).filter(
             WebScan.id == scan_id,
@@ -1310,9 +1312,8 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
             }
         )
     finally:
+        # Released before the subscription, which can last as long as the scan.
         db.close()
-
-    from core.redis_client import redis_client
 
     pubsub = redis_client.pubsub()
     await pubsub.subscribe(f"scan_progress:{scan_id}")
@@ -1335,32 +1336,6 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
     finally:
         await pubsub.unsubscribe(f"scan_progress:{scan_id}")
         await pubsub.close()
-
-
-def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
-    ticket = websocket.query_params.get("ticket")
-    if not ticket:
-        raise HTTPException(
-            status_code=401, detail="Authentication ticket is required."
-        )
-
-    payload = decode_token(ticket)
-    if not payload or payload.get("type") != "ticket" or not payload.get("sub"):
-        raise HTTPException(
-            status_code=401, detail="Invalid or expired authentication."
-        )
-
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.id == str(payload["sub"])).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found.")
-        if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
-            raise HTTPException(status_code=403, detail="User is not active.")
-        db.expunge(user)
-        return user
-    finally:
-        db.close()
 
 
 def _web_scan_progress_snapshot(scan: WebScan) -> dict:

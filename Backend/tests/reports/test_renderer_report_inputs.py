@@ -41,6 +41,14 @@ TRUNCATED = [
 ]
 
 
+#: The one module outside the two capabilities a renderer may import, by name:
+#: the ReportLab text and font helpers, which moved out of
+#: reporting.report_helpers so the platform's audit-log PDF could stop
+#: importing Audit's renderers (30 Oct 2026). Standard library and ReportLab
+#: only, so it loads no engine or database (the test below proves the load).
+SHARED_PDF_PRIMITIVES = ("core.pdf_text",)
+
+
 def test_no_renderer_imports_beyond_renderers_and_the_check_kernel():
     """Lazy imports count; they are how the codebase hid its couplings."""
     _, edges = collect_edges()
@@ -49,6 +57,7 @@ def test_no_renderer_imports_beyond_renderers_and_the_check_kernel():
         for e in edges
         if capability_map.capability_of(e.src) == "renderers"
         and capability_map.capability_of(e.dst) not in ("renderers", "check_kernel")
+        and e.dst not in SHARED_PDF_PRIMITIVES
     )
     assert beyond == []
 

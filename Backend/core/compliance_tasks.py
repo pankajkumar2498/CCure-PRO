@@ -15,9 +15,10 @@ from core.celery_app import celery_app
 from core.compliance_evidence import ComplianceEvidenceProvider
 from core.compliance_frameworks import is_active as is_active_framework
 from core.config_audit.operators import evaluate as _shared_evaluate
+from core.asset_compliance import asset_by_id, assets_for_run, mark_reboot_pending
 from core.config_audit.spec import ConfigCheck
+from core.findings.writer import record_port_reachability
 from db.base import SessionLocal
-from db.models import Asset, Service
 from db.models.compliance import (
     ComplianceControl,
     ComplianceException,
@@ -35,6 +36,8 @@ from db.models.compliance import (
 )
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from db.base import gen_compliance_scan_run_id
+import core.redis_client as core_redis_client
 
 log = logging.getLogger("ccure.compliance.tasks")
 
@@ -340,7 +343,7 @@ def _evaluate_operator_legacy(operator: str, actual: Any, expected: Any) -> bool
 
 
 def _check_prerequisites(
-    db: Session, asset: Asset, rule: ComplianceRule, org_id: str
+    db: Session, asset: Any, rule: ComplianceRule, org_id: str
 ) -> bool:
     """Verifies rule dependency prerequisites and credentialed scan status."""
     # 1. Verify credential status for credential-dependent rules.
@@ -413,10 +416,7 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
         asset_ids = scope.get("asset_ids", [])
         asset_tags = scope.get("asset_tags", [])
 
-        asset_query = db.query(Asset).filter(Asset.org_id == org_id)
-        if asset_ids:
-            asset_query = asset_query.filter(Asset.id.in_(asset_ids))
-        assets = asset_query.all()
+        assets = assets_for_run(db, org_id, asset_ids)
 
         # Tag scoping was accepted by the API, stored on the run, and then
         # never applied — a scan the operator scoped to "cde" silently
@@ -736,7 +736,7 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
         db.close()
 
 
-def _platform_applicability(asset: Asset, rule: ComplianceRule):
+def _platform_applicability(asset: Any, rule: ComplianceRule):
     """Decides whether a platform-scoped rule applies to this host.
 
     Returns None when the rule should be evaluated, or a (status, message)
@@ -1600,20 +1600,9 @@ def _run_active_reverification_probes(
             finally:
                 sock.close()
 
-            svc = (
-                db.query(Service)
-                .filter_by(asset_id=finding.asset_id, port=port)
-                .first()
-            )
-            if svc:
-                # A live TCP connect from the scanner is a direct reachability
-                # observation, so it sets both the state and the reachability
-                # flag. Leaving the flag behind would let a re-verified port
-                # keep whatever the original scan concluded.
-                svc.state = "open" if is_open else "closed"
-                svc.network_reachable = is_open
-                svc.updated_at = datetime.now(timezone.utc)
-                db.add(svc)
+            # The service row is the findings capability's: its writer records
+            # the observation, and this transaction commits it.
+            if record_port_reachability(db, finding.asset_id, port, is_open):
                 db.commit()
 
 
@@ -1621,9 +1610,8 @@ def _invalidate_evidence_cache(
     finding: ComplianceFinding, rule: ComplianceRule
 ) -> None:
     """Invalidate Redis cache for compliance evidence provider."""
-    from core.redis_client import get_redis_client
 
-    redis_client = get_redis_client()
+    redis_client = core_redis_client.get_redis_client()
     if redis_client:
         cache_key = f"compliance:evidence:{finding.asset_id}:{rule.evidence_source}"
         try:
@@ -1647,12 +1635,9 @@ def _finalize_successful_remediation(
         "CONFIG-LEGACY-TLS",
         "CONFIG-RDP-NLA",
     ):
-        asset = db.query(Asset).filter_by(id=finding.asset_id).first()
-        if asset:
-            attrs = dict(asset.custom_attributes or {})
-            attrs["reboot_pending"] = True
-            asset.custom_attributes = attrs
-            db.add(asset)
+        # The asset row is the asset registry's: it records the mark, and
+        # this transaction commits it below.
+        mark_reboot_pending(db, finding.asset_id)
 
     history = ComplianceFindingHistory(
         id=_history_id(),
@@ -1726,7 +1711,7 @@ def run_reremediation_task(
         ):
             raise ValueError("Credentials resolution failed or incomplete.")
 
-        asset = db.query(Asset).filter_by(id=finding.asset_id).first()
+        asset = asset_by_id(db, finding.asset_id)
         if not asset or not asset.ip_address:
             raise ValueError("Asset IP address could not be resolved.")
 
@@ -2024,7 +2009,6 @@ _SCHEDULE_INTERVALS: dict[str, timedelta] = {
 @celery_app.task(name="compliance.run_scheduled_scans", queue="compliance")
 def run_scheduled_scans() -> dict:
     """Periodic task executed by Celery Beat to query and trigger scheduled compliance scans."""
-    from db.base import gen_compliance_scan_run_id
     from db.models.compliance import ComplianceScanSchedule
     from sqlalchemy import or_
 

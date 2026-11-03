@@ -39,6 +39,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 from reporting.report_helpers import make_pdf_cve_paragraph
+from reporting.report_helpers import NumberedCanvas
 
 # ── Reuse brand palette from pdf_generator ────────────────────────────────────
 
@@ -830,8 +831,6 @@ class WebScanReportGenerator:
         now = datetime.now()
         filename = f"web_scan_{safe_domain}_{now.strftime('%d-%m-%Y_%H-%M-%S')}.pdf"
         filepath = os.path.join(self.output_dir, filename)
-
-        from reporting.report_helpers import NumberedCanvas
 
         doc = SimpleDocTemplate(
             filepath,

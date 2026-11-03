@@ -93,6 +93,16 @@ def _tree(path: Path) -> ast.Module:
 #: *upward*, and one between two capabilities of the same layer is *lateral*.
 CAPABILITIES: dict[str, tuple[int, str]] = {
     "contracts": (0, "Cross-product contracts (ccure_contracts)"),
+    # 1 Nov 2026 (owner decision): the module registry is a standard-library
+    # leaf both the platform and the runtime infrastructure read — main.py and
+    # core/celery_app.py take each enabled module's routers, task modules and
+    # queues from it. Inside the platform it put infra and platform in a cycle
+    # through Celery's one read; below both, it closes none. Still the
+    # platform's code (ccure_platform/modules/), as tls is still an engine.
+    "module_registry": (
+        0,
+        "The CCure module registry: each module's identity and manifest",
+    ),
     "platform": (
         1,
         "Shared platform: identity, organisations, RBAC, audit log, notifications",
@@ -148,6 +158,8 @@ SHARED_LAYERS = frozenset({0, 1})
 PREFIXES: dict[str, str] = {
     # shared platform, and the legacy alias stubs that re-export it
     "ccure_platform": "platform",
+    # Its own capability, below infra and the platform (see CAPABILITIES).
+    "ccure_platform.modules": "module_registry",
     "auth": "platform",
     "core.audit": "platform",
     "core.audit_retention": "platform",
@@ -174,6 +186,11 @@ PREFIXES: dict[str, str] = {
     "db.fork_safety": "infra",
     # G2 (C5): the CHECK-constraint SQL helper both model modules share.
     "db.constraint_sql": "infra",
+    # Text PostgreSQL will store (out of scans/, the asset syncer uses it too).
+    "db.safe_text": "infra",
+    # The stdlib-only id helpers, out of db.base so that the topology engine
+    # mints asset and link ids without loading the database layer (2 Nov 2026).
+    "db.ids": "infra",
     "core.celery_app": "infra",
     "core.redis_client": "infra",
     "core.rate_limit_middleware": "infra",
@@ -184,6 +201,9 @@ PREFIXES: dict[str, str] = {
     "core.security_crypto": "infra",
     "core.user_agent": "infra",
     "core.upload_guard": "infra",
+    # ReportLab text safety and fonts, shared by the platform's audit-log PDF
+    # and Audit's renderers (out of reporting.report_helpers).
+    "core.pdf_text": "infra",
     "core.trusted_proxy": "infra",
     "core.task_names": "infra",
     # Audit's scan-domain kernel. Classed as infrastructure by layer_rules.py,
@@ -217,6 +237,8 @@ PREFIXES: dict[str, str] = {
     "scans.finding_normalizer": "check_kernel",
     # vulnerability intelligence
     "core.cve_database": "vuln_intel",
+    # The fallback CVE hint table, out of core.constants (the scan kernel).
+    "core.cve_hints": "vuln_intel",
     "core.vuln_intel": "vuln_intel",
     # G3: the vulnerability-intelligence database, as the version matcher is
     # handed it.
@@ -274,6 +296,14 @@ PREFIXES: dict[str, str] = {
     "core.mac_vendor_cache": "assets",
     # G3: the asset half of the topology engine's directory.
     "core.topology_assets": "assets",
+    # The asset notes' and tags' part of a user purge (ccure_audit composes it).
+    "core.asset_offboarding": "assets",
+    # What the compliance tasks read from and write to the asset registry.
+    "core.asset_compliance": "assets",
+    # The asset half of a standalone credentialed audit's sync.
+    "core.asset_credentialed": "assets",
+    # The asset timeline's port for the scans it names (scans answers it).
+    "core.asset_scans": "assets",
     "core.audit_event_translator": "assets",  # the asset timeline, not the audit log
     "scans.asset_syncer": "assets",
     "routers.assets": "assets",
@@ -321,7 +351,6 @@ PREFIXES: dict[str, str] = {
     "db.models.compliance": "compliance",
     # orchestration
     "scans.db_helpers": "scans",
-    "scans.db_text": "scans",
     "scans.legacy_json_builder": "scans",
     "scans.notification_vocabulary": "scans",
     "scans.policy_binding": "scans",
@@ -337,6 +366,10 @@ PREFIXES: dict[str, str] = {
     "scans.scan_creation": "scans",
     # C6 (G5): the network pipeline's one definition and its hand-over.
     "scans.pipeline": "scans",
+    # The scans capability's answer to the findings side's scan directory.
+    "scans.scan_directory": "scans",
+    # The scans' part of a user purge (ccure_audit composes it).
+    "scans.offboarding": "scans",
     "scan_helpers": "scans",
     "orchestrator.scan_orchestrator": "scans",
     # B8: the enrichment the port and discovery engines used to compose by
@@ -353,10 +386,9 @@ PREFIXES: dict[str, str] = {
     # The service root: its body is the scanner runtime's own report.
     "routers.health": "scans",
     "db.models.scans": "scans",
-    # G1 (C2): the scan tasks, one module per area, and the facade that
-    # re-exports them under the hub's old name.
+    # G1 (C2): the scan tasks, one module per area. The facade that
+    # re-exported them as core.tasks was removed on 2 Nov 2026.
     "scans.tasks": "scans",
-    "core.tasks": "scans",
     # read side
     "reporting.exports": "reporting",
     "routers.reports": "reporting",
@@ -816,8 +848,8 @@ def load_profiles(modules, raw_edges) -> dict[str, dict[str, list[str]]]:
 #: E2 beyond the D1 libraries (G3): scan engines whose load profile is pinned
 #: against ``FORBIDDEN`` though they are not D1 libraries yet — each reads the
 #: settings module at import, which the harness does not admit. Not here: the
-#: topology engine, which still persists its own links through SQLAlchemy
-#: (docs/architecture/MODULAR_REFACTORING_LOG.md §6, Group 3).
+#: topology engine, a D1 library since its persistence moved behind its
+#: directory (2 Nov 2026), so pinned with the libraries.
 PINNED_ENGINES = (
     "engines.port.port_engine",
     "engines.vulnerability.vulnerability_engine",
@@ -859,8 +891,10 @@ def library_problems(load_profiles: dict) -> list[str]:
 
 
 #: What a platform entry point may load: the platform itself, the runtime
-#: infrastructure and the cross-product contracts — never a module's code.
-PLATFORM_MAY_LOAD = frozenset({"infra", "platform", "contracts"})
+#: infrastructure, the cross-product contracts and the module registry (the
+#: platform's own list of modules, standard library only) — never a module's
+#: code.
+PLATFORM_MAY_LOAD = frozenset({"infra", "platform", "contracts", "module_registry"})
 
 
 def layer_rule_problems(measurement: dict) -> list[str]:
@@ -959,12 +993,33 @@ CEILINGS = {
     # scans capability's API, so the credentialed audit and the credential vault
     # left; the topology engine reads assets and scans through its directory,
     # so topology left too — 11 to 6.
-    "largest_cycle": 6,
+    # 30 Oct 2026: findings left. A comparison reads its baseline candidates
+    # and each scan's policy snapshot through its scan directory
+    # (core.findings.scan_directory, which the scans capability answers), so it
+    # no longer imports the scan model or scan policy — 6 to 5. The same day
+    # the scan kernel and vulnerability intelligence stopped forming a pair
+    # (the CVE hint table is vuln_intel's, core.cve_hints), and the platform's
+    # audit-log PDF stopped importing the renderers (core.pdf_text), which
+    # broke check_kernel/infra/platform/renderers down to infra and platform.
+    # 31 Oct 2026: scans left, and the four left with it stopped forming one.
+    # The asset timeline, a policy's usage and the scheduler read or create
+    # scans through their ports (core.asset_scans, core.scan_policy.scan_usage,
+    # core.scheduling.scan_records), and the policy API reads the schedules
+    # naming a policy through core.scan_policy.schedule_references — 5 to 2,
+    # infra and platform.
+    # 1 Nov 2026: the module registry became its own capability below both
+    # (owner decision), so Celery's read of it no longer points into the
+    # platform — 2 to 0. No capability cycle remains; none may return.
+    "largest_cycle": 0,
     # G2's model move (the credential vault's model out of the compliance
     # file) broke the top-level cycle into 5, 2 and 2. G4 (C4) broke the
     # compliance and configuration-audit pair: [5, 2].
     # G3: the network checks and the credentialed audit left (above): [3, 2].
-    "largest_cycle_top_level": 3,
+    # 30 Oct 2026: the comparison's top-level import of the scan model went
+    # (its scan directory), and the asset syncer's of scans.db_text (now
+    # db.safe_text, infrastructure): only infra and platform remain, [2].
+    # 1 Nov 2026: the module registry's own capability (above): none.
+    "largest_cycle_top_level": 0,
     # 50 when introduced; B1 (the limiter from core.rate_limiter) removed 7;
     # B2 (engine ports, the web-scan settler in core.web) removed 3; B5 (the
     # network checks register their plugins with the check kernel) removed 2;
@@ -986,7 +1041,14 @@ CEILINGS = {
     # credentialed router's two (now the scans capability's own); scheduling's
     # two imports of scan_helpers (it asks the kernel's core.scan_targets); the
     # topology engine's three and the topology API's one (its directory). 18 to 7.
-    "upward_edges": 7,
+    # 30 Oct 2026: the platform's audit-log export's import of the renderers
+    # (core.pdf_text); the comparison's of the scan model and the asset
+    # syncer's (the scan directory); the asset syncer's of scans.db_text
+    # (db.safe_text). 7 to 3.
+    # 31 Oct 2026: the dispatcher's of scans.db_helpers (core.scheduling.
+    # scan_records), the assets and scan-policy routers' of the scan model
+    # (core.asset_scans, core.scan_policy.scan_usage). 3 to 0.
+    "upward_edges": 0,
     # 74 when introduced; B7 removed the PDF renderer's two engine imports; B8
     # the port engine's import of discovery enrichment and that module's of
     # the network checks' SNMP client; B9 the TLS plugin's import of the web
@@ -1013,7 +1075,13 @@ CEILINGS = {
     # package; the asset registry's answer to the port imports its column list.
     # G3: core.utils' import of the CVE database client, which moved beside
     # its one caller in the network checks.
-    "lateral_edges": 28,
+    # 30 Oct 2026: the CVE database's import of core.constants (the hint table
+    # is core.cve_hints) and the comparison's of scan policy went; the asset
+    # syncer's lookup of its scan moved onto the findings side's scan
+    # directory, an edge findings-ward that replaces an upward one. 28 to 27.
+    # 31 Oct 2026: the scan-policy router's of the schedule model (scheduling
+    # answers core.scan_policy.schedule_references). 27 to 26.
+    "lateral_edges": 26,
     # 80 when introduced; B2 moved the web_scans settler out of scans; G1's C1
     # the hub's read of compliance_credentials (the vault decrypts its own rows).
     # G1's C2 made the hub's scans and scan_phases references internal, and
@@ -1039,7 +1107,17 @@ CEILINGS = {
     # capability.
     # G3: the topology engine's references to assets and scans (its
     # directory answers them).
-    "foreign_table_references": 30,
+    # 30 Oct 2026: Audit's purge hook's asset_notes and the comparison's scans
+    # (their owners' modules answer them). 30 to 28.
+    # 31 Oct 2026: the assets router's scans, and the scan-policy router's
+    # scans and scan_schedules (their owners answer the ports). 28 to 25.
+    # 1 Nov 2026: compliance re-verification's of services: a live connect's
+    # answer is recorded by the findings writer (record_port_reachability).
+    # 25 to 24.
+    # 2 Nov 2026: the web scan reaper's of web_scans: web DAST lists its live
+    # scans and decides which stalled (core.web.scan_status, core.web.timeout).
+    # 24 to 23.
+    "foreign_table_references": 23,
     # 17 when introduced; G1's C2 made the hub's writes to scans internal.
     # G3 (C3): the asset syncer's writes to services, tls_details,
     # vulnerability_definitions and asset_vulnerabilities moved to the
@@ -1049,7 +1127,22 @@ CEILINGS = {
     # to the compliance catalogue it now belongs to.
     # G3: the topology engine's enrolment of assets, now the asset registry's
     # (core.topology_assets).
-    "foreign_table_writes": 4,
+    # 30 Oct 2026: Audit's purge hook's to asset_notes, asset_tags and scans,
+    # now core.asset_offboarding's and scans.offboarding's. 4 to 1.
+    # 1 Nov 2026: the standalone credentialed audit's asset identity, risk and
+    # system information, now the asset registry's (core.asset_credentialed).
+    # 1 to 0: no capability writes another's table.
+    "foreign_table_writes": 0,
+    # 1 Nov 2026, introduced at 149 (349 the day before): imports inside a
+    # function that cross a capability boundary. Such an import is a real
+    # dependency the module's header does not show; what remains is lazy on
+    # purpose — the composition root's startup order, an engine or kernel
+    # module kept free of config, the database or Redis at import, a heavy or
+    # optional package, or a best-effort block — and the count may only fall.
+    # 2 Nov 2026: 146. The web scan reaper's Redis import and the worker
+    # self-check's database and Redis imports went to web DAST's owner code
+    # and Audit's composition root.
+    "lazy_cross_capability_imports": 146,
 }
 
 _BASELINE_KEYS = (
@@ -1059,6 +1152,7 @@ _BASELINE_KEYS = (
     "lateral_edges",
     "foreign_table_references",
     "foreign_table_writes",
+    "cross_capability_imports",
     "load_profiles",
 )
 
@@ -1086,6 +1180,7 @@ def ceiling_problems(baseline: dict) -> list[str]:
         "lateral_edges": len(baseline["lateral_edges"]),
         "foreign_table_references": len(baseline["foreign_table_references"]),
         "foreign_table_writes": len(baseline["foreign_table_writes"]),
+        "lazy_cross_capability_imports": baseline["cross_capability_imports"]["lazy"],
     }
     return [
         f"the baseline's {name} ({size}) exceeds its ceiling ({CEILINGS[name]}); "
@@ -1140,6 +1235,19 @@ def ratchet_problems(measurement: dict | None = None, baseline=None) -> list[str
             f"CEILINGS: {label}: {a} -> {b}"
             for a, b in sorted(known - current)
         ]
+
+    lazy_now = measurement["cross_capability_imports"]["lazy"]
+    lazy_then = baseline["cross_capability_imports"]["lazy"]
+    if lazy_now > lazy_then:
+        problems.append(
+            f"lazy cross-capability imports rose from {lazy_then} to {lazy_now}: "
+            "import at module level, or through the owner's port"
+        )
+    elif lazy_now < lazy_then:
+        problems.append(
+            f"lazy cross-capability imports fell from {lazy_then} to {lazy_now} — "
+            "rewrite the baseline (--write-baseline) and lower CEILINGS to lock that in"
+        )
 
     for entry, now in sorted(measurement["load_profiles"].items()):
         then = baseline["load_profiles"].get(entry)

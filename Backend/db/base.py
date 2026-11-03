@@ -31,6 +31,17 @@ TIMESTAMPTZ = DateTime(timezone=True)
 from config import AppConfig
 from db.fork_safety import release_pool_after_fork
 
+# Pure, deterministic id helpers live in db.ids, which loads neither SQLAlchemy
+# nor the settings, so the topology engine can mint the same ids without the
+# database layer. Imported back so every ``db.base`` name is the same object.
+from db.ids import (  # noqa: F401
+    _safe_id_part,
+    _stable_hash,
+    gen_asset_id,
+    gen_network_link_id,
+    gen_org_token,
+)
+
 # ─── Engine ───────────────────────────────────────────────────────────────────
 
 # A Celery prefork child must never inherit this pool: see db/fork_safety.py.
@@ -77,33 +88,6 @@ def _rand(n: int = 4) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
-def _safe_id_part(value: str, max_len: int = 20) -> str:
-    """Normalize a value to a lowercase, underscore-separated ID-safe token."""
-    if value is None:
-        return "x"
-    safe = re.sub(r"[^a-z0-9]+", "_", str(value).lower()).strip("_")
-    return safe[:max_len] or "x"
-
-
-def _stable_hash(value: str, length: int = 8) -> str:
-    """Generate a stable hex digest for a value, useful for namespace tokens."""
-    return hashlib.blake2b(
-        str(value).encode("utf-8"), digest_size=(length + 1) // 2
-    ).hexdigest()[:length]
-
-
-def gen_org_token(org_identifier: str) -> str:
-    """
-    Generate a stable organization namespace token.
-    Example: defa_1a2b3c4d
-    """
-    short_slug = _safe_id_part(org_identifier, max_len=4).strip("_")
-    if not short_slug:
-        short_slug = "org"
-    token = _stable_hash(org_identifier, length=8)
-    return f"{short_slug}_{token}"
-
-
 # ── Keep gen_uuid as a fallback (used by junction tables / sessions) ──────────
 def gen_uuid() -> str:
     """Fallback UUID — only used for tables that don't need readable IDs."""
@@ -143,17 +127,6 @@ def gen_scan_id(org_slug: str) -> str:
     org_part = gen_org_token(org_slug)
     date_part = datetime.now(timezone.utc).strftime("%d%b%y").lower()  # 07may25
     return f"scn_{org_part}_{date_part}_{_rand()}"
-
-
-def gen_asset_id(org_identifier: str, ip_address: str) -> str:
-    """
-    Generate a readable Asset ID.
-    Example: ast_defa_1a2b3c4d_192_168_1_5
-    NOTE: Asset IDs are deterministic and globally unique by organization and IP.
-    """
-    org_part = gen_org_token(org_identifier)
-    ip_part = _safe_id_part(ip_address, max_len=50)
-    return f"ast_{org_part}_{ip_part}"
 
 
 def gen_service_id(asset_id: str, port: int, protocol: str = "tcp") -> str:
@@ -267,35 +240,6 @@ def gen_web_api_operation_id(web_scan_id: str, kind: str, identity: str) -> str:
         f"{kind}:{identity}".encode("utf-8", "replace")
     ).hexdigest()[:8]
     return f"wao_{scan_short}_{kind_part}_{digest}"
-
-
-def gen_network_link_id(org_slug: str, src_key: str, dst_key: str) -> str:
-    """
-    Generate a readable, unique NetworkLink ID.
-    Example: lnk_defa_1a2b3c4d_001122334455_66778899aabb
-
-    Endpoint keys are sorted before formatting so that a link between the same
-    two devices always has the same ID regardless of which side reported it
-    (undirected determinism).
-
-    Keys are not always MACs — an endpoint known only by IP or by chassis name
-    is keyed ``ip:10.1.1.1`` / ``name:core-sw-01`` (see core.topology.identity).
-    Non-MAC keys are hashed rather than stripped of their separators: dropping
-    the dots from ``10.1.4.11`` and ``1.0.14.11`` yields the same token for two
-    different devices, which would silently merge their links into one row.
-    """
-    org_part = gen_org_token(org_slug)
-
-    def _endpoint_token(key: str) -> str:
-        compact = re.sub(r"[^0-9a-f]+", "", str(key).lower())
-        # A bare 48-bit MAC stays readable; anything else gets a stable digest
-        # so that distinct identifiers cannot collapse onto the same token.
-        if len(compact) == 12 and re.fullmatch(r"[0-9a-f]{12}", compact):
-            return compact
-        return _stable_hash(str(key).lower(), length=16)
-
-    first, second = sorted([str(src_key).lower(), str(dst_key).lower()])
-    return f"lnk_{org_part}_{_endpoint_token(first)}_{_endpoint_token(second)}"
 
 
 def gen_compliance_credential_id(org_slug: str) -> str:

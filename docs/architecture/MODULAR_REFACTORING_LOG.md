@@ -4189,6 +4189,16 @@ the cycle, which is now assets, compliance, findings, scan policy, scans and sch
 - **The topology engine is not E2-pinned.** It writes `network_links` and builds the graph from
   them through SQLAlchemy; pinning it needs that persistence split from the inference, a change of
   its own. Its load profile fell from 11 Audit capabilities to infra alone.
+  **Done 2 Nov 2026, uncommitted:** the engine computes on plain records (`AssetRecord`,
+  `StoredLink`) and hands each run's enrolments, filled asset gaps and link rows to its
+  directory as one `TopologyPlan`. The asset registry writes the assets
+  (`core/topology_assets.py`, `write_topology_assets`) and the topology store
+  (`core/topology/links.py`) the links and the one transaction, composed by
+  `ccure_audit/topology_directory.py`; the id helpers it needs moved to the stdlib-only
+  `db/ids.py`, which `db.base` re-exports. The engine loads no SQLAlchemy and is D1 library
+  `topology` (10 isolated). Before, it set fields on the asset rows it was handed and the session
+  wrote them at commit, a write no guard could see. Interfaces identical; cycles, upward edges and
+  foreign writes 0, lazy cross-capability imports 149.
 - **The four pinned engines are not D1 libraries.** Each reads `config` at import; admitting them
   means handing them their settings, which is D2's problem for web DAST too (Group 4).
 - **Seven upward edges remain**, none from layer 3: the platform's audit-log export into the
@@ -4271,10 +4281,32 @@ infra alone).
   identity, but `routers.web_scans` still imports `auth.jwt_handler.decode_token` (its progress
   WebSocket's login), `db.models.User`, `db.base` and `core.rate_limiter`. D2's "through
   `ccure_platform.api` and declared settings alone" is met for settings, not for those.
+  **Done 2 Nov 2026, uncommitted:** the progress socket signs in through
+  `ccure_platform.api.websocket_user` (a new platform API name, the ticket check through
+  `tokens.verify(expected_kind=TICKET)`) and reads through the request's `get_db` session; the
+  two limits go through `core.web.rate_limits`, enforced by the limiter Audit registers
+  (`ccure_audit/web_routes.py`). The router no longer imports `auth.jwt_handler`,
+  `db.models.User`, `SessionLocal` or `core.rate_limiter`, and importing it no longer loads
+  slowapi; it still takes `get_db`, `gen_web_scan_id` and `utcnow` from `db.base` (the module
+  contract's shared foundation) and Redis from `core.redis_client`. The interface snapshot is
+  identical apart from the router no longer holding `limiter`; the pilot host now serves the
+  socket through its own stubs.
 - **The self-check and the reaper read their settings through the port but reach the database and
   Redis themselves** (`core.web.self_check`, `core.web.timeout`), as do the tasks
   (`core.web.tasks`), the scan-status helper and the JavaScript dependency engine's catalogue
   lookup. None is in the `web_dast` library.
+  **Done 2 Nov 2026, uncommitted, where it crossed a boundary:** the self-check's database and Redis
+  probes are the host's (`register_infrastructure_probes`; Audit's composition root,
+  `ccure_audit/web_settings.py`, registers the reads it made itself), and an unregistered probe is a
+  missing required component. The beat reaper (`scans.tasks.reapers.reap_stalled_web_scans`, same
+  name, queue and schedule) no longer names `web_scans` or `WebScanConfig`: web DAST lists its live
+  scans (`core.web.scan_status.non_terminal_web_scans`) and decides which stalled
+  (`core.web.timeout.stalled_web_scans`, a pure function), and both terminal frames come from
+  `core.web.timeout.publish_terminal_frame`. Foreign-table references 24 → 23, lazy
+  cross-capability imports 149 → 146, ceilings lowered. The timeout's own reads of `web_scans` and
+  Redis, the tasks and the scan-status helper stay web DAST's own infrastructure: the table is
+  theirs. The scan-history socket signs in through `ccure_platform.api.websocket_user` too, so no
+  module code imports the any-kind token decoder but `main`.
 - **The orchestrator is not isolated.** It reads its settings through the port and nothing else
   changed: it still loads the database layer and Redis lazily, and drives the tasks.
 - **Out of scope, unchanged:** the topology engine's SQLAlchemy split (Group 3, "What is left")
@@ -4433,6 +4465,292 @@ nine captures, the round-trip harness and its comparison, and every suite's log.
 hold restored tenant data and stay outside the repository. Both golden servers were removed with
 their `run.sh down`.
 
+### Group 7 — the remaining cycles, upward edges and foreign writes (P0, first pass)
+
+Working tree on `9bb84d9`, 30 Oct 2026. Not committed. Measured with
+`python -m scripts.architecture.capability_map` before and after; the baseline is rewritten and
+`CEILINGS` lowered with the reasons beside each figure.
+
+| Metric                             | Before    | After  | Target |
+| ---------------------------------- | --------- | ------ | ------ |
+| Capability cycles (all imports)    | [6, 4, 2] | [5, 2] | none   |
+| Capability cycles (top-level only) | [3, 2]    | [2]    | none   |
+| Upward edges                       | 7         | 3      | 0      |
+| Lateral edges                      | 28        | 27     | —      |
+| Foreign table references           | 30        | 28     | —      |
+| Foreign table writes               | 4         | 1      | 0      |
+| Cross-capability imports, lazy     | 352       | 351    | ≤150   |
+
+**What moved, each to the capability that owns it:**
+
+- **The CVE hint table** (`CVE_HINTS`) is vulnerability intelligence: `core/cve_hints.py`, out of
+  `core.constants`. The CVE database's fallback no longer imports the scan kernel (or, through it,
+  Scapy), so `scan_kernel`/`vuln_intel` is no longer a cycle.
+- **ReportLab text safety and fonts** (`escape_for_reportlab`, `clean_control_chars`,
+  `register_report_fonts`) are `core/pdf_text.py`, shared infrastructure like `core.upload_guard`;
+  `reporting.report_helpers` re-exports the same objects. The platform's audit-log PDF imports them
+  from there, so the platform no longer imports Audit's renderers, and the 4-cycle is down to
+  `infra`/`platform`. `platform-is-shared-foundation`'s exemption for `reporting.report_helpers`
+  became one for `core.pdf_text`.
+- **Audit's purge hook composes its owners' statements.** The asset notes' and tags' detach is
+  `core/asset_offboarding.py`, the scans' is `scans/offboarding.py`, as the web scans' and the
+  findings' already were. Same statements, same order, same session.
+- **The comparison reads scans through a port**, `core/findings/scan_directory.py`, which the scans
+  capability answers (`scans/scan_directory.py`) and Audit's composition root registers
+  (`ccure_audit/scan_directory.py`, in Celery's `imports`). It answers three questions: the
+  completed scans of the same organisation and pipeline mode created before a scan (the query that
+  was `previous_scan_for`'s), the configuration a scan ran under (the body of `policy_context`), and
+  a scan record by id (the asset syncer's lookup of the scan whose assessment scope it records). The
+  comparison keeps its own judgement — target overlap and fingerprint agreement. `previous_scan_for`
+  and `policy_context` keep their names and signatures, so no caller changed. Findings is out of the
+  big cycle.
+- **`scans/db_text.py` is `db/safe_text.py`** (infrastructure): it is about what PostgreSQL stores,
+  and the asset syncer depended on the scans capability for it.
+
+**Rules touched.** `tests/reports/test_renderer_report_inputs.py` now admits one module outside the
+renderers and the check kernel, by name: `core.pdf_text` (`SHARED_PDF_PRIMITIVES`). The renderer's
+subprocess load test is unchanged and still proves the PDF renderer loads no engine, database or
+`config`. `library_isolation.LIBRARIES["renderers"]` declares `core.pdf_text`.
+
+**Not done, and why:**
+
+- `routers.assets` → `Scan` (the timeline's scan labels), `routers.scan_policies` → `Scan` (the
+  usage count), `core.scheduling.dispatcher` → `scans.db_helpers` (`create_scan`), and
+  `routers.scan_policies` → `ScanSchedule` (its references) each need a port the scans or scheduling
+  capability answers. They hold the 5-cycle `assets, compliance, scan_policy, scans, scheduling`.
+  **Done in the second pass, below.**
+- `scans.tasks.credentialed_sync` writes `assets` (`_sync_credentialed_asset_identity`, about 390
+  lines of asset-registry logic): the last foreign write. Moving it means the asset registry
+  answering a credentialed identity without reading the scan record.
+- `infra` ↔ `platform`: one edge, `core.celery_app` → `ccure_platform.modules` (the module registry,
+  stdlib only, already exempted by `infrastructure-is-foundation`). A decision, below.
+
+### Group 7, second pass — the scan ports (P0)
+
+Working tree, 31 Oct 2026. Not committed. Same measurement as above.
+
+| Metric                             | Before | After | Target |
+| ---------------------------------- | ------ | ----- | ------ |
+| Capability cycles (all imports)    | [5, 2] | [2]   | none   |
+| Capability cycles (top-level only) | [2]    | [2]   | none   |
+| Upward edges                       | 3      | 0     | 0      |
+| Lateral edges                      | 27     | 26    | —      |
+| Foreign table references           | 28     | 25    | —      |
+| Foreign table writes               | 1      | 1     | 0      |
+| Cross-capability imports, lazy     | 351    | 347   | ≤150   |
+| Cross-capability imports, top      | 551    | 558   | —      |
+
+**Four ports.** Each is declared by the capability that asks and answered by the one that owns the
+rows. Audit's composition root registers each answer. An unregistered port raises its `...Missing`
+error rather than answering empty: no answer is not zero scans, no schedules or no labels.
+
+| Port (asker)                                                 | Answer (owner)                                                           | Registered by                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `core/asset_scans.py` (assets: the timeline's scan labels)   | `scans.reads.pipeline_modes`                                             | `ccure_audit/scan_directory.py` (Celery `imports`; `main.py`)         |
+| `core/scan_policy/scan_usage.py` (scan policy: `scan_count`) | `scans.reads.scans_recorded_under`                                       | `ccure_audit/scan_directory.py`                                       |
+| `core/scheduling/scan_records.py` (scheduling: a run's scan) | `scans.db_helpers.create_scan`, looked up at call time                   | `ccure_audit/scan_directory.py`                                       |
+| `core/scan_policy/schedule_references.py` (scan policy)      | `core/scheduling/policy_references.py`, rows as `(id, name, is_enabled)` | `ccure_audit/policy_references.py` (`main.py`; only the API reads it) |
+
+The queries moved unchanged. The scan-policy router now gets frozen `ScheduleReference`s instead
+of ORM rows. It only ever read `id`, `name` and `is_enabled`. `db.delete(policy)` still loads
+`policy.schedules` through the relationship and nulls their `policy_id`, as before. Scheduling
+registers through the composition root, not at import as its `credential_references` does. It
+therefore imports no scan-policy code for this, and a scheduling → scan-policy lateral edge was
+avoided rather than added.
+
+**Rules touched.** `tests/repo/test_capability_ratchet.py::test_removed_coupling_must_leave_the_baseline_too`
+popped an upward edge, and none is left. It now pops a lateral edge, which goes through the same
+check. `data/rbac/authorization_migration_inventory.json` was regenerated; only line numbers changed.
+`tests/scans/test_scan_ports.py` is new: the three consumers import neither owner, the application
+registers each answer, a second answer is refused, an unregistered port refuses, and the moved
+queries answer what the routers asked.
+
+**Remaining:** the `infra` ↔ `platform` pair (a decision in §7, below); the credentialed sync's write
+to `assets` (a separate change: about 390 lines, with its own tests and review); the hidden write
+to `services`; and the lazy imports.
+
+### Group 7, third pass — the module registry's own capability (P0)
+
+Working tree, 1 Nov 2026. Not committed. Owner decision (§7): the module registry is a capability of
+its own below infrastructure and the platform; the worker's entry point does not change.
+
+| Metric                             | Before | After | Target |
+| ---------------------------------- | ------ | ----- | ------ |
+| Capability cycles (all imports)    | [2]    | none  | none   |
+| Capability cycles (top-level only) | [2]    | none  | none   |
+| Upward edges                       | 0      | 0     | 0      |
+| Lateral edges                      | 26     | 26    | —      |
+| Foreign table writes               | 1      | 1     | 0      |
+| Cross-capability imports, lazy     | 347    | 349   | ≤150   |
+| Cross-capability imports, top      | 558    | 561   | —      |
+
+**What changed.** No code moved. In `capability_map.py`, `ccure_platform.modules` is now the
+capability `module_registry`, at layer 0. The cycle's two edges were `core.celery_app` reading the
+registry and its package (top-level). With the registry classified below infra, those edges point
+down and close no cycle.
+
+**Why this is not a reclassification that hides a dependency.**
+
+- The registry already imported only the standard library and itself
+  (`tests/repo/test_module_registry.py::test_the_registry_is_a_leaf`).
+- Its parent package, `ccure_platform/__init__.py`, is a docstring, so loading the registry loads
+  nothing of the platform.
+- A new test,
+  `test_the_registry_is_a_capability_below_infrastructure_and_the_platform`, fails if any
+  cross-capability edge ever leaves the registry. The upward-edge ceiling of 0 refuses one as well.
+- The code stays the platform's: the same folder, the same owner, the same `infrastructure-is-foundation`
+  exemption.
+
+**Rules touched.**
+
+- `PLATFORM_MAY_LOAD` (the platform loads no Audit capability) now names `module_registry`. The
+  platform's own entry points load it, as they always did.
+- The two cycle ceilings fell from 2 to 0.
+- The extra 5 cross-capability imports (3 top-level, 2 lazy) are the platform's own reads of the
+  registry (the hub, composition and audit-log taxonomy). They were internal before and now point
+  down.
+
+**Remaining:** the credentialed sync's write to `assets`, the hidden write to `services`, and the
+lazy imports.
+
+### Group 7, fourth pass — compliance re-verification's write goes through the findings writer (P0)
+
+Working tree, 1 Nov 2026. Not committed. Owner-approved (§7).
+
+| Metric                         | Before | After |
+| ------------------------------ | ------ | ----- |
+| Capability cycles              | none   | none  |
+| Upward edges                   | 0      | 0     |
+| Lateral edges                  | 26     | 26    |
+| Foreign table references       | 25     | 24    |
+| Foreign table writes           | 1      | 1     |
+| Cross-capability imports, lazy | 349    | 349   |
+
+**What moved.** After a remediation, `core.compliance_tasks._run_active_reverification_probes`
+records whether a live TCP connect reached the rule's port. It used to load the asset's `services`
+row and set `state`, `network_reachable` and `updated_at` on it. That is a write the capability map
+counts only as a reference, so it was outside the single writer and unseen.
+`core.findings.writer.record_port_reachability` now makes the same assignments, from the same
+query, with the same timestamp expression, and returns whether it found a row. The probe still
+commits, and only when a row was found, as it did. The writer itself never commits.
+
+`core.compliance_tasks` no longer imports `Service`. Its lateral edge to the findings capability
+is now to the writer instead of the model, the way `scans.asset_syncer` calls the writer, so the
+lateral count is unchanged. Compliance no longer references `services`.
+
+**Rules touched.** The guard is tighter, not looser.
+`tests/repo/test_findings_writer.py::test_no_other_module_changes_a_loaded_findings_row` fails
+when a module outside the findings capability assigns an attribute on a row it loaded with
+`….query(<findings model>)` or iterated from one. That is the shape this write took.
+`test_the_row_change_detector_sees_the_write_it_exists_for` proves the guard flags it; on the
+previous `core/compliance_tasks.py` it reports the three assignments.
+`tests/compliance/test_compliance_reverification_writes.py` pins the delegation, the commit only
+when a row was found, and the writer's effect on a real row.
+
+**Found, not changed.** `_finalize_successful_remediation` in the same module sets
+`assets.custom_attributes["reboot_pending"]` on a loaded asset row. It is a compliance write to the
+asset registry's table that the ratchet does not see either: §7.
+
+### Group 7, fifth pass — compliance's asset mark goes through the asset registry (P0)
+
+Working tree, 1 Nov 2026. Not committed. Owner-approved.
+
+**What moved.** `_finalize_successful_remediation` marks an asset `reboot_pending` after a
+remediation that needs a restart. It used to load the `assets` row and set the key on its
+`custom_attributes` itself. `core.asset_compliance.mark_reboot_pending` now makes the same
+assignment and returns whether the asset exists. The task's own commit still writes it.
+
+The same module took compliance's other two asset touches, unchanged: a run's asset scope
+(`assets_for_run`) and the remediation target's lookup (`asset_by_id`). That way
+`core.compliance_tasks` no longer imports the asset model, and its one compliance → assets edge
+moved onto the registry's module, as `core/asset_evidence.py` answers compliance's evidence. Its two
+`Asset` annotations became `Any`.
+
+**Metrics.** Cycles none, upward edges 0, lateral edges 26 (the edge was swapped, not added),
+foreign table references 24, foreign table writes 1, lazy imports 349.
+
+**Rules touched.** The row-change detector is now a shared test helper, `tests/row_changes.py`.
+`tests/repo/test_asset_registry_writes.py` is the asset-side guard: no module outside the asset
+registry may change a row it loaded from an asset model. Its one recorded exception,
+`KNOWN_ROW_WRITERS`, is `scans.tasks.credentialed_sync`, the foreign write the capability map
+already counts and the next change removes. `tests/compliance/test_compliance_asset_writes.py`
+pins the delegation and the mark's effect on a real row.
+
+### Group 7, sixth pass — the credentialed sync's asset writes go to the asset registry (P0)
+
+Working tree, 1 Nov 2026. Not committed. `_sync_credentialed_asset_identity` keeps its signature
+and order. Two parts of it moved verbatim into `core/asset_credentialed.py`: finding or bootstrapping
+the asset and writing its identity (`credentialed_asset`), and, after the findings writer, its risk,
+system information, compliance evidence and last-seen record (`finish_credentialed_asset`). The task
+keeps the user check, the scan's organisation, the findings writer's calls and the scan's assessment
+record. Foreign table writes: **1 to 0**; cycles none, upward edges 0, lateral edges 26. The asset
+guard's `KNOWN_ROW_WRITERS` is empty. `tests/scans/test_credentialed_asset_sync.py` covers a new
+asset, an asset found by MAC that moved address, one found by address, an unknown user and a failed
+scope record.
+
+### Group 7, seventh pass — lazy cross-capability imports, 349 to 149 (P1)
+
+Working tree, 1 Nov 2026. Not committed. An import inside a function is a dependency the module's
+header does not show. Each of the 349 was classified mechanically and then moved only when the move
+could not change behaviour:
+
+- **Hoisted to module level** where the move adds no third-party package and none of `config`,
+  `db.base`, `core.redis_client` or `core.celery_app` to what the module loads. That excludes
+  anything a test or script replaces on the target module (`patch("X.f")`, `setattr(X, "f", …)`,
+  `X.f = …`), anything inside `try/except ImportError` or a wider `except`, and anything whose
+  name the function binds otherwise.
+- **Hoisted as a module alias** (`import core.redis_client as redis_client`, then
+  `redis_client.publish_progress_sync(…)`) where tests replace the name on its module, so the
+  call still looks it up at call time and the patch still applies.
+- **Inside a best-effort `try`**, only where the target module is already loaded when the importer
+  is, so the import inside the `try` could never fail.
+- **Two reverted** because the load-profile ratchet refused them: the credential vault would have
+  loaded the credentialed engine, and the audit-log taxonomy the module registry for three entry
+  points. **One** more: `core.risk` would have made the discovery engine load the check kernel.
+
+Every changed module was imported from a fresh interpreter, and the D1 harness passes. **What
+remains (149) is lazy on purpose:**
+
+- the composition root's startup order (`main`);
+- engine and kernel modules kept free of `config`, the database or Redis at import (D1);
+- heavy or optional packages (scapy, paramiko, winrm, impacket, reportlab, requests, celery);
+- best-effort blocks whose module is not otherwise loaded;
+- `scan_helpers`' legacy `make_pdf_cve_paragraph`, imported on first use so the module does not load
+  ReportLab (its comment says so; hoisted once, reverted after the full suite caught it);
+- scan-policy validation's static half, which "needs no database".
+
+`CEILINGS["lazy_cross_capability_imports"]` is 149 and the baseline records the count, in both
+directions. `data/rbac/authorization_migration_inventory.json` was regenerated; only line numbers
+changed.
+
+### Milestone, 3 Nov 2026 — the work committed, and what is deferred
+
+The work of 30 Oct – 2 Nov 2026 (Group 7's passes, Group 4's completion, Group 3's topology
+split and the facade's removal) is seven commits on `refactor/modular-architecture`, each
+built and tested on its own tree, with its own baseline and RBAC inventory:
+
+| Commit    | Change                                                                                    | Full backend suite on that tree |
+| --------- | ----------------------------------------------------------------------------------------- | ------------------------------- |
+| `80f5643` | Capability ownership: owners' modules, the scan ports, the module registry capability     | 8,433 passed, 211 skipped       |
+| `6265b1b` | The findings writer and the asset registry as their rows' only writers                    | 8,458 passed, 211 skipped       |
+| `9c5dcb5` | Lazy cross-capability imports 348 → 149, ratcheted                                        | 8,459 passed, 211 skipped       |
+| `a53656e` | Web DAST and identity: the platform's WebSocket login, the limit port, self-check, reaper | 8,505 passed, 211 skipped       |
+| `054756f` | Topology: the engine computes; the asset registry and the topology store write            | 8,520 passed, 211 skipped       |
+| `ffb870b` | `core/tasks.py` removed; callers import from the owning modules                           | 8,532 passed, 211 skipped       |
+| `b00247d` | These records                                                                             | documents only                  |
+
+At `b00247d`: no capability cycle, no upward edge, no write to another capability's table,
+26 lateral edges, 23 references (reads), 146 lazy cross-capability imports, ten D1 libraries.
+The current architecture is described in [`README.md`](README.md) §3–8.
+
+**Deferred** by the project owner on 3 Nov 2026, as follow-up hardening:
+
+- GitLab CI enforcement (D-5, below);
+- the findings golden replay of the final tree on a restored database;
+- the `openapi-contract` hook's report while committing `a53656e`: it said it had modified a
+  file, yet the commit was made and nothing changed; the hook passes on that tree and at
+  `HEAD`.
+
 ## 7. Decisions awaiting the project owner
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | From                                                               |
@@ -4449,8 +4767,8 @@ their `run.sh down`.
 | new | **Done in Group 3** (`a9e7859`): `engines/vulnerability/cve_lookup.py`; the client is built at the first lookup. Was: B3 half B, the CVE client out of `core.utils`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | B3, §6                                                             |
 | new | Fix the Nuclei probe's starved network templates (a pre-existing false negative). Against the Redis target, the probe's command matched nothing in five runs, while the non-HTTP template types alone matched 10, two of them critical CVEs, in 27 s                                                                                                                                                                                                                                                                                                                                                                                           | B3, §6                                                             |
 | new | **Done in Group 3** (`a9e7859`): `core.oui_lookup` is the scan kernel's and reads the vendor cache through a port the asset registry answers. Was: whether the MAC-vendor lookup becomes a port                                                                                                                                                                                                                                                                                                                                                                                                                                                | B3, §6                                                             |
-| new | **Done in Group 3** (`a9e7859`): `core/topology/directory.py`; the engine loads no model registry (11 Audit capabilities → infra alone). It still persists its own links through SQLAlchemy (§6, Group 3). Was: whether the topology engine's asset access moves behind a port                                                                                                                                                                                                                                                                                                                                                                 | B6, §6                                                             |
-| new | Take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                                                                                                                                                                                                                                                                  | B7, §6                                                             |
+| new | **Done in Group 3** (`a9e7859`): `core/topology/directory.py`; the engine loads no model registry (11 Audit capabilities → infra alone). It still persists its own links through SQLAlchemy (§6, Group 3). **Persistence split on 2 Nov 2026 (Group 3, "What is left").** Was: whether the topology engine's asset access moves behind a port                                                                                                                                                                                                                                                                                                  | B6, §6                                                             |
+| new | **Done in Group 7** (`core/pdf_text.py`). Was: take the renderers out of the remaining 4-capability cycle: `ccure_platform.audit_log.export` lazily imports `reporting.report_helpers`, the only edge into the renderers from the cycle. The analysis's §7.3 assigns it to B8, but B8's step does not name it, so B8 left it                                                                                                                                                                                                                                                                                                                   | B7, §6                                                             |
 | new | Correct `scripts/verification/verify_report_integrity.py`'s provenance markers: it expects "How this was detected", which the technical report stopped printing on 22 Aug 2026 (`f30e1df`), so it fails on every tree                                                                                                                                                                                                                                                                                                                                                                                                                          | B7, §6                                                             |
 | new | Add the foreign keys the migrations never created on `web_scans` and `web_findings`: `org_id` to `organizations`, `created_by` and `accepted_by` to `users`, as their models declare. Both tables are empty on this installation. Until then a purge leaves `web_findings.accepted_by` naming the removed account, and no test can see the gap, because the test schema is built from the models                                                                                                                                                                                                                                               | B8, §6                                                             |
 | new | **Done** (web DAST in G6; the network checks in Group 3, `a9e7859`, the device classifier being the scan kernel's). Was: take the network checks and web DAST out of the capability cycle                                                                                                                                                                                                                                                                                                                                                                                                                                                      | B9, §6                                                             |
@@ -4485,7 +4803,7 @@ their `run.sh down`.
 | new | Whether the findings side's host port should carry plain values instead of a SQL projection. G6 chose the projection so that every query stays one statement with the same plan; the findings capability is then coupled to the asset table's columns by a declared contract (`HOST_COLUMNS`) rather than by an import                                                                                                                                                                                                                                                                                                                         | G6, §6                                                             |
 | new | Give `/assets/services/assets` an `ORDER BY`. The service-host listing pages with none, so which hosts a page holds is whatever the plan returns (pre-existing; G6 kept the query as it was)                                                                                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
 | new | **Done in G2** (§6, `0687924`): `reporting/compliance/executive.py`. Was: move the executive compliance report's inline PDF (`download_executive_compliance_report`) into `reporting/compliance/` like the 20 generators                                                                                                                                                                                                                                                                                                                                                                                                                       | G6, §6                                                             |
-| new | Take findings out of the capability cycle: it reaches the scan model (the comparison), the credentialed audit (the writer's coverage import, the router's version comparator), configuration audit (the credentialed scope) and scan policy (the comparison)                                                                                                                                                                                                                                                                                                                                                                                   | G6, §6                                                             |
+| new | **Done in Group 7** (`core/findings/scan_directory.py`; its edges into the credentialed audit and configuration audit remain, downward, and close no cycle). Was: take findings out of the capability cycle: it reaches the scan model (the comparison), the credentialed audit (the writer's coverage import, the router's version comparator), configuration audit (the credentialed scope) and scan policy (the comparison)                                                                                                                                                                                                                 | G6, §6                                                             |
 | new | Whether the compliance router's parts keep `routers.compliance` as their `__name__` or take their own. Renaming changes every compliance limiter key and the gateway route policy's endpoints, so it needs the policy regenerated and the gateway rebuilt in the same release                                                                                                                                                                                                                                                                                                                                                                  | G6, §6                                                             |
 | new | Give the API golden a passing NIST CSF control. In the restored data no CSF control passes (26 fail, 80 not assessed), so the renderer's label for a pass is never drawn and a change to it went uncaught (G6's golden mutations); `setup.sql` could add a passing attestation                                                                                                                                                                                                                                                                                                                                                                 | G6, §6                                                             |
 | new | Split the compliance workspace's dialogs out of the page (about 760 of its 3,040 lines), as F1 split its tabs. They share the page's state with several tabs, so each would take its state as props as the tabs do                                                                                                                                                                                                                                                                                                                                                                                                                             | F1, §6                                                             |
@@ -4495,5 +4813,9 @@ their `run.sh down`.
 | new | Show the credential store's delete note in the compliance workspace's Credentials Manager tab, as Scan Credentials does: since F3 the delete answers how many schedules the credential leaves without one, and the tab still says only "Credential deleted successfully."                                                                                                                                                                                                                                                                                                                                                                      | F3, §6                                                             |
 | new | Point the scan setup's "no stored credentials" state at Scan Credentials, the credential store's own page, rather than at Compliance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | F3, §6                                                             |
 | new | D-3 can now be decided on its own: since F3 no screen calls `/compliance/credentials`. Retiring it removes three routes from the API and from the gateway policy; keeping it costs nothing the frontend sees                                                                                                                                                                                                                                                                                                                                                                                                                                   | F3, §6                                                             |
-| new | Whether web DAST's router reaches identity, the session and rate limiting through `ccure_platform.api` alone. It imports `auth.jwt_handler.decode_token` for the progress WebSocket's login, `db.models.User` and `core.rate_limiter`, which keeps D2 short of "the platform API and declared settings alone"                                                                                                                                                                                                                                                                                                                                  | Group 4, §6                                                        |
-| new | Whether web DAST's worker self-check and scan reaper become ports or stay the worker's own infrastructure. Both read the database and Redis themselves; the engine's tool wrappers, crawler and OAST client no longer read anything global                                                                                                                                                                                                                                                                                                                                                                                                     | Group 4, §6                                                        |
+| new | Whether web DAST's router reaches identity, the session and rate limiting through `ccure_platform.api` alone. It imports `auth.jwt_handler.decode_token` for the progress WebSocket's login, `db.models.User` and `core.rate_limiter`, which keeps D2 short of "the platform API and declared settings alone" **Done 2 Nov 2026 (Group 4, "What is left")**                                                                                                                                                                                                                                                                                    | Group 4, §6                                                        |
+| new | **Done 2 Nov 2026 (Group 4, "What is left"): the self-check's database and Redis probes became the host's; the reaper's listing and deadlines moved to web DAST.** Whether web DAST's worker self-check and scan reaper become ports or stay the worker's own infrastructure. Both read the database and Redis themselves; the engine's tool wrappers, crawler and OAST client no longer read anything global                                                                                                                                                                                                                                  | Group 4, §6                                                        |
+| new | The `infra` ↔ `platform` capability cycle: its one edge is `core.celery_app` reading the module registry (`ccure_platform.modules`) for each enabled module's task modules and queues. Either classify the registry, a stdlib-only leaf, as a capability of its own below both (as `tls` was for the engines), or have the composition root hand Celery the modules, which changes the worker's `-A` entry point and is a release change. **Decided 1 Nov 2026: the first; done (Group 7, third pass).**                                                                                                                                      | Group 7                                                            |
+| new | Accept `core.pdf_text` as the one module outside the renderers and the check kernel a renderer may import (`SHARED_PDF_PRIMITIVES` in `tests/reports/test_renderer_report_inputs.py`), or move the helpers back and keep the platform's audit-log PDF importing Audit's renderers                                                                                                                                                                                                                                                                                                                                                              | Group 7                                                            |
+| new | Move `core.compliance_tasks`' re-verification write to `services` (`state`, `network_reachable`) into the findings writer. It assigns to a loaded row, which the ratchet counts only as a reference, so the single-writer rule is bypassed unseen. **Decided 1 Nov 2026; done (Group 7, fourth pass).**                                                                                                                                                                                                                                                                                                                                        | Group 7                                                            |
+| new | Move `core.compliance_tasks._finalize_successful_remediation`'s write to `assets.custom_attributes["reboot_pending"]` into the asset registry. It assigns to a loaded asset row, which the ratchet counts only as a reference, as the `services` write did; a row-change guard like the findings writer's would make the asset registry's single-writer rule enforceable too. **Decided 1 Nov 2026; done (Group 7, fifth pass).**                                                                                                                                                                                                              | Group 7, fourth pass                                               |

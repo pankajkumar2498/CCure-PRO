@@ -61,6 +61,14 @@ from db.models.scan_schedules import (
     TRIGGER_SCHEDULE,
 )
 from sqlalchemy.orm import Session
+from core.scan_policy import ResolvedPolicyError
+from core.scan_policy import record_policy_snapshot
+from core.scan_policy import resolve_policy
+from core.scan_scope import org_scan_scope
+from core.scan_targets import validate_scan_targets
+from core.task_names import RUN_CREDENTIALED_SCAN
+from core.task_names import RUN_HOST_DISCOVERY
+from db.models.scan_policies import ScanPolicy
 
 log = logging.getLogger("ccure.scheduling")
 
@@ -191,13 +199,10 @@ def _resolve_targets(db: Session, schedule: ScanSchedule) -> List[str]:
     the FastAPI limiter, and this module is imported by a Celery worker that
     has no application instance.
     """
-    from core.scan_targets import validate_scan_targets
 
     raw = [str(t).strip() for t in (schedule.targets or []) if str(t or "").strip()]
     if not raw:
         raise ScheduleDispatchError("the schedule has no targets")
-
-    from core.scan_scope import org_scan_scope
 
     # None when the organisation is gone — the same refusal as before.
     scope = org_scan_scope(db, schedule.org_id)
@@ -235,7 +240,6 @@ def _schedule_policy_options(db: Session, schedule: ScanSchedule, *, scan_kind: 
     this whole phase exists to remove: a nightly scan that silently stopped
     assessing what it was authorised to assess and went on reporting success.
     """
-    from core.scan_policy import ResolvedPolicyError, resolve_policy
 
     options: Dict[str, Any] = dict(schedule.scan_options or {})
     try:
@@ -289,7 +293,6 @@ def _count_policy_use(db: Session, schedule: ScanSchedule, effective) -> None:
     """
     if not effective.policy_id:
         return
-    from db.models.scan_policies import ScanPolicy
 
     row = (
         db.query(ScanPolicy)
@@ -307,8 +310,7 @@ def _dispatch_network(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
     from core.celery_app import registered_task
-    from core.task_names import RUN_HOST_DISCOVERY
-    from scans.db_helpers import create_scan
+    from core.scheduling.scan_records import create_scan
 
     # Resolved before the scan row exists: `create_scan` commits, so a refusal
     # afterwards would leave a committed scan stuck in `running` that nothing
@@ -339,7 +341,6 @@ def _dispatch_network(
     }
     # Re-applied because the literal above rebuilds `options` wholesale and
     # would otherwise drop the snapshot written a moment ago.
-    from core.scan_policy import record_policy_snapshot
 
     record_policy_snapshot(scan, effective, overwrite=True)
     db.flush()
@@ -372,8 +373,7 @@ def _dispatch_credentialed(
 ) -> DispatchOutcome:
     from core import credential_vault
     from core.celery_app import registered_task
-    from core.task_names import RUN_CREDENTIALED_SCAN
-    from scans.db_helpers import create_scan
+    from core.scheduling.scan_records import create_scan
 
     if not schedule.credential_id:
         # The foreign key is ON DELETE SET NULL, so this is what a deleted
@@ -415,7 +415,6 @@ def _dispatch_credentialed(
         "origin": "schedule",
         "schedule_id": schedule.id,
     }
-    from core.scan_policy import record_policy_snapshot
 
     record_policy_snapshot(scan, effective, overwrite=True)
     db.flush()

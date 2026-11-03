@@ -13,6 +13,7 @@ from db.base import SessionLocal
 from db.models import Scan
 from ccure_platform import api as platform_api
 from scans.tasks.common import _check_cancelled, _finalize_cancelled, _update_task_id
+import core.redis_client as redis_client
 
 log = logging.getLogger("ccure.tasks")
 
@@ -142,9 +143,8 @@ def run_topology_mapping_task(
             return {"success": True, "skipped": True, "reason": "No target IPs"}
 
         # Emit progress
-        from core.redis_client import publish_progress_sync
 
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id,
             4,
             {
@@ -197,7 +197,7 @@ def run_topology_mapping_task(
         )
 
         # Final progress push
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id,
             4,
             {
@@ -218,9 +218,8 @@ def run_topology_mapping_task(
     except Exception as exc:
         log.exception("Topology Mapping Task Failed for scan %s", scan_id)
         # Topology failure should NOT fail the scan — it's an optional add-on
-        from core.redis_client import publish_progress_sync
 
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id,
             4,
             {

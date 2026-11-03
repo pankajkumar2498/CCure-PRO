@@ -299,7 +299,7 @@ def _pdf_row(row: dict[str, Any]) -> dict[str, str]:
 
 def render_pdf(meta: dict[str, Any], rows: Sequence[dict[str, Any]]) -> bytes:
     """Render the summary document. Returns the whole file; the caller caps size."""
-    from reporting.report_helpers import (
+    from core.pdf_text import (
         clean_control_chars,
         escape_for_reportlab,
         register_report_fonts,

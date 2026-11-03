@@ -13,11 +13,15 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from auth.jwt_handler import decode_token
-from ccure_platform.api import CurrentUser, log_audit_event, require_authorized
+from ccure_platform.api import (
+    CurrentUser,
+    log_audit_event,
+    require_authorized,
+    websocket_user,
+)
 from db.base import SessionLocal, get_db, utcnow
 from ccure_platform import api as platform_api
-from db.models import AssetVulnerability, ScanPhase, Service, User
+from db.models import AssetVulnerability, ScanPhase, Service
 from db.models.scans import Scan
 from fastapi import (
     APIRouter,
@@ -40,6 +44,13 @@ from scans.scan_access import (  # noqa: F401  (the old private names stay)
 )
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
+from core.findings import compare_scans
+from core.findings.comparison import policy_context
+from core.findings.comparison import previous_scan_for
+from core.scan_policy import read_policy_snapshot
+from core.scan_policy.spec import effective_from_config
+from db.models.scan_policies import ScanPolicy
+import core.redis_client as core_redis_client
 
 log = logging.getLogger("ccure.scans")
 router = APIRouter(prefix="/scans", tags=["Scan History"])
@@ -410,45 +421,6 @@ def _scan_history_snapshot(
     }
 
 
-def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
-    ticket = websocket.query_params.get("ticket")
-
-    if not ticket:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication ticket is required for WebSocket connections.",
-        )
-
-    payload = decode_token(ticket)
-    if not payload:
-        raise HTTPException(
-            status_code=401, detail="Invalid or expired authentication."
-        )
-
-    token_type = payload.get("type")
-    if token_type != "ticket":
-        raise HTTPException(
-            status_code=401, detail="Unsupported token type for WebSocket."
-        )
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload.")
-
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.id == str(user_id)).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found.")
-
-        if not platform_api.has_permission(db, user, "audit.scan.read"):
-            raise HTTPException(status_code=403, detail="Insufficient privileges.")
-
-        return user
-    finally:
-        db.close()
-
-
 def _format_sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"
 
@@ -585,21 +557,27 @@ async def stream_scan_history(
 
 
 @router.websocket("/{scan_id}/progress")
-async def scan_progress_ws(websocket: WebSocket, scan_id: str):
+async def scan_progress_ws(
+    websocket: WebSocket,
+    scan_id: str,
+    current_user: CurrentUser | None = Depends(websocket_user),
+    db: Session = Depends(get_db),
+):
     """
     Real-time progress WebSocket endpoint using Redis PubSub.
     Sends current state immediately on connect to avoid race conditions.
     """
-    try:
-        current_user = _get_websocket_user(websocket)
-    except HTTPException:
+    # Signed in by the platform's ticket login; reading a scan's progress
+    # still needs audit.scan.read. Either refusal closes before accepting.
+    if current_user is None or not platform_api.has_permission(
+        db, current_user, "audit.scan.read"
+    ):
         await websocket.close(code=1008)
         return
 
     await websocket.accept()
 
     # 1. Send current status from DB immediately
-    db = SessionLocal()
     try:
         query = db.query(Scan).filter(Scan.id == scan_id)
         if not platform_api.acts_across_organisations(current_user):
@@ -652,11 +630,10 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
                 }
             )
     finally:
+        # Released before the subscription, which can last as long as the scan.
         db.close()
 
-    from core.redis_client import redis_client
-
-    pubsub = redis_client.pubsub()
+    pubsub = core_redis_client.redis_client.pubsub()
     await pubsub.subscribe(f"scan_progress:{scan_id}")
 
     log.info(
@@ -731,7 +708,6 @@ def scan_policy_record(
     route uses, so another organisation's scan answers 404 rather than
     disclosing its configuration.
     """
-    from core.findings.comparison import policy_context
 
     scan = _get_scan_or_404(scan_id, user, db, org_id)
     context = policy_context(scan)
@@ -746,7 +722,6 @@ def scan_policy_record(
     }
 
     if context.get("recorded"):
-        from core.scan_policy import read_policy_snapshot
 
         effective = read_policy_snapshot(scan)
         # The full effective configuration, field by field, so a client can
@@ -758,8 +733,6 @@ def scan_policy_record(
         # policy edited since is exactly the case the snapshot exists for, and
         # this is how a reader learns the two have diverged.
         if effective and effective.policy_id:
-            from db.models.scan_policies import ScanPolicy
-            from core.scan_policy.spec import effective_from_config
 
             row = (
                 db.query(ScanPolicy)
@@ -848,8 +821,6 @@ def compare_scan(
     is the sample. That split is deliberate — a truncated count would be a
     wrong number rather than a short page.
     """
-    from core.findings import compare_scans
-    from core.findings.comparison import previous_scan_for
 
     current = _get_scan_or_404(scan_id, user, db, org_id)
 
@@ -984,9 +955,8 @@ def stop_scan(
     # frame the operator presses Stop, sees the scan carry on, and presses it
     # again.
     try:
-        from core.redis_client import publish_progress_sync
 
-        publish_progress_sync(
+        core_redis_client.publish_progress_sync(
             scan_id,
             1,
             {

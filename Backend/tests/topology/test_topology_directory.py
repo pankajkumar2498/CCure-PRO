@@ -1,10 +1,11 @@
 """
-The topology engine reads and enrols assets, and reads its scan's targets,
-through its directory (Group 3; ``core/topology/directory.py``): the asset
-registry answers the assets (``core/topology_assets.py``) and the scans
-capability the scan (``scans.reads``), registered together by
+The topology engine reads assets and its scan's targets, and hands over what a
+run writes, through its directory (Group 3; ``core/topology/directory.py``):
+the asset registry answers the assets (``core/topology_assets.py``), the
+topology store the links (``core/topology/links.py``, since 2 Nov 2026) and the
+scans capability the scan (``scans.reads``), registered together by
 ``ccure_audit/topology_directory.py``. The engine and the topology API import
-neither model.
+neither model. The writers are ``test_topology_store.py``.
 """
 
 import ast
@@ -32,7 +33,7 @@ def test_the_registered_directory_answers():
     from scans import reads
 
     assert topology_directory.directory() is DIRECTORY
-    assert DIRECTORY.enrol is topology_assets.enrol
+    assert DIRECTORY.organisation_assets is topology_assets.organisation_assets
     assert DIRECTORY.scan_targets is reads.target_hosts
     assert DIRECTORY.scan is reads.scan_by_id
 
@@ -54,14 +55,23 @@ def test_a_second_directory_is_refused(monkeypatch):
 
 def test_enrolment_flushes_so_the_link_has_its_key(db_session, test_org):
     from core import topology_assets
+    from db.base import utcnow
 
-    asset = topology_assets.enrol(
+    topology_assets.write_topology_assets(
         db_session,
-        id="ast_g3_topology_enrol",
-        org_id=test_org.id,
-        ip_address="10.99.0.1",
-        discovery_method="topology",
+        [
+            {
+                "id": "ast_g3_topology_enrol",
+                "org_id": test_org.id,
+                "ip_address": "10.99.0.1",
+                "discovery_method": "topology",
+            }
+        ],
+        {},
+        now=utcnow(),
     )
+    asset = topology_assets.asset(db_session, "ast_g3_topology_enrol")
     assert asset.id == "ast_g3_topology_enrol"
-    assert topology_assets.asset(db_session, asset.id) is asset
-    assert asset in topology_assets.organisation_assets(db_session, test_org.id)
+    assert asset.id in {
+        row.id for row in topology_assets.organisation_assets(db_session, test_org.id)
+    }

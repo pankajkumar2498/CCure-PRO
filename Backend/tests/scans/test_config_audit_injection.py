@@ -191,7 +191,11 @@ def test_every_context_production_builds_carries_the_comparator():
             ):
                 given = {k.arg: k.value for k in node.keywords}
                 value = given.get("version_compare")
-                sites.append((node.lineno, getattr(value, "id", None)))
+                # A bare name or the matcher module's attribute
+                # (vuln_matcher.compare_distro_versions): the same function.
+                sites.append(
+                    (node.lineno, getattr(value, "id", getattr(value, "attr", None)))
+                )
     assert len(sites) == 2, sites
     assert all(name == "compare_distro_versions" for _, name in sites), sites
 

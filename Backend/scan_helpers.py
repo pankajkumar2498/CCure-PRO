@@ -11,6 +11,7 @@ import logging
 from typing import Dict, List, Optional
 
 from orchestrator.host_discovery_api import HostDiscoveryAPI
+import db.base as base
 
 log = logging.getLogger("ccure.api")
 
@@ -98,9 +99,8 @@ def finish_progress(scan_id: str, db: Session = None):
     if db:
         _db_finish_progress(db, scan_id)
     else:
-        from db.base import SessionLocal
 
-        session = SessionLocal()
+        session = base.SessionLocal()
         try:
             _db_finish_progress(session, scan_id)
         finally:

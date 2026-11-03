@@ -35,6 +35,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import CIDR, JSONB
 from sqlalchemy.orm import relationship
+from db.base import engine
+from db.base import gen_scan_id
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Scan
@@ -129,7 +131,6 @@ class Scan(Base):
 
     def __init__(self, **kwargs):
         if "id" not in kwargs:
-            from db.base import gen_scan_id
 
             org_id = kwargs.get("org_id", "org_default")
             org_slug = org_id.replace("org_", "") if org_id else "default"
@@ -239,7 +240,6 @@ def ensure_scan_schema():
     databases need this additive migration because SQLAlchemy does not alter
     already-created tables.
     """
-    from db.base import engine
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)

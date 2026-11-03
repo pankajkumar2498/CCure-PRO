@@ -28,6 +28,7 @@ import logging
 
 from core.celery_app import celery_app
 from db.base import SessionLocal
+from config import AppConfig
 
 log = logging.getLogger("ccure.tasks")
 
@@ -51,7 +52,6 @@ def purge_expired_audit_logs() -> dict:
     raised: this runs on beat, and an exception in a nightly job is a line in a
     log nobody reads, whereas ``{"skipped": ...}`` is visible in the result.
     """
-    from config import AppConfig
     from ccure_platform.audit_log.retention import RetentionRefused, run_retention
 
     db = SessionLocal()

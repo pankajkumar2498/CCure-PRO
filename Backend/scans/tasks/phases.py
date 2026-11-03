@@ -53,6 +53,10 @@ from scans.tasks.common import (
 )
 from scans.tasks.credentialed import _apply_credentialed_enrichment
 from scans.tasks.topology import _chain_topology_if_needed
+from core.scan_policy import read_policy_snapshot
+from db.base import utcnow as _utcnow
+import core.redis_client as redis_client
+import scans.asset_syncer as asset_syncer
 
 log = logging.getLogger("ccure.tasks")
 
@@ -69,9 +73,8 @@ def sync_asset_discovery_task(
 ):
     db = SessionLocal()
     try:
-        from scans.asset_syncer import sync_asset_discovery
 
-        sync_asset_discovery(db, scan_id, org_id, user_id, hosts)
+        asset_syncer.sync_asset_discovery(db, scan_id, org_id, user_id, hosts)
         # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
         try:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
@@ -101,9 +104,8 @@ def sync_vulnerability_audit_task(
 ):
     db = SessionLocal()
     try:
-        from scans.asset_syncer import sync_vulnerability_audit
 
-        sync_vulnerability_audit(db, scan_id, org_id, user_id, hosts)
+        asset_syncer.sync_vulnerability_audit(db, scan_id, org_id, user_id, hosts)
         # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
         try:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
@@ -144,9 +146,8 @@ def sync_host_discovery_task(
 ):
     db = SessionLocal()
     try:
-        from scans.asset_syncer import sync_host_discovery
 
-        sync_host_discovery(db, scan_id, org_id, user_id, hosts)
+        asset_syncer.sync_host_discovery(db, scan_id, org_id, user_id, hosts)
         # Automatically reconcile newly synced scan discoveries against AMT inventory ONLY IF this is the terminal phase
         try:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
@@ -278,7 +279,6 @@ def run_host_discovery_task(
         )
 
         # 4. Final Progress Push (Post-Commit)
-        from core.redis_client import publish_progress_sync
 
         # If there's another phase to run, hand it the hosts that answered
         if following is not None and result.get("success") and result.get("data"):
@@ -321,7 +321,7 @@ def run_host_discovery_task(
                 db.commit()
 
                 # Publish progress to let UI know we are moving to next phase
-                publish_progress_sync(
+                redis_client.publish_progress_sync(
                     scan_id,
                     1,
                     {
@@ -350,7 +350,6 @@ def run_host_discovery_task(
             or not any(h.get("is_active") for h in result.get("data", []))
         ):
             log.info("[TRACE][TASK][%s] Scan %s pipeline complete", ts(), scan_id)
-            from db.base import utcnow
 
             db.refresh(scan)
             if scan.status != "unreachable":
@@ -367,7 +366,7 @@ def run_host_discovery_task(
                 )
 
             # FINAL PROGRESS PUSH: Use the actual scan status (could be complete or unreachable)
-            publish_progress_sync(
+            redis_client.publish_progress_sync(
                 scan_id,
                 1,
                 {
@@ -549,7 +548,6 @@ def run_asset_discovery_task(
         )
 
         # Final Progress Push
-        from core.redis_client import publish_progress_sync
 
         # If there's another phase to run, hand it the inventory of the hosts
         # that answered
@@ -576,7 +574,7 @@ def run_asset_discovery_task(
                 )
                 db.commit()
 
-                publish_progress_sync(
+                redis_client.publish_progress_sync(
                     scan_id,
                     2,
                     {
@@ -597,7 +595,7 @@ def run_asset_discovery_task(
                     scan_id,
                 )
 
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id,
             2,
             {
@@ -706,7 +704,6 @@ def run_vulnerability_audit_task(
         # exactly as it did — and a policy can only ever turn this *on*
         # deliberately, never inherit it.
         from core.checks.intrusive import allow_intrusive_probes
-        from core.scan_policy import read_policy_snapshot
 
         _policy = read_policy_snapshot(scan_row)
         if _policy is not None and _policy.allow_intrusive:
@@ -789,7 +786,6 @@ def run_vulnerability_audit_task(
         # alone, and printed "83 seconds" for a scan that Scan History and the
         # scan record both showed as 3m 36s.
         if scan_row and scan_row.started_at:
-            from db.base import utcnow as _utcnow
 
             elapsed = (_utcnow() - scan_row.started_at).total_seconds()
             if elapsed > 0:
@@ -831,9 +827,8 @@ def run_vulnerability_audit_task(
         )
 
         # Final Progress Push
-        from core.redis_client import publish_progress_sync
 
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id,
             3,
             {

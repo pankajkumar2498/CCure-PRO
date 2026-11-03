@@ -225,6 +225,7 @@ import openpyxl  # noqa: E402,F401
 from sqlalchemy import text  # noqa: E402
 
 from ccure_audit import offboarding  # noqa: E402
+import ccure_audit.scan_directory  # noqa: E402,F401  (the comparison's scan directory)
 from core.findings import compare_scans  # noqa: E402
 from core.findings.comparison import previous_scan_for  # noqa: E402
 from core.findings.credentialed_scope import is_credentialed_finding  # noqa: E402

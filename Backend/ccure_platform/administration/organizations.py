@@ -1,6 +1,7 @@
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "routers.admin_orgs")
+from config import AppConfig
 
 import logging
 from typing import Optional
@@ -599,8 +600,6 @@ def get_scan_scope(
     org = _scoped_organization_query(db, org_id, current_user).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-
-    from config import AppConfig
 
     return {
         "org_id": str(org.id),

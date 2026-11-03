@@ -29,6 +29,9 @@ its catalogue rows and findings, and the sweep of those it retired.
 From Audit's purge hook (``ccure_audit.offboarding``): clearing a purged account
 from the findings whose risk it accepted.
 
+From compliance re-verification (``core.compliance_tasks``): a live TCP connect's
+answer on the port's service row (``record_port_reachability``).
+
 Moved code logs under the name it always had, so its log lines read as they
 did: ``scans.asset_syncer`` for the pipeline's, ``ccure.tasks`` for the
 standalone audit's.
@@ -38,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
 from core.checks.contract import normalize_severity
@@ -72,6 +76,8 @@ from scans.cvss import (
 from sqlalchemy import case, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
+from core.checks.endpoint_evidence import render_observations
+from core.checks.plugin_outcomes import coverage_summary
 
 logger = logging.getLogger("scans.asset_syncer")
 
@@ -456,6 +462,29 @@ def upsert_network_service(db: Session, asset_id: str, scan_id: str, p: dict) ->
             },
         )
     )
+
+
+def record_port_reachability(
+    db: Session, asset_id: str, port: int, is_open: bool
+) -> bool:
+    """
+    Record a live TCP connect to an asset's port on its service row, for
+    compliance re-verification (``core.compliance_tasks``), which made this
+    write on the row itself until 1 Nov 2026. Returns whether a row was found;
+    the caller commits, as it did.
+
+    A live connect from the scanner is a direct reachability observation, so
+    it sets both the state and the reachability flag. Leaving the flag behind
+    would let a re-verified port keep whatever the original scan concluded.
+    """
+    svc = db.query(Service).filter_by(asset_id=asset_id, port=port).first()
+    if not svc:
+        return False
+    svc.state = "open" if is_open else "closed"
+    svc.network_reachable = is_open
+    svc.updated_at = datetime.now(timezone.utc)
+    db.add(svc)
+    return True
 
 
 # ── Catalogue rows and findings ──────────────────────────────────────────────
@@ -1252,7 +1281,6 @@ def write_host_findings(
         # the service, the version fingerprinted on it, the banner returned,
         # and the published range that version was tested against.
         finding_service = service_by_id.get(finding_service_id)
-        from core.checks.endpoint_evidence import render_observations
 
         for observation in v.get("endpoint_observations") or []:
             try:
@@ -1401,7 +1429,6 @@ def write_host_findings(
             continue
         elif "plugin_outcomes" in host:
             # Absence after an incomplete network assessment is not remediation.
-            from core.checks.plugin_outcomes import coverage_summary
 
             if not coverage_summary([host])["complete"]:
                 continue
@@ -1544,10 +1571,6 @@ def _sync_credentialed_vulnerabilities(
     scan_id: str,
     cve_list: list[dict],
 ) -> None:
-    from core.checks.definitions import (
-        DEFINITION_TYPE_CVE,
-        definition_type_for_id,
-    )
 
     source_family = "credentialed_package"
     for vuln in cve_list or []:
@@ -1585,7 +1608,6 @@ def _sync_credentialed_vulnerabilities(
         # made GROUP BY return two rows for one severity and cost the dashboard
         # 100 of 146 findings. Deriving from the score also stops a feed's
         # textual rating disagreeing with the vector it published.
-        from scans.cvss import canonical_severity, severity_from_score
 
         severity = (
             severity_from_score(cvss).lower()
@@ -1841,8 +1863,6 @@ def sweep_credentialed_findings(
     # or a feed lookup that failed, cve_list carries no package CVEs, and the
     # sweep below used to read that as every package finding remediated.
     _packages_assessed = packages_assessed(stored_report)
-
-    from core.checks.definitions import DEFINITION_TYPE_CVE, definition_type_for_id
 
     for f in current_open:
         if _finding_family(_finding_source_from_record(f)) != "credentialed_package":

@@ -21,15 +21,14 @@ from scripts.architecture import library_isolation as li
 from scripts.architecture.import_graph import collect_edges
 from testpaths import BACKEND_ROOT
 
-#: The scan engines that are not D1 libraries. Since Group 3 four of them are
-#: pinned statically by E2 (capability_map.PINNED_ENGINES) and the topology
-#: engine still persists its own links; none is declared, nothing exempts them.
+#: The scan engines that are not D1 libraries. Since Group 3 they are pinned
+#: statically by E2 (capability_map.PINNED_ENGINES); none is declared, nothing
+#: exempts them. The topology engine left this set on 2 Nov 2026.
 DEFERRED = {
     "engines.port.port_engine",
     "engines.vulnerability.vulnerability_engine",
     "core.nmap.wrapper",
     "engines.credentialed.vuln_matcher",
-    "core.topology.engine",
 }
 
 
@@ -37,7 +36,8 @@ DEFERRED = {
 
 
 def test_the_libraries_are_declared():
-    # Group 1's eight, and web DAST since Group 4.
+    # Group 1's eight, web DAST since Group 4, and the topology engine since
+    # its persistence moved behind its directory (2 Nov 2026).
     assert set(li.LIBRARIES) == {
         "ssh_transport",
         "winrm_transport",
@@ -48,6 +48,7 @@ def test_the_libraries_are_declared():
         "renderers",
         "discovery",
         "web_dast",
+        "topology",
     }
 
 
@@ -181,6 +182,13 @@ def backend_copy(tmp_path_factory):
             "core/web/sqlmap/wrapper.py",
             "from config import WebScanConfig",
             "config",
+        ),
+        # 2 Nov 2026: the topology engine reaching the database layer again.
+        (
+            "topology",
+            "core/topology/engine.py",
+            "from db.base import utcnow",
+            "db.base",
         ),
     ],
 )

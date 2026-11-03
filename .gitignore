@@ -100,7 +100,10 @@ Backend/db/test_data/prod_schema.sql
 
 # .md files
 .agent/
-.claude/
+# .claude/ is local state, except the shared instructions (AGENTS.md routes to them).
+.claude/*
+!.claude/rules/
+!.claude/skills/
 
 # docs/ binaries ignored, markdown tracked
 docs/*.docx

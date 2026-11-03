@@ -31,6 +31,8 @@ from typing import Dict, List, Optional
 from core.constants import SCAPY_AVAILABLE
 from core.discovery.host_identity import forward_confirm, resolve_identity
 from core.engine_ports import SnmpSystemQuery
+from core.constants import PORT_DB
+from core.risk import fingerprint_os
 
 log = logging.getLogger("ccure.discovery.enrichment")
 
@@ -149,7 +151,6 @@ def _register_open_port(
         p.get("port") == port and (p.get("protocol") or "tcp").lower() == protocol
         for p in open_ports
     ):
-        from core.constants import PORT_DB
 
         meta = PORT_DB.get(
             port,
@@ -752,7 +753,6 @@ def _os_probe_full(ip: str, result: dict) -> None:
         return
 
     try:
-        from core.risk import fingerprint_os
         from scapy.all import IP, TCP, sr
 
         pkt = IP(dst=ip) / TCP(

@@ -115,6 +115,8 @@ def test_the_ceilings_are_never_above_what_they_were_introduced_at():
         "lateral_edges": 74,
         "foreign_table_references": 80,
         "foreign_table_writes": 17,
+        # Introduced 1 Nov 2026.
+        "lazy_cross_capability_imports": 149,
     }
     for name, value in cm.CEILINGS.items():
         assert value <= introduced[name], name
@@ -124,7 +126,9 @@ def test_new_coupling_fails(measurement):
     grown = copy.deepcopy(measurement)
     grown["upward_edges"].append(["engines.port.port_engine", "routers.assets"])
     grown["foreign_table_writes"].append(["web_dast", "assets"])
-    grown["cycles"][0] = sorted(set(grown["cycles"][0]) | {"dashboard"})
+    # Appended, not enlarged: no capability cycle is left to enlarge (1 Nov
+    # 2026), and a new one goes through the same check.
+    grown["cycles"].append(["dashboard", "scans"])
     entry = "core.config_audit.engine"
     grown["load_profiles"][entry]["third_party"].append("sqlalchemy")
 
@@ -138,10 +142,25 @@ def test_new_coupling_fails(measurement):
 
 def test_removed_coupling_must_leave_the_baseline_too(measurement):
     shrunk = copy.deepcopy(measurement)
-    gone = shrunk["upward_edges"].pop()
+    # Lateral, not upward: there are no upward edges left to remove (31 Oct
+    # 2026), and both kinds go through the same check.
+    gone = shrunk["lateral_edges"].pop()
     problems = "\n".join(cm.ratchet_problems(shrunk))
     assert "gone — remove it from the baseline" in problems
     assert f"{gone[0]} -> {gone[1]}" in problems
+
+
+def test_lazy_imports_can_only_fall(measurement):
+    grown = copy.deepcopy(measurement)
+    grown["cross_capability_imports"]["lazy"] += 1
+    assert any(
+        "lazy cross-capability imports rose" in p for p in cm.ratchet_problems(grown)
+    )
+    shrunk = copy.deepcopy(measurement)
+    shrunk["cross_capability_imports"]["lazy"] -= 1
+    assert any(
+        "lazy cross-capability imports fell" in p for p in cm.ratchet_problems(shrunk)
+    )
 
 
 def test_an_unclassified_module_fails_the_ratchet():

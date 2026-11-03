@@ -46,6 +46,7 @@ from pydantic import BaseModel
 from core.rate_limiter import limiter
 from sqlalchemy import String, func, or_
 from sqlalchemy.orm import Session, joinedload
+from core.task_names import RECONCILE_AMT_INVENTORY
 
 log = logging.getLogger("ccure.assets")
 router = APIRouter(prefix="/assets", tags=["Assets"])
@@ -960,8 +961,8 @@ def get_asset_changelog(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
+    from core.asset_scans import pipeline_modes
     from core.audit_event_translator import translate_and_group_changelog
-    from db.models.scans import Scan as ScanModel
 
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -992,13 +993,8 @@ def get_asset_changelog(
     scan_ids = list({e.scan_id for e in entries if e.scan_id})
     scan_type_map = {}
     if scan_ids:
-        scan_rows = (
-            db.query(ScanModel.id, ScanModel.pipeline_mode)
-            .filter(ScanModel.id.in_(scan_ids))
-            .all()
-        )
-        for s in scan_rows:
-            scan_type_map[s.id] = s.pipeline_mode or "scan"
+        for sid, mode in pipeline_modes(db, scan_ids).items():
+            scan_type_map[sid] = mode or "scan"
 
     # Translate and group
     result = translate_and_group_changelog(raw_changelog, scan_type_map)
@@ -1480,7 +1476,6 @@ def import_amt_inventory(
     # 6. Dispatch reconciliation only after the commit — the worker reads these
     # rows, and handing it an uncommitted import is a race it cannot win.
     from core.celery_app import registered_task
-    from core.task_names import RECONCILE_AMT_INVENTORY
 
     task = registered_task(RECONCILE_AMT_INVENTORY).delay(org_id=org)
 

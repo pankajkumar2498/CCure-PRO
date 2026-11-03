@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
-from config import AppConfig
+from config import VulnIntelConfig, VulnIntelConfigError
 from db.fork_safety import release_pool_after_fork
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -165,9 +165,11 @@ def get_vuln_engine() -> Engine:
     # The worker's parent process connects this engine at import (core/utils.py
     # probes it), so without the fork guard every Celery child shares one
     # socket to vuln_intel — see db/fork_safety.py.
+    # require_database_url() refuses, naming the missing setting, rather than
+    # connecting with no password and failing as an authentication error.
     return release_pool_after_fork(
         create_engine(
-            AppConfig.VULN_DB_URL,
+            VulnIntelConfig.require_database_url(),
             pool_pre_ping=True,
             pool_recycle=3600,
             pool_size=5,
@@ -183,6 +185,12 @@ def can_connect_vuln_db() -> bool:
         with get_vuln_engine().connect() as conn:
             conn.exec_driver_sql("SELECT 1 FROM cve LIMIT 1")
         return True
+    except VulnIntelConfigError as exc:
+        # A configuration fault, not an outage: say so loudly, because the caller
+        # falls back to the bundled snapshot and the scan would otherwise look
+        # normal.
+        logger.error("Vulnerability-intel database not configured: %s", exc)
+        return False
     except SQLAlchemyError as exc:
         logger.debug("Vulnerability-intel database or 'cve' table unavailable: %s", exc)
         return False

@@ -27,6 +27,7 @@ Architecture: `docs/architecture/PHASE5_AUDIT_INTEGRATION_BOUNDARIES.md` and
 |---|---|
 | `services/` | answers questions about Audit's data and returns **views** — frozen `@view` dataclasses of plain values, never ORM rows |
 | `integration/` | the adapter that turns views into `ccure_contracts` messages. **Nothing in production imports it** until the integration phase (plan Phase 14) |
+| the other `*.py` | Audit's **composition root**: each registers the answer to a port a lower capability declares — `evidence_providers`, `host_directory`, `scan_directory`, `vendor_cache`, `engine_ports`, `topology_directory`, `web_settings` (loaded by Celery's `imports`), and `web_routes`, `policy_references`, `offboarding`, `preferences` (loaded by `main.py`). Which port each answers: [`docs/architecture/README.md`](../../docs/architecture/README.md) §4 |
 | `manifest.toml` | Audit's half of the registry. **Deliberately empty**: `main.py` still mounts Audit's routers and `core/celery_app.py` still lists its task modules, so declaring them here too would mount every router twice |
 
 ## Rules CI enforces

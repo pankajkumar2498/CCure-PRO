@@ -15,6 +15,8 @@ from db.models import Scan
 from ccure_platform import api as platform_api
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from scans.db_helpers import mark_scan_failed
+from core.scan_scope import org_scan_scope
+import core.redis_client as redis_client
 
 log = logging.getLogger("ccure.tasks")
 
@@ -83,7 +85,6 @@ def _bind_scan_scope(
     was admitted for. Falling back to the user's current org covers the
     traditional-scan path, which carries no scan id.
     """
-    from core.scan_scope import org_scan_scope
 
     org_id = None
     if scan_id:
@@ -133,7 +134,6 @@ def _finalize_cancelled(
     completion time, close out any phase row still marked running, and push a
     final progress frame so watching clients stop showing a live scan.
     """
-    from core.redis_client import publish_progress_sync
     from scans.db_helpers import mark_scan_cancelled
 
     try:
@@ -143,7 +143,7 @@ def _finalize_cancelled(
         db.rollback()
 
     try:
-        publish_progress_sync(scan_id, 1, {"status": "cancelled"})
+        redis_client.publish_progress_sync(scan_id, 1, {"status": "cancelled"})
     except Exception:
         log.debug("Could not publish cancellation for %s", scan_id, exc_info=True)
 
@@ -176,7 +176,6 @@ def _settle_failure(
     is indistinguishable from a running one, and nothing downstream — the
     watchdog aside — will ever revisit it.
     """
-    from core.redis_client import publish_progress_sync
     from core.scan_control import force_terminal_status
 
     try:
@@ -196,7 +195,7 @@ def _settle_failure(
     # on the live scan screen keeps showing a scan that is over until its own
     # client-side timeout fires.
     try:
-        publish_progress_sync(
+        redis_client.publish_progress_sync(
             scan_id, 1, {"status": status, "error": reason, "reason": reason}
         )
     except Exception:

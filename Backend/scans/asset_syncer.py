@@ -26,9 +26,12 @@ from core.findings.writer import (
     upsert_tls_details,
     write_host_findings,
 )
-from scans.db_text import sanitize_for_db_in_place
+from db.safe_text import sanitize_for_db_in_place
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from core.checks.plugin_outcomes import coverage_summary
+from core.findings.scan_directory import scan_record
+import core.findings as core_findings
 
 logger = logging.getLogger(__name__)
 
@@ -1532,24 +1535,21 @@ def sync_vulnerability_audit(
         # sweep above is already family-scoped, so this is bookkeeping for the
         # comparison rather than a guard on the sweep.
         try:
-            from core.findings import record_assessment_scope
-            from db.models.scans import Scan as _Scan
 
-            _scan_row = db.query(_Scan).filter(_Scan.id == scan_id).first()
+            _scan_row = scan_record(db, scan_id)
             if _scan_row is not None:
-                from core.checks.plugin_outcomes import coverage_summary
 
                 if (
                     "plugin_outcomes" not in host
                     or coverage_summary([host])["complete"]
                 ):
-                    record_assessment_scope(
+                    core_findings.record_assessment_scope(
                         _scan_row, assets=[asset_id], families=[source_family]
                     )
                 if credentialed is not None:
                     # The same record the standalone credentialed scan writes,
                     # so a comparison reads both kinds of scan the same way.
-                    record_assessment_scope(
+                    core_findings.record_assessment_scope(
                         _scan_row,
                         assets=[asset_id],
                         families=[CREDENTIALED_FAMILY],

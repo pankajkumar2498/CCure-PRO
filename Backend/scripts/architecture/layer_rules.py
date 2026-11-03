@@ -206,13 +206,14 @@ RULES: tuple[Rule, ...] = (
             "main",
             "ccure_audit",
         ),
-        # G1 (C2): the tasks live in scans/tasks/, which import one another;
-        # core/tasks.py is the compatibility facade re-exporting them.
-        exempt_importers=("core.tasks", "scans.tasks"),
+        # G1 (C2): the tasks live in scans/tasks/, which import one another.
+        # core.tasks stays forbidden: the facade that re-exported them under
+        # the hub's old name was removed on 2 Nov 2026 and must not return.
+        exempt_importers=("scans.tasks",),
         forbidden=("core.tasks", "scans.tasks"),
         reason=(
-            "The scan tasks (scans/tasks/, and core/tasks.py, the facade that "
-            "re-exports them) depend on 22 components. Anything they depend on "
+            "The scan tasks (scans/tasks/, once the core/tasks.py hub) depend "
+            "on 22 components. Anything they depend on "
             "importing them back creates the cycle the baseline measured, and a "
             "router importing one loads the whole scan pipeline to dispatch one "
             "task. Dispatch through a task *name* (core/task_names.py) or a port."
@@ -310,9 +311,10 @@ RULES: tuple[Rule, ...] = (
             "core.throttle",
             "core.upload_guard",
             "core.user_agent",
-            # ReportLab helpers (fonts, escaping, numbered canvas) shared with
-            # Audit's PDF generators; the audit-log PDF export renders with them.
-            "reporting.report_helpers",
+            # ReportLab text safety and fonts, shared with Audit's PDF
+            # generators; the audit-log PDF export renders with them. (It was
+            # reporting.report_helpers, Audit's renderers, until 30 Oct 2026.)
+            "core.pdf_text",
         ),
         reason=(
             "ccure_platform is what all four CCure modules share: identity, "

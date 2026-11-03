@@ -68,6 +68,8 @@ from routers.scan_schedules import router as scan_schedules_router
 # Audit registers what it detaches from a purged account (ccure_platform/offboarding.py).
 import ccure_audit.offboarding  # noqa: F401,E402
 import ccure_audit.preferences  # noqa: F401,E402  (Audit's user-preference block)
+import ccure_audit.policy_references  # noqa: F401,E402  (schedules naming a policy)
+import ccure_audit.web_routes  # noqa: F401,E402  (web DAST's limits, enforced by ours)
 import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's category)
 import core.scheduling.credential_references  # noqa: F401,E402  (answers the vault)
 
@@ -246,13 +248,18 @@ async def lifespan(app: FastAPI):
     # 1. Ensure the default organization exists (Data Seeding)
     # This assumes Alembic migrations have already run.
     from db.migrate_production_schema import (
-        DEFAULT_ORG_SLUG,
+        DefaultOrganisationError,
         seed_default_org,
     )
 
+    # The organisation's id, found by slug or by id; None when nothing was
+    # configured on a database that already has organisations.
+    default_org_id = None
     try:
         with engine.begin() as conn:
-            seed_default_org(conn)
+            default_org_id = seed_default_org(conn)
+    except DefaultOrganisationError as e:
+        log.error("Default organisation not applied: %s", e)
     except Exception as e:
         log.warning(
             f"Skipping default organization seeding (schema may not be fully migrated yet): {e}"
@@ -298,11 +305,7 @@ async def lifespan(app: FastAPI):
             first_run = db.query(User).count() == 0
             if not existing and first_run:
                 log.info(f"Seeding default admin user: {admin_email}")
-                org = (
-                    db.query(Organization)
-                    .filter(Organization.slug == DEFAULT_ORG_SLUG)
-                    .first()
-                )
+                org = db.get(Organization, default_org_id) if default_org_id else None
                 if org:
                     admin = User(
                         id=gen_user_id(org.slug, "admin"),  # e.g. usr_def_admin_x9v1

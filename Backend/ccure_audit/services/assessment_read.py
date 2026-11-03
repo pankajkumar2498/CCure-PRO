@@ -35,6 +35,12 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from sqlalchemy.orm import Session
 
 from ccure_audit.services.views import view
+import core.compliance_frameworks as compliance_frameworks
+from db.models.compliance import ComplianceControl
+from db.models.compliance import ComplianceFramework
+from db.models.compliance import ComplianceRuleControl
+from db.models.compliance import ComplianceTenantFramework
+from db.models.scans import Scan
 
 log = logging.getLogger("ccure.reporting.exports")
 
@@ -226,13 +232,6 @@ def control_map_for_checks(
     not name one the scan's policy excluded, because in both cases the rest of
     that framework was never assessed.
     """
-    from core.compliance_frameworks import is_active as is_active_framework
-    from db.models.compliance import (
-        ComplianceControl,
-        ComplianceFramework,
-        ComplianceRuleControl,
-        ComplianceTenantFramework,
-    )
 
     wanted_checks = [str(c) for c in check_ids if c]
     if not wanted_checks:
@@ -246,7 +245,7 @@ def control_map_for_checks(
             ComplianceTenantFramework.is_enabled.is_(True),
         )
         .all()
-        if is_active_framework(row[0])
+        if compliance_frameworks.is_active(row[0])
     ]
     if framework_ids:
         narrowed = {str(f) for f in framework_ids if f}
@@ -492,7 +491,6 @@ class AssessmentReadService:
         self._db = db
 
     def _scan(self, org_id: str, scan_id: str) -> Any:
-        from db.models.scans import Scan
 
         if not org_id:
             raise ValueError("org_id is required: an assessment belongs to one tenant")
@@ -514,7 +512,6 @@ class AssessmentReadService:
         in one query. The export's ``ControlRef`` carries only the internal ids;
         the view adds the published ones without touching the export's path.
         """
-        from db.models.compliance import ComplianceControl, ComplianceFramework
 
         wanted = sorted({c for c in control_ids if c})
         if not wanted:

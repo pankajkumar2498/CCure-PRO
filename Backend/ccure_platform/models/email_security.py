@@ -32,6 +32,7 @@ would mean syncing 93,000 rows once per org.
 from ccure_platform._legacy import adopt_legacy_name
 
 adopt_legacy_name(__name__, "db.models.email_security")
+from db.base import engine
 
 from db.base import TIMESTAMPTZ, Base, utcnow
 from sqlalchemy import (
@@ -372,7 +373,6 @@ def ensure_email_security_schema():
     migration yet comes up with a working guard rather than 500ing on every
     registration. Creating a table that already exists is a no-op.
     """
-    from db.base import engine
 
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())

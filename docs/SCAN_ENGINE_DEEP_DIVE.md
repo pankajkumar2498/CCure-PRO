@@ -32,13 +32,13 @@ point through the orchestrator into each engine, plugin, probe and wrapper.
 
 ## 1. Scanning paths at a glance
 
-| Path                   | Orchestrator                                | Engines / tools                                                                                                          | Queue                                             | Findings written to                           |
-| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- | --------------------------------------------- |
-| Network scan           | `orchestrator/scan_orchestrator.py`         | DiscoveryEngine (Scapy), PortEngine → NmapScanner, VulnerabilityEngine (15 plugins)                                      | `scanner`                                         | `assets`, `services`, `asset_vulnerabilities` |
-| Credentialed audit     | `core/tasks.py::run_credentialed_scan_task` | SSHScanner + Linux/Windows collectors, VulnMatcher, CsafProductMatcher, WindowsPatchMatcher, MicrosoftApplicationMatcher | `scanner`                                         | Same tables, `source_family="credentialed"`   |
-| Topology mapping       | `core/topology/engine.py`                   | SNMP client (ARP/LLDP/CDP/EDP/FDB)                                                                                       | `scanner`                                         | `network_links`, plus asset enrolment         |
-| Web application (DAST) | `orchestrator/web_orchestrator.py`          | subfinder, Playwright, ffuf, Nuclei, SQLMap, SSLyze, WAF detector                                                        | `web_recon`, `web_crawl`, `web_dast`, `web_audit` | `web_assets`, `web_findings`                  |
-| Compliance             | `core/compliance_tasks.py`                  | Rule evaluation over `ComplianceEvidenceProvider`                                                                        | `compliance`                                      | `compliance_findings`, `compliance_scores`    |
+| Path                   | Orchestrator                                              | Engines / tools                                                                                                          | Queue                                             | Findings written to                           |
+| ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- | --------------------------------------------- |
+| Network scan           | `orchestrator/scan_orchestrator.py`                       | DiscoveryEngine (Scapy), PortEngine → NmapScanner, VulnerabilityEngine (15 plugins)                                      | `scanner`                                         | `assets`, `services`, `asset_vulnerabilities` |
+| Credentialed audit     | `scans/tasks/credentialed.py::run_credentialed_scan_task` | SSHScanner + Linux/Windows collectors, VulnMatcher, CsafProductMatcher, WindowsPatchMatcher, MicrosoftApplicationMatcher | `scanner`                                         | Same tables, `source_family="credentialed"`   |
+| Topology mapping       | `core/topology/engine.py`                                 | SNMP client (ARP/LLDP/CDP/EDP/FDB)                                                                                       | `scanner`                                         | `network_links`, plus asset enrolment         |
+| Web application (DAST) | `orchestrator/web_orchestrator.py`                        | subfinder, Playwright, ffuf, Nuclei, SQLMap, SSLyze, WAF detector                                                        | `web_recon`, `web_crawl`, `web_dast`, `web_audit` | `web_assets`, `web_findings`                  |
+| Compliance             | `core/compliance_tasks.py`                                | Rule evaluation over `ComplianceEvidenceProvider`                                                                        | `compliance`                                      | `compliance_findings`, `compliance_scores`    |
 
 ```mermaid
 flowchart LR
@@ -945,7 +945,7 @@ weaker signal can never overwrite a stronger one on a later scan.
 
 - `core/topology/identity.py`.
 
-**Trigger** — `core/tasks.py::_chain_topology_if_needed` dispatches
+**Trigger** — `scans/tasks/topology.py::_chain_topology_if_needed` dispatches
 `run_topology_mapping_task` at the end of any network scan **only when SNMP
 credentials are present in `scan.options`**.
 
